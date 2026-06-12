@@ -58,7 +58,7 @@ function WatchPage() {
             className="h-full w-full"
             referrerPolicy="origin"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
             allowFullScreen
           />
         </div>
