@@ -11,7 +11,7 @@ export const Route = createFileRoute("/account")({
 });
 
 function AccountPage() {
-  const { user, profile, loading, changePlan, signOut, refreshProfile } = useAuth();
+  const { user, profile, loading, isAdmin, changePlan, signOut, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -61,6 +61,70 @@ function AccountPage() {
   };
 
   const current = PLANS[profile.plan];
+
+  if (isAdmin) {
+    return (
+      <AppShell>
+        <div className="mx-auto max-w-3xl space-y-8 px-4 pb-16 pt-24 sm:px-8">
+          <h1 className="text-3xl font-extrabold">Account</h1>
+          {msg && <p className="rounded-md bg-primary/15 px-4 py-2 text-sm text-primary">{msg}</p>}
+
+          <section className="rounded-xl border border-border bg-card p-6">
+            <h2 className="mb-4 text-lg font-bold">Profile</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Full name</label>
+                <input
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="w-full rounded-md border border-border bg-input px-3 py-2 outline-none focus:border-primary"
+                />
+              </div>
+              <p className="text-sm text-muted-foreground">Email: {profile.email}</p>
+              <button
+                onClick={saveName}
+                disabled={saving}
+                className="rounded-md bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-60"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-border bg-card p-6">
+            <h2 className="mb-2 text-lg font-bold">Administrator</h2>
+            <p className="text-sm text-muted-foreground">
+              Unlimited access — no plan or screen limits.
+            </p>
+            <Link
+              to="/admin"
+              className="mt-4 inline-block rounded-md bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85"
+            >
+              Open Admin Panel
+            </Link>
+          </section>
+
+          <div className="flex gap-3">
+            <Link
+              to="/"
+              className="rounded-md border border-border px-5 py-2 text-sm font-semibold hover:bg-accent"
+            >
+              Back to Home
+            </Link>
+            <button
+              onClick={async () => {
+                await signOut();
+                navigate({ to: "/" });
+              }}
+              className="rounded-md bg-secondary px-5 py-2 text-sm font-semibold hover:bg-accent"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
