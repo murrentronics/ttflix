@@ -4,7 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { X, Play, Plus, Check, Star } from "lucide-react";
 import { useDetail } from "./DetailContext";
 import { useAuth } from "@/lib/auth";
-import { getDetails } from "@/lib/tmdb.functions";
+import { getDetails, type TmdbItem } from "@/lib/tmdb.functions";
 import { addToList, removeFromList, fetchMyList } from "@/lib/mylist";
 import { img, year } from "@/lib/tmdb";
 import { MovieCard } from "./MovieCard";
