@@ -188,6 +188,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error("TTFlix is only available in Trinidad & Tobago.");
     }
 
+    // Auto-suspend approved accounts whose subscription has expired.
+    if (
+      prof &&
+      prof.status === "approved" &&
+      prof.subscription_expires_at &&
+      new Date(prof.subscription_expires_at).getTime() < Date.now()
+    ) {
+      await supabase.from("profiles").update({ status: "suspended" }).eq("id", prof.id);
+      prof = await loadProfile(signedIn.id);
+    }
+
     try {
       await registerScreen(signedIn.id, prof?.plan ?? "basic");
     } catch (e) {
