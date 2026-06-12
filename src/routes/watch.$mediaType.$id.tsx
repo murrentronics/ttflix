@@ -11,20 +11,24 @@ export const Route = createFileRoute("/watch/$mediaType/$id")({
 
 function WatchPage() {
   const { mediaType, id } = Route.useParams();
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
 
   const type = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
 
   useEffect(() => {
-    if (!loading && !user) navigate({ to: "/auth" });
-  }, [loading, user, navigate]);
+    if (loading) return;
+    // No account, or account not approved → send to billing/payment.
+    if (!user || (profile && profile.status !== "approved")) {
+      navigate({ to: "/billing" });
+    }
+  }, [loading, user, profile, navigate]);
 
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>;
   }
-  if (!user) return null;
+  if (!user || (profile && profile.status !== "approved")) return null;
 
   return (
     <div className="flex min-h-screen flex-col bg-black">

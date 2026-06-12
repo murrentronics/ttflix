@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { supabase, PLANS, type PlanId } from "./supabase";
+import { supabase, PLANS, ADMIN_EMAIL, type PlanId, type UserStatus } from "./supabase";
 
 export type Profile = {
   id: string;
@@ -15,6 +15,8 @@ export type Profile = {
   full_name: string | null;
   country: string;
   plan: PlanId;
+  status: UserStatus;
+  subscription_expires_at: string | null;
 };
 
 type AuthContextValue = {
@@ -22,6 +24,7 @@ type AuthContextValue = {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  isAdmin: boolean;
   signUp: (args: {
     email: string;
     password: string;
@@ -148,13 +151,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const newUser = data.user;
     if (newUser) {
-      // Upsert profile (works whether or not a DB trigger exists)
+      // New users start as pending until the admin approves their payment.
       await supabase.from("profiles").upsert({
         id: newUser.id,
         email,
         full_name: fullName,
         country,
         plan,
+        status: "pending",
       });
     }
   };
@@ -184,6 +188,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error("TTFlix is only available in Trinidad & Tobago.");
     }
 
+    // Auto-suspend approved accounts whose subscription has expired.
+    if (
+      prof &&
+      prof.status === "approved" &&
+      prof.subscription_expires_at &&
+      new Date(prof.subscription_expires_at).getTime() < Date.now()
+    ) {
+      await supabase.from("profiles").update({ status: "suspended" }).eq("id", prof.id);
+      prof = await loadProfile(signedIn.id);
+    }
+
     try {
       await registerScreen(signedIn.id, prof?.plan ?? "basic");
     } catch (e) {
@@ -206,9 +221,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshProfile();
   };
 
+  const isAdmin =
+    (user?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase() ||
+    (profile?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
   return (
     <AuthContext.Provider
-      value={{ user, session, profile, loading, signUp, signIn, signOut, changePlan, refreshProfile }}
+      value={{
+        user,
+        session,
+        profile,
+        loading,
+        isAdmin,
+        signUp,
+        signIn,
+        signOut,
+        changePlan,
+        refreshProfile,
+      }}
     >
       {children}
     </AuthContext.Provider>

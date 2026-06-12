@@ -15,7 +15,9 @@ import { Route as SearchRouteImport } from './routes/search'
 import { Route as MyListRouteImport } from './routes/my-list'
 import { Route as MoviesRouteImport } from './routes/movies'
 import { Route as CartoonsRouteImport } from './routes/cartoons'
+import { Route as BillingRouteImport } from './routes/billing'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AccountRouteImport } from './routes/account'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WatchMediaTypeIdRouteImport } from './routes/watch.$mediaType.$id'
@@ -50,9 +52,19 @@ const CartoonsRoute = CartoonsRouteImport.update({
   path: '/cartoons',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BillingRoute = BillingRouteImport.update({
+  id: '/billing',
+  path: '/billing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AccountRoute = AccountRouteImport.update({
@@ -74,7 +86,9 @@ const WatchMediaTypeIdRoute = WatchMediaTypeIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
+  '/billing': typeof BillingRoute
   '/cartoons': typeof CartoonsRoute
   '/movies': typeof MoviesRoute
   '/my-list': typeof MyListRoute
@@ -86,7 +100,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
+  '/billing': typeof BillingRoute
   '/cartoons': typeof CartoonsRoute
   '/movies': typeof MoviesRoute
   '/my-list': typeof MyListRoute
@@ -99,7 +115,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/account': typeof AccountRoute
+  '/admin': typeof AdminRoute
   '/auth': typeof AuthRoute
+  '/billing': typeof BillingRoute
   '/cartoons': typeof CartoonsRoute
   '/movies': typeof MoviesRoute
   '/my-list': typeof MyListRoute
@@ -113,7 +131,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/account'
+    | '/admin'
     | '/auth'
+    | '/billing'
     | '/cartoons'
     | '/movies'
     | '/my-list'
@@ -125,7 +145,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/account'
+    | '/admin'
     | '/auth'
+    | '/billing'
     | '/cartoons'
     | '/movies'
     | '/my-list'
@@ -137,7 +159,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/account'
+    | '/admin'
     | '/auth'
+    | '/billing'
     | '/cartoons'
     | '/movies'
     | '/my-list'
@@ -150,7 +174,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AccountRoute: typeof AccountRoute
+  AdminRoute: typeof AdminRoute
   AuthRoute: typeof AuthRoute
+  BillingRoute: typeof BillingRoute
   CartoonsRoute: typeof CartoonsRoute
   MoviesRoute: typeof MoviesRoute
   MyListRoute: typeof MyListRoute
@@ -204,11 +230,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CartoonsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/billing': {
+      id: '/billing'
+      path: '/billing'
+      fullPath: '/billing'
+      preLoaderRoute: typeof BillingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/account': {
@@ -238,7 +278,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AccountRoute: AccountRoute,
+  AdminRoute: AdminRoute,
   AuthRoute: AuthRoute,
+  BillingRoute: BillingRoute,
   CartoonsRoute: CartoonsRoute,
   MoviesRoute: MoviesRoute,
   MyListRoute: MyListRoute,
