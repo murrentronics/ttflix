@@ -221,9 +221,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshProfile();
   };
 
+  const isAdmin =
+    (user?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase() ||
+    (profile?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
   return (
     <AuthContext.Provider
-      value={{ user, session, profile, loading, signUp, signIn, signOut, changePlan, refreshProfile }}
+      value={{
+        user,
+        session,
+        profile,
+        loading,
+        isAdmin,
+        signUp,
+        signIn,
+        signOut,
+        changePlan,
+        refreshProfile,
+      }}
     >
       {children}
     </AuthContext.Provider>
