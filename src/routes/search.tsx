@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Search as SearchIcon } from "lucide-react";
-import { searchContent } from "@/lib/tmdb.functions";
+import { searchContent, type TmdbItem } from "@/lib/tmdb.functions";
 import { AppShell } from "@/components/AppShell";
 import { MovieCard } from "@/components/MovieCard";
 
