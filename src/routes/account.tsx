@@ -11,7 +11,7 @@ export const Route = createFileRoute("/account")({
 });
 
 function AccountPage() {
-  const { user, profile, loading, changePlan, signOut, refreshProfile } = useAuth();
+  const { user, profile, loading, isAdmin, changePlan, signOut, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
   const [saving, setSaving] = useState(false);
