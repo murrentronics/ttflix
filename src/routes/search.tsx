@@ -49,7 +49,7 @@ function SearchPage() {
         )}
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-          {data?.results.map((item) => (
+          {data?.results.map((item: TmdbItem) => (
             <div key={`${item.media_type}-${item.id}`} className="flex justify-center">
               <MovieCard item={item} />
             </div>
