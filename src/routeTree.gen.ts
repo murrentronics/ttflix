@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as TvRouteImport } from './routes/tv'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as MyListRouteImport } from './routes/my-list'
 import { Route as MoviesRouteImport } from './routes/movies'
@@ -22,6 +23,11 @@ import { Route as WatchMediaTypeIdRouteImport } from './routes/watch.$mediaType.
 const TvRoute = TvRouteImport.update({
   id: '/tv',
   path: '/tv',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SearchRoute = SearchRouteImport.update({
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/movies': typeof MoviesRoute
   '/my-list': typeof MyListRoute
   '/search': typeof SearchRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tv': typeof TvRoute
   '/watch/$mediaType/$id': typeof WatchMediaTypeIdRoute
 }
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/movies': typeof MoviesRoute
   '/my-list': typeof MyListRoute
   '/search': typeof SearchRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tv': typeof TvRoute
   '/watch/$mediaType/$id': typeof WatchMediaTypeIdRoute
 }
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/movies': typeof MoviesRoute
   '/my-list': typeof MyListRoute
   '/search': typeof SearchRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/tv': typeof TvRoute
   '/watch/$mediaType/$id': typeof WatchMediaTypeIdRoute
 }
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/movies'
     | '/my-list'
     | '/search'
+    | '/sitemap.xml'
     | '/tv'
     | '/watch/$mediaType/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/movies'
     | '/my-list'
     | '/search'
+    | '/sitemap.xml'
     | '/tv'
     | '/watch/$mediaType/$id'
   id:
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
     | '/movies'
     | '/my-list'
     | '/search'
+    | '/sitemap.xml'
     | '/tv'
     | '/watch/$mediaType/$id'
   fileRoutesById: FileRoutesById
@@ -143,6 +155,7 @@ export interface RootRouteChildren {
   MoviesRoute: typeof MoviesRoute
   MyListRoute: typeof MyListRoute
   SearchRoute: typeof SearchRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TvRoute: typeof TvRoute
   WatchMediaTypeIdRoute: typeof WatchMediaTypeIdRoute
 }
@@ -154,6 +167,13 @@ declare module '@tanstack/react-router' {
       path: '/tv'
       fullPath: '/tv'
       preLoaderRoute: typeof TvRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/search': {
@@ -223,9 +243,20 @@ const rootRouteChildren: RootRouteChildren = {
   MoviesRoute: MoviesRoute,
   MyListRoute: MyListRoute,
   SearchRoute: SearchRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   TvRoute: TvRoute,
   WatchMediaTypeIdRoute: WatchMediaTypeIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
