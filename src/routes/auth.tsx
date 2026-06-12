@@ -4,6 +4,8 @@ import { z } from "zod";
 import { AlertCircle, Check } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { PLANS, type PlanId } from "@/lib/supabase";
+import { getBankDetails, type BankDetails } from "@/lib/admin";
+import { BankDetailsView } from "@/components/BankDetailsView";
 import heroBg from "@/assets/landing-hero.jpg";
 
 const searchSchema = z.object({
