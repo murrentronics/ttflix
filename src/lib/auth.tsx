@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { supabase, PLANS, type PlanId } from "./supabase";
+import { supabase, PLANS, ADMIN_EMAIL, type PlanId, type UserStatus } from "./supabase";
 
 export type Profile = {
   id: string;
@@ -15,6 +15,8 @@ export type Profile = {
   full_name: string | null;
   country: string;
   plan: PlanId;
+  status: UserStatus;
+  subscription_expires_at: string | null;
 };
 
 type AuthContextValue = {
