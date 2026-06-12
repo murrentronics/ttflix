@@ -13,6 +13,17 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
+export const ADMIN_EMAIL = "kellymarshall2026@gmail.com";
+
+export type UserStatus = "pending" | "approved" | "suspended" | "expelled";
+
+export const STATUS_LABELS: Record<UserStatus, string> = {
+  pending: "Pending",
+  approved: "Approved",
+  suspended: "Suspended",
+  expelled: "Expelled",
+};
+
 export type PlanId = "basic" | "premium";
 
 export const PLANS: Record<
