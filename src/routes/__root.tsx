@@ -77,14 +77,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "TTFlix — Stream Movies, TV Shows & Cartoons" },
+      {
+        name: "description",
+        content:
+          "TTFlix — Trinidad & Tobago's home for streaming movies, TV shows and cartoons. Watch trailers, build your list, and stream in HD.",
+      },
+      { name: "author", content: "TTFlix" },
+      { property: "og:title", content: "TTFlix — Stream Movies, TV Shows & Cartoons" },
+      {
+        property: "og:description",
+        content: "Trinidad & Tobago's home for unlimited movies, TV shows and cartoons.",
+      },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
     links: [
       {
