@@ -151,7 +151,7 @@ export function DetailModal() {
               <div>
                 <h3 className="mb-3 text-lg font-bold">More Like This</h3>
                 <div className="row-scroll flex gap-3 overflow-x-auto pb-2">
-                  {data.similar.slice(0, 10).map((s) => (
+                  {data.similar.slice(0, 10).map((s: TmdbItem) => (
                     <MovieCard key={`${s.media_type}-${s.id}`} item={s} />
                   ))}
                 </div>
