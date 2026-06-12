@@ -151,13 +151,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const newUser = data.user;
     if (newUser) {
-      // Upsert profile (works whether or not a DB trigger exists)
+      // New users start as pending until the admin approves their payment.
       await supabase.from("profiles").upsert({
         id: newUser.id,
         email,
         full_name: fullName,
         country,
         plan,
+        status: "pending",
       });
     }
   };
