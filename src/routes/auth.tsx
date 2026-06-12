@@ -31,6 +31,8 @@ function AuthPage() {
   const [plan, setPlan] = useState<PlanId>("basic");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [bankStep, setBankStep] = useState(false);
+  const [bank, setBank] = useState<BankDetails | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,16 +42,53 @@ function AuthPage() {
       if (isSignup) {
         await signUp({ email, password, fullName, country, plan });
         await signIn(email, password);
+        // Final step: show bank transfer details so the user can pay.
+        setBank(await getBankDetails());
+        setBankStep(true);
       } else {
         await signIn(email, password);
+        navigate({ to: "/" });
       }
-      navigate({ to: "/" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setBusy(false);
     }
   };
+
+  if (bankStep) {
+    return (
+      <div className="relative min-h-screen">
+        <img src={heroBg} alt="" className="absolute inset-0 h-full w-full object-cover opacity-30" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/70 to-background" />
+        <div className="relative mx-auto max-w-md px-4 py-10">
+          <Link to="/" className="mb-8 block text-center text-3xl font-extrabold text-primary">
+            TT<span className="text-foreground">FLIX</span>
+          </Link>
+          <div className="rounded-xl border border-border bg-card/95 p-7 backdrop-blur">
+            <h1 className="text-2xl font-extrabold">Complete your payment</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              You picked the <span className="text-foreground">{PLANS[plan].name}</span> plan
+              (TT${PLANS[plan].price}/mo). Make a bank transfer using the details below. Your account
+              stays pending until we confirm your payment.
+            </p>
+            <div className="mt-5">
+              <BankDetailsView details={bank} />
+            </div>
+            <p className="mt-4 text-xs text-muted-foreground">
+              Use your email ({email}) as the payment reference.
+            </p>
+            <button
+              onClick={() => navigate({ to: "/" })}
+              className="mt-5 w-full rounded-md bg-primary py-3 font-semibold text-primary-foreground transition hover:bg-primary/85"
+            >
+              I've made my transfer — Continue
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen">
