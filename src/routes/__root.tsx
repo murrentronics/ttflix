@@ -94,6 +94,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "TTFlix — Stream Movies, TV Shows & Cartoons" },
+      { name: "description", content: "TTFlix Stream is a user-friendly streaming platform for movies, TV shows, and cartoons, mirroring Netflix's layout and functionality." },
+      { property: "og:description", content: "TTFlix Stream is a user-friendly streaming platform for movies, TV shows, and cartoons, mirroring Netflix's layout and functionality." },
+      { name: "twitter:description", content: "TTFlix Stream is a user-friendly streaming platform for movies, TV shows, and cartoons, mirroring Netflix's layout and functionality." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/166a471c-07e7-4393-810f-efe437db71a0/id-preview-2947dd7c--775194e2-537a-4206-9260-1818f804223d.lovable.app-1781307036334.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/166a471c-07e7-4393-810f-efe437db71a0/id-preview-2947dd7c--775194e2-537a-4206-9260-1818f804223d.lovable.app-1781307036334.png" },
     ],
     links: [
       {
