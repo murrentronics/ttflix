@@ -66,6 +66,11 @@ export function Navbar() {
                 <Link to="/my-list" className="block px-4 py-2 text-sm hover:bg-accent">
                   My List
                 </Link>
+                {isAdmin && (
+                  <Link to="/admin" className="block px-4 py-2 text-sm font-semibold text-primary hover:bg-accent">
+                    Admin Panel
+                  </Link>
+                )}
                 <button
                   onClick={async () => {
                     await signOut();
