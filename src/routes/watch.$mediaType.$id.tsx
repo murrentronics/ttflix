@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { streamUrl } from "@/lib/stream";
 import { saveProgress } from "@/lib/continue-watching";
+import { TTFlixLoader } from "@/components/TTFlixLoader";
 
 export const Route = createFileRoute("/watch/$mediaType/$id")({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -24,7 +25,11 @@ function WatchPage() {
   const navigate = useNavigate();
   const progressRef = useRef({ watched: 0, duration: 0 });
   const [saved, setSaved] = useState(false);
-  // Store src once — never let it change so iframe never reloads
+  // Loader state
+  const [loaderVisible, setLoaderVisible] = useState(true);
+  const [explodeLoader, setExplodeLoader] = useState(false);
+
+  // Freeze src so iframe never reloads on re-render
   const [src] = useState(() =>
     streamUrl(
       mediaType === "tv" ? "tv" : "movie",
@@ -41,6 +46,18 @@ function WatchPage() {
   const stillLoading = loading || profileLoading;
   const canWatch = isAdmin || (!!user && profile?.status === "approved");
 
+  // Explode the loader once the iframe reports it has loaded
+  // Videasy sends a postMessage when content is ready — we also use onLoad as fallback
+  const triggerExplosion = useCallback(() => {
+    setExplodeLoader(true);
+  }, []);
+
+  // Give the player max 5s to load then explode anyway
+  useEffect(() => {
+    const t = setTimeout(triggerExplosion, 5000);
+    return () => clearTimeout(t);
+  }, [triggerExplosion]);
+
   const persist = useCallback(async (watched: number, duration: number) => {
     if (!user || watched < 30) return;
     await saveProgress({
@@ -54,18 +71,26 @@ function WatchPage() {
     setTimeout(() => setSaved(false), 1500);
   }, [user, tmdbId, type, season, episode, search]);
 
+  // Videasy postMessage — fires when player is ready & during playback
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       try {
         const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        // Player ready signal
+        if (d?.type === "ready" || d?.event === "ready") {
+          triggerExplosion();
+        }
+        // Progress tracking
         if (d?.timestamp !== undefined && d?.duration !== undefined) {
           progressRef.current = { watched: d.timestamp, duration: d.duration };
+          // Explode loader on first progress tick = video is definitely playing
+          triggerExplosion();
         }
       } catch { /* ignore */ }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, []);
+  }, [triggerExplosion]);
 
   useEffect(() => {
     if (!user) return;
@@ -97,6 +122,14 @@ function WatchPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-black">
+      {/* TTFLIX loading overlay — explodes away when player is ready */}
+      {loaderVisible && (
+        <TTFlixLoader
+          explode={explodeLoader}
+          onDone={() => setLoaderVisible(false)}
+        />
+      )}
+
       <div className="flex items-center justify-between px-4 py-3">
         <Link to="/" className="flex items-center gap-2 text-sm text-foreground/80 hover:text-foreground">
           <ArrowLeft className="h-5 w-5" /> Back to TTFlix
@@ -113,14 +146,10 @@ function WatchPage() {
             title="Player"
             className="h-full w-full"
             referrerPolicy="origin"
-            /**
-             * allow="..." without "allow-popups" is NOT valid here —
-             * but sandbox WITHOUT allow-popups IS the browser-enforced popup blocker.
-             * Videasy says "Sandbox Detected" but let's test with just allow-popups-to-escape-sandbox removed.
-             * The key attribute below blocks new tabs at the browser policy level:
-             */
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
             allowFullScreen
+            // Trigger explosion on iframe load as fallback
+            onLoad={triggerExplosion}
           />
         </div>
       </div>

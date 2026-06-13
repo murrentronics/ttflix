@@ -3,7 +3,11 @@ import { createServerFn } from "@tanstack/react-start";
 const TMDB_BASE = "https://api.themoviedb.org/3";
 
 async function tmdb(path: string, params: Record<string, string> = {}) {
-  const key = process.env.TMDB_API_KEY ?? "";
+  // Works in both server (process.env) and Capacitor/client (import.meta.env) modes
+  const key =
+    (typeof process !== "undefined" && process.env?.TMDB_API_KEY) ||
+    import.meta.env?.VITE_TMDB_API_KEY ||
+    "";
   const url = new URL(TMDB_BASE + path);
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
 
