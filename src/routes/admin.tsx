@@ -32,12 +32,13 @@ export const Route = createFileRoute("/admin")({
 });
 
 const TABS: UserStatus[] = ["pending", "approved", "suspended", "expelled"];
+type AdminTab = UserStatus | "banking";
 
 function AdminPage() {
   const { user, isAdmin, loading } = useAuth();
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState<UserStatus>("pending");
+  const [tab, setTab] = useState<AdminTab>("pending");
   const [rows, setRows] = useState<AdminUser[]>([]);
   const [counts, setCounts] = useState<Record<UserStatus, number>>({
     pending: 0,
@@ -67,7 +68,7 @@ function AdminPage() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    refreshRows(tab);
+    if (tab !== "banking") refreshRows(tab);
     refreshCounts();
   }, [tab, isAdmin, refreshRows, refreshCounts]);
 
@@ -80,7 +81,7 @@ function AdminPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "profiles" },
         () => {
-          refreshRows(tabRef.current);
+          if (tabRef.current !== "banking") refreshRows(tabRef.current);
           refreshCounts();
         },
       )
@@ -94,7 +95,7 @@ function AdminPage() {
     setBusy(true);
     try {
       await setUserStatus(u.id, status);
-      await refreshRows(tab);
+      if (tab !== "banking") await refreshRows(tab);
       await refreshCounts();
     } finally {
       setBusy(false);
@@ -107,7 +108,7 @@ function AdminPage() {
     try {
       await deleteUserRecord(confirmDelete.id);
       setConfirmDelete(null);
-      await refreshRows(tab);
+      if (tab !== "banking") await refreshRows(tab);
       await refreshCounts();
     } finally {
       setBusy(false);
@@ -157,17 +158,30 @@ function AdminPage() {
             );
           })}
           <button
-            onClick={() => {
-              refreshRows(tab);
-              refreshCounts();
-            }}
-            className="ml-auto flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+            onClick={() => setTab("banking")}
+            className={`relative -mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+              tab === "banking"
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
           >
-            <RefreshCw className="h-4 w-4" /> Refresh
+            Banking
           </button>
+          {tab !== "banking" && (
+            <button
+              onClick={() => {
+                refreshRows(tab as UserStatus);
+                refreshCounts();
+              }}
+              className="ml-auto flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </button>
+          )}
         </div>
 
         {/* User table */}
+        {tab !== "banking" && (
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -183,7 +197,7 @@ function AdminPage() {
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
-                    No {STATUS_LABELS[tab].toLowerCase()} users.
+                    No {STATUS_LABELS[tab as UserStatus].toLowerCase()} users.
                   </td>
                 </tr>
               )}
@@ -229,8 +243,10 @@ function AdminPage() {
             </tbody>
           </table>
         </div>
+        )}
 
-        <BankingSection />
+        {/* Banking tab */}
+        {tab === "banking" && <BankingSection />}
       </div>
 
       <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>

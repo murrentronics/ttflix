@@ -4,6 +4,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
@@ -24,6 +25,7 @@ type AuthContextValue = {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
+  profileLoading: boolean;
   isAdmin: boolean;
   signUp: (args: {
     email: string;
@@ -59,7 +61,6 @@ async function loadProfile(userId: string): Promise<Profile | null> {
 
 async function registerScreen(userId: string, plan: PlanId) {
   const deviceId = getDeviceId();
-  // existing screen for this device counts as already in use
   const { data: existing } = await supabase
     .from("screens")
     .select("id")
@@ -100,13 +101,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  // loading = auth session check in progress
   const [loading, setLoading] = useState(true);
+  // profileLoading = profile row fetch in progress (separate from session)
+  const [profileLoading, setProfileLoading] = useState(true);
+
+  const userRef = useRef(user);
+  userRef.current = user;
 
   const refreshProfile = useCallback(async () => {
-    if (!user) return;
-    setProfile(await loadProfile(user.id));
-  }, [user]);
+    if (!userRef.current) return;
+    const p = await loadProfile(userRef.current.id);
+    setProfile(p);
+  }, []);
 
+  // 1. Restore session on mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
@@ -117,16 +126,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
       setSession(sess);
       setUser(sess?.user ?? null);
+      if (!sess) {
+        setProfile(null);
+        setProfileLoading(false);
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  // 2. Load profile whenever user changes; track profileLoading separately
   useEffect(() => {
     if (user) {
-      loadProfile(user.id).then(setProfile);
+      setProfileLoading(true);
+      loadProfile(user.id).then((p) => {
+        setProfile(p);
+        setProfileLoading(false);
+      });
     } else {
       setProfile(null);
+      setProfileLoading(false);
     }
+  }, [user]);
+
+  // 3. Realtime: re-fetch profile whenever admin changes this user's row
+  //    This is what makes the "pending → approved" update happen live.
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`profile-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${user.id}`,
+        },
+        async () => {
+          const updated = await loadProfile(user.id);
+          setProfile(updated);
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user]);
 
   const signUp: AuthContextValue["signUp"] = async ({
@@ -151,7 +195,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const newUser = data.user;
     if (newUser) {
-      // New users start as pending until the admin approves their payment.
       await supabase.from("profiles").upsert({
         id: newUser.id,
         email,
@@ -171,7 +214,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let prof = await loadProfile(signedIn.id);
     if (!prof) {
-      // create a default profile if missing
       const meta = signedIn.user_metadata ?? {};
       await supabase.from("profiles").upsert({
         id: signedIn.id,
@@ -179,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         full_name: meta.full_name ?? null,
         country: meta.country ?? ALLOWED_COUNTRY,
         plan: (meta.plan as PlanId) ?? "basic",
+        status: "pending",
       });
       prof = await loadProfile(signedIn.id);
     }
@@ -232,6 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         profile,
         loading,
+        profileLoading,
         isAdmin,
         signUp,
         signIn,

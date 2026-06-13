@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Play, Info, Star } from "lucide-react";
+import { Play, Info, Star, Lock } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useDetail } from "./DetailContext";
+import { useAuth } from "@/lib/auth";
 import { img } from "@/lib/tmdb";
 import type { TmdbItem } from "@/lib/tmdb.functions";
 
@@ -9,6 +10,9 @@ export function Hero({ items }: { items: TmdbItem[] }) {
   const [index, setIndex] = useState(0);
   const { open } = useDetail();
   const navigate = useNavigate();
+  const { user, profile, isAdmin } = useAuth();
+
+  const canWatch = isAdmin || (!!user && profile?.status === "approved");
 
   useEffect(() => {
     if (items.length <= 1) return;
@@ -18,6 +22,24 @@ export function Hero({ items }: { items: TmdbItem[] }) {
 
   const item = items[index];
   if (!item) return null;
+
+  const handlePlay = () => {
+    if (!canWatch) {
+      navigate({ to: "/" });
+      return;
+    }
+    navigate({
+      to: "/watch/$mediaType/$id",
+      params: { mediaType: item.media_type, id: String(item.id) },
+      search: {
+        title: item.title,
+        poster: item.poster_path ?? "",
+        backdrop: item.backdrop_path ?? "",
+        season: 1,
+        episode: 1,
+      },
+    });
+  };
 
   return (
     <div className="relative h-[62vh] min-h-[420px] w-full sm:h-[78vh]">
@@ -44,15 +66,15 @@ export function Hero({ items }: { items: TmdbItem[] }) {
         <p className="mt-3 line-clamp-3 text-sm text-foreground/85 sm:text-base">{item.overview}</p>
         <div className="mt-5 flex gap-3">
           <button
-            onClick={() =>
-              navigate({
-                to: "/watch/$mediaType/$id",
-                params: { mediaType: item.media_type, id: String(item.id) },
-              })
-            }
+            onClick={handlePlay}
             className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85"
           >
-            <Play className="h-5 w-5 fill-current" /> Play
+            {canWatch ? (
+              <Play className="h-5 w-5 fill-current" />
+            ) : (
+              <Lock className="h-5 w-5" />
+            )}
+            {canWatch ? "Play" : "Unlock"}
           </button>
           <button
             onClick={() => open(item)}

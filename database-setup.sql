@@ -72,3 +72,36 @@ alter publication supabase_realtime add table public.profiles;
 -- 6) After you sign up with kellymarshall2026@gmail.com, that account is
 --    automatically the admin (recognized by email). Optionally approve it:
 update public.profiles set status = 'approved' where email = 'kellymarshall2026@gmail.com';
+
+-- ============================================================
+-- Watch Progress (Continue Watching)
+-- Run this block in Supabase SQL Editor
+-- ============================================================
+
+create table if not exists public.watch_progress (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  tmdb_id integer not null,
+  media_type text not null check (media_type in ('movie','tv')),
+  title text not null default '',
+  poster_path text,
+  backdrop_path text,
+  watched_seconds integer not null default 0,
+  duration_seconds integer not null default 0,
+  season integer,
+  episode integer,
+  updated_at timestamptz not null default now(),
+  constraint watch_progress_unique unique (user_id, tmdb_id, media_type)
+);
+
+create index if not exists watch_progress_user_updated
+  on public.watch_progress (user_id, updated_at desc);
+
+alter table public.watch_progress enable row level security;
+grant select, insert, update, delete on public.watch_progress to authenticated;
+
+drop policy if exists "watch_progress own" on public.watch_progress;
+create policy "watch_progress own" on public.watch_progress
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());

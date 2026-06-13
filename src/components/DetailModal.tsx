@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { X, Play, Plus, Check, Star } from "lucide-react";
+import { X, Play, Plus, Check, Star, Lock } from "lucide-react";
 import { useDetail } from "./DetailContext";
 import { useAuth } from "@/lib/auth";
 import { getDetails, type TmdbItem } from "@/lib/tmdb.functions";
@@ -11,9 +11,11 @@ import { MovieCard } from "./MovieCard";
 
 export function DetailModal() {
   const { current, close } = useDetail();
-  const { user } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [inList, setInList] = useState(false);
+
+  const canWatch = isAdmin || (!!user && profile?.status === "approved");
 
   const { data, isLoading } = useQuery({
     queryKey: ["details", current?.mediaType, current?.id],
@@ -116,14 +118,30 @@ export function DetailModal() {
               <button
                 onClick={() => {
                   close();
+                  if (!canWatch) {
+                    navigate({ to: "/" });
+                    return;
+                  }
                   navigate({
                     to: "/watch/$mediaType/$id",
                     params: { mediaType: current.mediaType, id: String(current.id) },
+                    search: {
+                      title: data.title,
+                      poster: data.poster_path ?? "",
+                      backdrop: data.backdrop_path ?? "",
+                      season: 1,
+                      episode: 1,
+                    },
                   });
                 }}
                 className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85"
               >
-                <Play className="h-5 w-5 fill-current" /> Play
+                {canWatch ? (
+                  <Play className="h-5 w-5 fill-current" />
+                ) : (
+                  <Lock className="h-5 w-5" />
+                )}
+                {canWatch ? "Play" : "Unlock"}
               </button>
               <button
                 onClick={toggleList}
