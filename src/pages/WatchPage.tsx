@@ -134,14 +134,18 @@ export function WatchPage() {
     };
   }, [user, session, profile, isAdmin, tmdbId, type, title, season, episode]);
 
-  // Fetch runtime from TMDB for accurate progress bar
+  // Fetch runtime from TMDB — primary duration source since Videasy postMessages
+  // don't reliably fire inside Capacitor Android WebView
+  const watchStartRef = useRef<number>(0);
   useEffect(() => {
     getDetails({ data: { id: tmdbId, mediaType: type } }).then((details) => {
       const runtimeMins = details.runtime;
-      if (runtimeMins && runtimeMins > 0 && progressRef.current.duration === 0) {
+      if (runtimeMins && runtimeMins > 0) {
         progressRef.current.duration = runtimeMins * 60;
       }
     }).catch(() => {});
+    // Record when we started watching for wall-clock fallback
+    watchStartRef.current = Date.now();
   }, [tmdbId, type]);
 
   const triggerExplosion = useCallback(() => setExplodeLoader(true), []);
@@ -219,7 +223,14 @@ export function WatchPage() {
   useEffect(() => {
     if (!user) return;
     const t = setInterval(() => {
-      const { watched, duration } = progressRef.current;
+      // Use postMessage timestamp if available, otherwise fall back to wall-clock time
+      const wallClockWatched = watchStartRef.current > 0
+        ? Math.floor((Date.now() - watchStartRef.current) / 1000)
+        : 0;
+      const watched = progressRef.current.watched > 10
+        ? progressRef.current.watched
+        : wallClockWatched;
+      const duration = progressRef.current.duration;
       if (watched > 10) persist(watched, duration);
     }, 15_000);
     return () => clearInterval(t);
@@ -227,7 +238,13 @@ export function WatchPage() {
 
   useEffect(() => {
     const save = () => {
-      const { watched, duration } = progressRef.current;
+      const wallClockWatched = watchStartRef.current > 0
+        ? Math.floor((Date.now() - watchStartRef.current) / 1000)
+        : 0;
+      const watched = progressRef.current.watched > 10
+        ? progressRef.current.watched
+        : wallClockWatched;
+      const duration = progressRef.current.duration;
       if (user && watched > 10) persist(watched, duration);
     };
     window.addEventListener("beforeunload", save);

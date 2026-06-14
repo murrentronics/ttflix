@@ -69,7 +69,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
       </div>
 
       {items.length > 1 && (
-        <div className="absolute bottom-6 left-4 flex gap-1.5 sm:left-8">
+        <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5">
           {items.map((_, i) => (
             <button
               key={i}
