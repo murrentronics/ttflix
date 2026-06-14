@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, Ban, UserX, ShieldCheck, RefreshCw, CalendarDays, Receipt, ChevronLeft, ChevronRight } from "lucide-react";
+import { Trash2, Ban, UserX, ShieldCheck, RefreshCw, CalendarDays, Receipt, ChevronLeft, ChevronRight, Tv } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { supabase, STATUS_LABELS, PLANS, type UserStatus } from "@/lib/supabase";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const STATUS_TABS: UserStatus[] = ["pending", "approved", "suspended", "expelled"];
-type AdminTab = UserStatus | "billing" | "history";
+type AdminTab = UserStatus | "billing" | "history" | "watching";
 const PAGE_SIZE = 100;
 
 export function AdminPage() {
@@ -30,6 +30,8 @@ export function AdminPage() {
   const [counts, setCounts] = useState<Record<UserStatus, number>>({ pending: 0, approved: 0, suspended: 0, expelled: 0 });
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
+  const [watchingNow, setWatchingNow] = useState<any[]>([]);
+  const [watchingCount, setWatchingCount] = useState(0);
   const tabRef = useRef(tab);
   tabRef.current = tab;
 
@@ -62,6 +64,19 @@ export function AdminPage() {
     setRenewalCount(count ?? 0);
   }, []);
 
+  const loadWatching = useCallback(async () => {
+    // Stale = no ping in last 5 min
+    const staleDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data } = await supabase
+      .from("active_watches")
+      .select("*, profiles(full_name, email, plan)")
+      .gte("last_ping", staleDate)
+      .order("started_at", { ascending: false });
+    const rows = (data ?? []) as any[];
+    setWatchingNow(rows);
+    setWatchingCount(rows.length);
+  }, []);
+
   const loadHistory = useCallback(async (page: number) => {
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
@@ -83,13 +98,13 @@ export function AdminPage() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    // Always load renewal count for the badge regardless of active tab
     refreshUpcomingRenewals();
     if (tab === "billing") { /* already loaded above */ }
     else if (tab === "history") { setHistoryPage(1); loadHistory(1); }
+    else if (tab === "watching") loadWatching();
     else refreshRows(tab as UserStatus);
     refreshCounts();
-  }, [tab, isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory]);
+  }, [tab, isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching]);
 
   // Reset to page 1 when history page changes
   useEffect(() => {
@@ -100,17 +115,20 @@ export function AdminPage() {
     if (!isAdmin) return;
     const channel = supabase.channel("admin-profiles")
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
-        refreshUpcomingRenewals(); // always refresh count + list
-        if (tabRef.current === "billing") { /* list already refreshed */ }
-        else if (tabRef.current !== "history") refreshRows(tabRef.current as UserStatus);
+        refreshUpcomingRenewals();
+        if (tabRef.current === "billing") { }
+        else if (tabRef.current !== "history" && tabRef.current !== "watching") refreshRows(tabRef.current as UserStatus);
         refreshCounts();
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "payment_history" }, () => {
         if (tabRef.current === "history") loadHistory(historyPage);
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "active_watches" }, () => {
+        loadWatching();
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, historyPage]);
+  }, [isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, historyPage]);
 
   const changeStatus = async (u: AdminUser, status: UserStatus) => {
     setBusy(true);
@@ -178,10 +196,20 @@ export function AdminPage() {
             className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${tab === "history" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
             <Receipt className="h-4 w-4" /> History
           </button>
+          <button onClick={() => setTab("watching")}
+            className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${tab === "watching" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+            <Tv className="h-4 w-4" /> Watching Now
+            {watchingCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500 px-1.5 text-xs font-bold text-black">
+                {watchingCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => {
               if (tab === "billing") refreshUpcomingRenewals();
               else if (tab === "history") loadHistory(historyPage);
+              else if (tab === "watching") loadWatching();
               else refreshRows(tab as UserStatus);
             }}
             className="ml-auto flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground">
@@ -193,6 +221,53 @@ export function AdminPage() {
           <p className="text-sm text-muted-foreground">
             Approved subscribers due within 5 days. Collect cash, then hit Approve to reset their 30-day cycle.
           </p>
+        )}
+
+        {/* Watching Now Tab */}
+        {tab === "watching" && (
+          <>
+            <p className="text-sm text-muted-foreground">
+              Users actively watching right now (pinged in the last 5 minutes).
+            </p>
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3">User</th>
+                    <th className="px-4 py-3">Plan</th>
+                    <th className="px-4 py-3">Watching</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Started</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {watchingNow.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                        Nobody is watching right now.
+                      </td>
+                    </tr>
+                  )}
+                  {watchingNow.map((w) => (
+                    <tr key={w.id} className="border-t border-border">
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{w.profiles?.full_name ?? "—"}</p>
+                        <p className="text-xs text-muted-foreground">{w.profiles?.email ?? "—"}</p>
+                      </td>
+                      <td className="px-4 py-3 capitalize">
+                        {PLANS[w.profiles?.plan as string]?.name ?? w.profiles?.plan ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 font-medium">{w.title ?? "—"}</td>
+                      <td className="px-4 py-3 capitalize text-muted-foreground">{w.media_type ?? "—"}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        {w.started_at ? new Date(w.started_at).toLocaleTimeString("en-TT", { hour: "2-digit", minute: "2-digit" }) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {/* Payment History Tab */}

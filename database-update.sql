@@ -121,3 +121,41 @@ create unique index if not exists watch_progress_unique_idx
 -- 8) Plan upgrade requests
 -- Stores the requested plan while user stays on current plan until admin approves
 alter table public.profiles add column if not exists pending_plan text;
+
+-- 9) Active watches table — tracks who is currently watching (not login sessions)
+-- Row inserted when player opens, deleted on exit. Used for screen limit enforcement.
+create table if not exists public.active_watches (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  session_id text not null,
+  tmdb_id integer,
+  media_type text,
+  title text,
+  started_at timestamptz not null default now(),
+  last_ping timestamptz not null default now()
+);
+
+create unique index if not exists active_watches_session_unique
+  on public.active_watches (user_id, session_id);
+
+create index if not exists active_watches_user
+  on public.active_watches (user_id);
+
+alter table public.active_watches enable row level security;
+grant select, insert, update, delete on public.active_watches to authenticated;
+
+drop policy if exists "active_watches_own" on public.active_watches;
+create policy "active_watches_own" on public.active_watches
+  for all to authenticated
+  using (user_id = auth.uid() or public.is_admin())
+  with check (user_id = auth.uid());
+
+-- Realtime so admin panel updates live
+do $$ begin
+  alter publication supabase_realtime add table public.active_watches;
+exception when others then null;
+end $$;
+
+-- Clean up stale watches (ping > 5 min old = player closed without cleanup)
+-- Run this periodically or just let the app handle it
+-- delete from public.active_watches where last_ping < now() - interval '5 minutes';

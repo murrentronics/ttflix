@@ -54,69 +54,6 @@ async function loadProfile(userId: string): Promise<Profile | null> {
   return (data as Profile) ?? null;
 }
 
-/**
- * Register a screen slot keyed on the Supabase session access_token.
- *
- * Why session token instead of a localStorage device ID:
- * - localStorage is wiped when the app is deleted/reinstalled, leaving a ghost
- *   row in `screens` that blocks the next login attempt.
- * - The access_token is server-issued on every fresh sign-in and is completely
- *   independent of local storage. Deleted apps can never heartbeat, so their
- *   rows expire after 2 hours automatically.
- */
-async function registerScreen(userId: string, sessionId: string, plan: PlanId) {
-  // 1. Delete any existing row for this exact session (handles app restart).
-  await supabase
-    .from("screens")
-    .delete()
-    .eq("user_id", userId)
-    .eq("session_id", sessionId);
-
-  // 2. Purge rows that haven't heartbeated in > 2 hours (deleted/crashed apps).
-  const staleDate = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-  await supabase
-    .from("screens")
-    .delete()
-    .eq("user_id", userId)
-    .lt("last_active", staleDate);
-
-  // 3. Count truly active sessions after purge.
-  const { count } = await supabase
-    .from("screens")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId);
-
-  const max = PLANS[plan]?.screens ?? 2;
-  if ((count ?? 0) >= max) {
-    throw new Error(
-      `Screen limit reached (${max} screen${max === 1 ? "" : "s"} on ${plan} plan). Sign out of another device to continue.`
-    );
-  }
-
-  // 4. Insert fresh row for this session.
-  await supabase.from("screens").insert({
-    user_id: userId,
-    session_id: sessionId,
-    last_active: new Date().toISOString(),
-  });
-}
-
-async function removeScreen(userId: string, sessionId: string) {
-  await supabase
-    .from("screens")
-    .delete()
-    .eq("user_id", userId)
-    .eq("session_id", sessionId);
-}
-
-async function heartbeatScreen(userId: string, sessionId: string) {
-  await supabase
-    .from("screens")
-    .update({ last_active: new Date().toISOString() })
-    .eq("user_id", userId)
-    .eq("session_id", sessionId);
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -171,17 +108,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  // 3. Realtime profile sync + heartbeat
+  // 3. Realtime profile sync
   useEffect(() => {
     if (!user || !session) return;
-
-    const isAdminUser = (user.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
-
-    // Heartbeat every 30 min — keeps this session's row alive.
-    // If the app is deleted, this never fires and the row expires after 2 hours.
-    const heartbeat = setInterval(() => {
-      if (!isAdminUser) heartbeatScreen(user.id, session.access_token);
-    }, 30 * 60 * 1000);
 
     const channel = supabase
       .channel(`profile-${user.id}`)
@@ -201,7 +130,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .subscribe();
 
     return () => {
-      clearInterval(heartbeat);
       supabase.removeChannel(channel);
     };
   }, [user, session]);
@@ -277,13 +205,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(e?.message ?? "Max screens already in use. Sign out of another device first.");
     }
     setProfile(prof);
+
+    setProfile(prof);
   };
 
   const signOut: AuthContextValue["signOut"] = async () => {
-    if (user && session) {
-      const isAdminUser = (user.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
-      if (!isAdminUser) await removeScreen(user.id, session.access_token);
-    }
     await supabase.auth.signOut();
     setProfile(null);
   };
@@ -292,33 +218,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!user) return;
     const { error } = await supabase.from("profiles").update({ plan }).eq("id", user.id);
     if (error) throw error;
-
-    const newMax = PLANS[plan]?.screens ?? 2;
-    const { data: allScreens } = await supabase
-      .from("screens")
-      .select("id, last_active")
-      .eq("user_id", user.id)
-      .order("last_active", { ascending: false });
-
-    if (allScreens && allScreens.length > newMax) {
-      const currentSessionId = session?.access_token;
-      const { data: currentRow } = currentSessionId
-        ? await supabase
-            .from("screens")
-            .select("id")
-            .eq("user_id", user.id)
-            .eq("session_id", currentSessionId)
-            .maybeSingle()
-        : { data: null };
-
-      const toKeep = new Set(allScreens.slice(0, newMax).map((s) => s.id));
-      if (currentRow) toKeep.add(currentRow.id);
-      const toDelete = allScreens.filter((s) => !toKeep.has(s.id)).map((s) => s.id);
-      if (toDelete.length > 0) {
-        await supabase.from("screens").delete().in("id", toDelete);
-      }
-    }
-
     await refreshProfile();
   };
 
