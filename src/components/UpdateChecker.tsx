@@ -6,7 +6,7 @@ const VERSION_URL = "https://ttflix.pages.dev/version.json";
 
 // Current version — bump this manually when you want to trigger an update prompt
 // or let the CI script patch it automatically
-const CURRENT_VERSION = "1.1.1";
+const CURRENT_VERSION = "1.1.2";
 
 type VersionInfo = {
   versionName: string;

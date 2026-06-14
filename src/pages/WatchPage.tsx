@@ -17,6 +17,17 @@ export function WatchPage() {
   const effectiveProfile = activeProfile ?? profiles.find((p) => p.is_default) ?? profiles[0] ?? null;
   const navigate = useNavigate();
   const progressRef = useRef({ watched: 0, duration: 0 });
+  const title = searchParams.get("title") ?? "";
+  const poster = searchParams.get("poster") ?? "";
+  const backdrop = searchParams.get("backdrop") ?? "";
+  const season = Number(searchParams.get("season") ?? 1);
+  const episode = Number(searchParams.get("episode") ?? 1);
+
+  const type = mediaType === "tv" ? "tv" : "movie";
+  const tmdbId = Number(id);
+  const stillLoading = loading || profileLoading;
+  const canWatch = isAdmin || (!!user && profile?.status === "approved");
+
   // Track current episode in a ref so persist() always uses the latest value
   // even when Videasy auto-advances to the next episode inside the iframe
   const currentEpisodeRef = useRef({ season, episode });
@@ -38,17 +49,6 @@ export function WatchPage() {
     if (!loaderVisible) showExit();
     return () => { if (exitTimerRef.current) clearTimeout(exitTimerRef.current); };
   }, [loaderVisible, showExit]);
-
-  const title = searchParams.get("title") ?? "";
-  const poster = searchParams.get("poster") ?? "";
-  const backdrop = searchParams.get("backdrop") ?? "";
-  const season = Number(searchParams.get("season") ?? 1);
-  const episode = Number(searchParams.get("episode") ?? 1);
-
-  const type = mediaType === "tv" ? "tv" : "movie";
-  const tmdbId = Number(id);
-  const stillLoading = loading || profileLoading;
-  const canWatch = isAdmin || (!!user && profile?.status === "approved");
 
   const [src] = useState(() => streamUrl(type, tmdbId, season, episode));
 
