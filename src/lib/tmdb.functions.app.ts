@@ -249,13 +249,14 @@ export async function searchContent(input: { data: { query: string } }) {
 
 export async function getSeasonEpisodes(input: { data: { id: number; season: number } }) {
   const { id, season } = input.data;
-  const res = await tmdb(`/tv/${id}/season/${season}`);
+  const res = await tmdb(`/tv/${id}/season/${season}`, { language: "en-US" });
   return (res.episodes ?? []).map((ep: any) => ({
     episode_number: ep.episode_number as number,
-    name: (ep.name ?? `Episode ${ep.episode_number}`) as string,
+    name: (ep.name && ep.name !== `Episode ${ep.episode_number}` ? ep.name : `Episode ${ep.episode_number}`) as string,
     overview: (ep.overview ?? "") as string,
     still_path: (ep.still_path ?? null) as string | null,
     runtime: (ep.runtime ?? null) as number | null,
+    air_date: (ep.air_date ?? null) as string | null,
   }));
 }
 

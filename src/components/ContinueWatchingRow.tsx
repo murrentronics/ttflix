@@ -68,12 +68,12 @@ export function ContinueWatchingRow() {
           return (
             <div
               key={`${item.media_type}-${item.tmdb_id}`}
-              className="group relative w-[150px] shrink-0 overflow-hidden rounded-md bg-card sm:w-[180px]"
+              className="group relative w-[150px] shrink-0 rounded-md bg-card sm:w-[180px]"
             >
               {/* Whole card is tappable — fires immediately on Android */}
               <button
                 onClick={() => handlePlay(item)}
-                className="block w-full cursor-pointer text-left"
+                className="block w-full cursor-pointer text-left overflow-hidden rounded-md"
                 aria-label={`Play ${item.title}`}
               >
                 <div className="aspect-[2/3] w-full overflow-hidden bg-muted">
@@ -81,16 +81,16 @@ export function ContinueWatchingRow() {
                 </div>
               </button>
 
-              {/* Progress bar — sits at bottom of card, always visible, Netflix style */}
-              <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+              {/* Progress bar — outside overflow-hidden so it's never clipped */}
+              <div className="h-1 w-full bg-white/20 rounded-b-md">
                 <div
-                  className="h-full bg-red-600 transition-all"
+                  className="h-full bg-red-600 transition-all rounded-b-md"
                   style={{ width: `${barWidth}%` }}
                 />
               </div>
 
-              {/* Hover overlay — desktop only, tap handled by card button above */}
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100">
+              {/* Hover overlay — desktop only */}
+              <div className="pointer-events-none absolute top-0 left-0 right-0 bottom-1 flex flex-col items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 rounded-t-md">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
                   <Play className="h-5 w-5 fill-current" />
                 </div>
@@ -102,7 +102,7 @@ export function ContinueWatchingRow() {
 
               <button
                 onClick={(e) => { e.stopPropagation(); handleRemove(item); }}
-                className="absolute right-1 top-1 z-10 hidden rounded-full bg-black/70 p-1 group-hover:block hover:bg-black"
+                className="absolute right-1 top-1 z-10 rounded-full bg-black/70 p-1 hover:bg-black"
                 aria-label="Remove"
               >
                 <X className="h-3.5 w-3.5" />
