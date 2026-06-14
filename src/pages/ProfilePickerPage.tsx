@@ -86,11 +86,6 @@ export function ProfilePickerPage() {
               <span className="flex h-full w-full items-center justify-center text-3xl font-extrabold text-white">
                 {p.is_kids ? "👶" : p.name.charAt(0).toUpperCase()}
               </span>
-              {editing && !p.is_default && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                  <Pencil className="h-6 w-6 text-white" />
-                </div>
-              )}
             </button>
 
             <span className="text-sm font-medium text-foreground/80">

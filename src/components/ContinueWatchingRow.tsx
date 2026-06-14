@@ -4,6 +4,8 @@ import { Play, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { fetchContinueWatching, removeProgress, type WatchProgress } from "@/lib/continue-watching";
+import { getDetails } from "@/lib/tmdb.functions.app";
+import { supabase } from "@/lib/supabase";
 import { img } from "@/lib/tmdb";
 
 export function ContinueWatchingRow() {
@@ -18,15 +20,37 @@ export function ContinueWatchingRow() {
 
   const load = useCallback(() => {
     if (!user || !canWatch || !effectiveProfile) return;
-    fetchContinueWatching(user.id, effectiveProfile.id).then(setItems);
+    fetchContinueWatching(user.id, effectiveProfile.id).then(async (fetched) => {
+      // For items missing duration, fetch from TMDB and patch the DB
+      const patched = await Promise.all(fetched.map(async (item) => {
+        if (item.duration_seconds > 0) return item;
+        try {
+          const details = await getDetails({
+            data: { id: item.tmdb_id, mediaType: item.media_type }
+          });
+          const runtimeMins = details.runtime;
+          if (runtimeMins && runtimeMins > 0) {
+            const duration = runtimeMins * 60;
+            // Patch DB so next load is instant
+            supabase.from("watch_progress")
+              .update({ duration_seconds: duration })
+              .eq("user_id", user.id)
+              .eq("tmdb_id", item.tmdb_id)
+              .eq("media_type", item.media_type);
+            return { ...item, duration_seconds: duration };
+          }
+        } catch { /* ignore */ }
+        return item;
+      }));
+      setItems(patched);
+    });
   }, [user, canWatch, effectiveProfile]);
 
-  // Fetch on mount and whenever user/profile changes
   useEffect(() => {
     load();
   }, [load]);
 
-  // Re-fetch when the tab becomes visible again (user returns from watch page)
+  // Re-fetch when returning from watch page
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") load();
@@ -61,35 +85,38 @@ export function ContinueWatchingRow() {
 
       <div ref={rowRef} className="row-scroll flex gap-3 overflow-x-auto px-4 pb-2 sm:px-8">
         {items.map((item) => {
-          const pct = item.duration_seconds > 0 ? Math.min(100, Math.round((item.watched_seconds / item.duration_seconds) * 100)) : 0;
+          const pct = item.duration_seconds > 0
+            ? Math.min(96, Math.max(4, Math.round((item.watched_seconds / item.duration_seconds) * 100)))
+            : item.watched_seconds > 0 ? 5 : 0;
           const poster = img(item.poster_path ?? item.backdrop_path, "w500");
-        // If duration is unknown, show a small minimum bar so it's always visible
-          const barWidth = item.duration_seconds > 0 ? pct : item.watched_seconds > 0 ? 5 : 0;
+
           return (
             <div
               key={`${item.media_type}-${item.tmdb_id}`}
               className="group relative w-[150px] shrink-0 rounded-md bg-card sm:w-[180px]"
             >
-              {/* Whole card is tappable — fires immediately on Android */}
               <button
                 onClick={() => handlePlay(item)}
                 className="block w-full cursor-pointer text-left overflow-hidden rounded-md"
                 aria-label={`Play ${item.title}`}
               >
                 <div className="aspect-[2/3] w-full overflow-hidden bg-muted">
-                  {poster ? <img src={poster} alt={item.title} loading="lazy" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center px-2 text-center text-xs text-muted-foreground">{item.title}</div>}
+                  {poster
+                    ? <img src={poster} alt={item.title} loading="lazy" className="h-full w-full object-cover" />
+                    : <div className="flex h-full items-center justify-center px-2 text-center text-xs text-muted-foreground">{item.title}</div>
+                  }
                 </div>
               </button>
 
-              {/* Progress bar — outside overflow-hidden so it's never clipped */}
+              {/* Progress bar */}
               <div className="h-1 w-full bg-white/20 rounded-b-md">
                 <div
-                  className="h-full bg-red-600 transition-all rounded-b-md"
-                  style={{ width: `${barWidth}%` }}
+                  className="h-full bg-red-600 rounded-b-md"
+                  style={{ width: `${pct}%` }}
                 />
               </div>
 
-              {/* Hover overlay — desktop only */}
+              {/* Hover overlay — desktop */}
               <div className="pointer-events-none absolute top-0 left-0 right-0 bottom-1 flex flex-col items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 rounded-t-md">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
                   <Play className="h-5 w-5 fill-current" />
@@ -97,7 +124,7 @@ export function ContinueWatchingRow() {
                 <p className="line-clamp-2 px-2 text-center text-xs font-semibold">
                   {item.title}{item.media_type === "tv" && item.season != null ? ` S${item.season}E${item.episode}` : ""}
                 </p>
-                {pct > 0 && <span className="text-xs text-foreground/70">{pct}% watched</span>}
+                {item.duration_seconds > 0 && <span className="text-xs text-foreground/70">{pct}% watched</span>}
               </div>
 
               <button
