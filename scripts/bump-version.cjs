@@ -3,69 +3,44 @@
  *
  * Auto-increments the app version every time you run `npm run cap:sync`.
  *
- * What it updates:
- *   1. android/app/build.gradle   — versionCode (integer) and versionName (string)
- *   2. .env                       — VITE_APP_VERSION (read by CI and update checker)
+ * Updates:
+ *   1. version.json              — versionName + versionCode (committed, read by CI)
+ *   2. android/app/build.gradle  — versionCode + versionName
  *   3. src/components/UpdateChecker.tsx — CURRENT_VERSION constant
- *
- * Strategy: bump the PATCH number (1.1.0 → 1.1.1 → 1.1.2 …)
- * and increment versionCode by 1 each time.
- *
- * To do a MINOR or MAJOR bump, edit .env manually once:
- *   VITE_APP_VERSION="2.0.0"
- * The next cap:sync will then produce 2.0.1, 2.0.2, etc.
  */
 
 const fs   = require("fs");
 const path = require("path");
 
-const ROOT         = path.resolve(__dirname, "..");
-const ENV_FILE     = path.join(ROOT, ".env");
-const GRADLE_FILE  = path.join(ROOT, "android", "app", "build.gradle");
-const CHECKER_FILE = path.join(ROOT, "src", "components", "UpdateChecker.tsx");
+const ROOT          = path.resolve(__dirname, "..");
+const VERSION_FILE  = path.join(ROOT, "version.json");
+const GRADLE_FILE   = path.join(ROOT, "android", "app", "build.gradle");
+const CHECKER_FILE  = path.join(ROOT, "src", "components", "UpdateChecker.tsx");
 
-// ── 1. Read current version from .env ────────────────────────────────────────
-const envContent  = fs.readFileSync(ENV_FILE, "utf8");
-const versionMatch = envContent.match(/^VITE_APP_VERSION="([^"]+)"/m);
+// ── 1. Read + bump version.json ───────────────────────────────────────────────
+const v = JSON.parse(fs.readFileSync(VERSION_FILE, "utf8"));
 
-if (!versionMatch) {
-  console.error("✗  VITE_APP_VERSION not found in .env");
-  process.exit(1);
-}
-
-const currentVersion = versionMatch[1];
-const parts = currentVersion.split(".").map(Number);
+const parts = v.versionName.split(".").map(Number);
 if (parts.length === 2) parts.push(0); // ensure 3 parts
+parts[2] = (parts[2] ?? 0) + 1;       // bump patch
+v.versionName = parts.join(".");
+v.versionCode = (v.versionCode ?? 1) + 1;
 
-// Bump patch
-parts[2] = (parts[2] ?? 0) + 1;
-const newVersion = parts.join(".");
+fs.writeFileSync(VERSION_FILE, JSON.stringify(v, null, 2) + "\n");
 
-// ── 2. Read current versionCode from build.gradle ────────────────────────────
-const gradleContent   = fs.readFileSync(GRADLE_FILE, "utf8");
-const codeMatch       = gradleContent.match(/versionCode\s+(\d+)/);
-const currentCode     = codeMatch ? parseInt(codeMatch[1]) : 1;
-const newCode         = currentCode + 1;
+// ── 2. Patch build.gradle ─────────────────────────────────────────────────────
+let gradle = fs.readFileSync(GRADLE_FILE, "utf8");
+gradle = gradle
+  .replace(/versionCode\s+\d+/, `versionCode ${v.versionCode}`)
+  .replace(/versionName\s+"[^"]+"/, `versionName "${v.versionName}"`);
+fs.writeFileSync(GRADLE_FILE, gradle);
 
-// ── 3. Write updated .env ────────────────────────────────────────────────────
-const newEnv = envContent.replace(
-  /^VITE_APP_VERSION="[^"]+"/m,
-  `VITE_APP_VERSION="${newVersion}"`
-);
-fs.writeFileSync(ENV_FILE, newEnv);
-
-// ── 4. Write updated build.gradle ────────────────────────────────────────────
-const newGradle = gradleContent
-  .replace(/versionCode\s+\d+/, `versionCode ${newCode}`)
-  .replace(/versionName\s+"[^"]+"/, `versionName "${newVersion}"`);
-fs.writeFileSync(GRADLE_FILE, newGradle);
-
-// ── 5. Patch CURRENT_VERSION in UpdateChecker.tsx ────────────────────────────
-const checkerContent = fs.readFileSync(CHECKER_FILE, "utf8");
-const newChecker = checkerContent.replace(
+// ── 3. Patch CURRENT_VERSION in UpdateChecker.tsx ────────────────────────────
+let checker = fs.readFileSync(CHECKER_FILE, "utf8");
+checker = checker.replace(
   /const CURRENT_VERSION = "[^"]+"/,
-  `const CURRENT_VERSION = "${newVersion}"`
+  `const CURRENT_VERSION = "${v.versionName}"`
 );
-fs.writeFileSync(CHECKER_FILE, newChecker);
+fs.writeFileSync(CHECKER_FILE, checker);
 
-console.log(`✓  Version bumped: ${currentVersion} → ${newVersion}  (versionCode ${currentCode} → ${newCode})`);
+console.log(`✓  Bumped to v${v.versionName} (build ${v.versionCode})`);

@@ -61,18 +61,18 @@ jobs:
       - name: Build Android web bundle
         run: npm run build:app
 
-      # ── 9. Read version from .env ───────────────────────────────────────────
+      # ── 9. Read version from version.json ──────────────────────────────────
       - name: Read app version
         id: version
         run: |
-          VERSION=$(grep 'VITE_APP_VERSION' .env | cut -d'"' -f2)
+          VERSION=$(node -e "console.log(require('./version.json').versionName)")
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "TAG=v$VERSION" >> $GITHUB_OUTPUT
 
       # ── 9b. Patch CURRENT_VERSION in UpdateChecker ────────────────────────
       - name: Patch UpdateChecker current version
         run: |
-          VERSION=$(grep 'VITE_APP_VERSION' .env | cut -d'"' -f2)
+          VERSION=$(node -e "console.log(require('./version.json').versionName)")
           sed -i "s/const CURRENT_VERSION = \"[^\"]*\"/const CURRENT_VERSION = \"$VERSION\"/" \
             src/components/UpdateChecker.tsx
 

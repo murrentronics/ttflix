@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Download, X } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 
 // Cloudflare Pages — version.json deployed here on every build
 const VERSION_URL = "https://ttflix.pages.dev/version.json";
 
-// Current version — bump this manually when you want to trigger an update prompt
-// or let the CI script patch it automatically
-const CURRENT_VERSION = "1.1.2";
+// Current version — patched automatically by the CI version bump script
+const CURRENT_VERSION = "1.1.1";
 
 type VersionInfo = {
   versionName: string;
@@ -30,11 +30,11 @@ function isNewer(latest: string, current: string): boolean {
 export function UpdateChecker() {
   const [update, setUpdate] = useState<VersionInfo | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     // Only run inside Capacitor (Android), not in a browser
-    const isCapacitor = typeof (window as any).Capacitor !== "undefined";
-    if (!isCapacitor) return;
+    if (!Capacitor.isNativePlatform()) return;
 
     fetch(`${VERSION_URL}?t=${Date.now()}`)
       .then((r) => r.json())
@@ -47,6 +47,26 @@ export function UpdateChecker() {
         // Silently ignore — no popup on network failure
       });
   }, []);
+
+  const handleDownload = async () => {
+    if (!update) return;
+    setDownloading(true);
+    try {
+      if (Capacitor.isNativePlatform()) {
+        // Open in system browser — Android handles APK download + install natively
+        const { Browser } = await import("@capacitor/browser");
+        await Browser.open({
+          url: update.apkUrl,
+          presentationStyle: "fullscreen",
+          toolbarColor: "#141414",
+        });
+      } else {
+        window.open(update.apkUrl, "_blank");
+      }
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   if (!update || dismissed) return null;
 
@@ -78,16 +98,15 @@ export function UpdateChecker() {
             {update.releaseNotes}
           </p>
 
-          <a
-            href={update.apkUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#e50914] py-3.5 text-base font-bold text-white active:bg-[#a00610]"
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#e50914] py-3.5 text-base font-bold text-white active:bg-[#a00610] disabled:opacity-60"
             style={{ WebkitTapHighlightColor: "transparent" }}
           >
             <Download className="h-5 w-5" />
-            Download v{update.versionName}
-          </a>
+            {downloading ? "Opening…" : `Download v${update.versionName}`}
+          </button>
 
           <button
             onClick={() => setDismissed(true)}
