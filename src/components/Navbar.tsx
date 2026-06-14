@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { Search, Menu, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Search, Menu, X, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { useProfile } from "@/lib/ProfileContext";
 
 const LINKS = [
   { to: "/", label: "Home" },
@@ -13,14 +14,28 @@ const LINKS = [
 
 export function Navbar() {
   const { user, profile, isAdmin, signOut } = useAuth();
+  const { activeProfile, profiles, setActiveProfile } = useProfile();
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
   return (
@@ -36,51 +51,119 @@ export function Navbar() {
           </Link>
           <nav className="hidden gap-5 text-sm md:flex">
             {LINKS.map((l) => (
-              <Link
+              <NavLink
                 key={l.to}
                 to={l.to}
-                className="text-foreground/80 transition hover:text-foreground"
-                activeProps={{ className: "text-foreground font-semibold" }}
-                activeOptions={{ exact: l.to === "/" }}
+                end={l.to === "/"}
+                className={({ isActive }) =>
+                  isActive
+                    ? "text-foreground font-semibold"
+                    : "text-foreground/80 transition hover:text-foreground"
+                }
               >
                 {l.label}
-              </Link>
+              </NavLink>
             ))}
           </nav>
         </div>
 
         <div className="flex items-center gap-4">
-          <Link to="/search" className="text-foreground/90 transition hover:text-primary" aria-label="Search">
-            <Search className="h-5 w-5" />
-          </Link>
+          {!activeProfile?.is_kids && (
+            <Link to="/search" className="text-foreground/90 transition hover:text-primary" aria-label="Search">
+              <Search className="h-5 w-5" />
+            </Link>
+          )}
 
           {user ? (
-            <div className="group relative">
-              <button className="flex h-8 w-8 items-center justify-center rounded bg-primary text-sm font-bold text-primary-foreground">
-                {(profile?.full_name ?? user.email ?? "U").charAt(0).toUpperCase()}
-              </button>
-              <div className="invisible absolute right-0 top-full w-44 rounded-md border border-border bg-popover py-2 opacity-0 shadow-xl transition-all group-hover:visible group-hover:opacity-100">
-                <Link to="/account" className="block px-4 py-2 text-sm hover:bg-accent">
-                  Account
-                </Link>
-                <Link to="/my-list" className="block px-4 py-2 text-sm hover:bg-accent">
-                  My List
-                </Link>
-                {isAdmin && (
-                  <Link to="/admin" className="block px-4 py-2 text-sm font-semibold text-primary hover:bg-accent">
-                    Admin Panel
-                  </Link>
-                )}
-                <button
-                  onClick={async () => {
-                    await signOut();
-                    navigate({ to: "/" });
-                  }}
-                  className="block w-full px-4 py-2 text-left text-sm text-primary hover:bg-accent"
+            <div className="relative" ref={dropdownRef}>
+              <button
+                onClick={() => setProfileOpen((o) => !o)}
+                className="flex items-center gap-1 rounded text-sm font-bold text-white"
+                aria-label="Profile menu"
+              >
+                <span
+                  className="flex h-9 w-9 items-center justify-center rounded text-sm font-bold text-white"
+                  style={{ backgroundColor: activeProfile?.avatar_color ?? "#E50914" }}
                 >
-                  Sign Out
-                </button>
-              </div>
+                  {activeProfile?.is_kids ? "👶" : (activeProfile?.name ?? profile?.full_name ?? user.email ?? "U").charAt(0).toUpperCase()}
+                </span>
+                <ChevronDown className={`h-4 w-4 text-foreground/70 transition-transform ${profileOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {profileOpen && (
+                <div className="absolute right-0 top-full mt-1 w-52 rounded-md border border-border bg-popover shadow-xl z-50">
+                  {/* Current profile */}
+                  {activeProfile && (
+                    <div className="border-b border-border px-4 py-2">
+                      <p className="text-xs text-muted-foreground">Watching as</p>
+                      <p className="text-sm font-semibold">{activeProfile.name}</p>
+                    </div>
+                  )}
+
+                  {/* Switch to another profile inline */}
+                  {profiles.filter((p) => p.id !== activeProfile?.id).length > 0 && (
+                    <div className="border-b border-border py-1">
+                      <p className="px-4 pt-1 pb-0.5 text-xs text-muted-foreground">Switch profile</p>
+                      {profiles
+                        .filter((p) => p.id !== activeProfile?.id && p.name !== activeProfile?.name)
+                        .map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => { setActiveProfile(p); setProfileOpen(false); navigate("/"); }}
+                            className="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-accent"
+                          >
+                            <span
+                              className="flex h-7 w-7 items-center justify-center rounded text-xs font-bold text-white shrink-0"
+                              style={{ backgroundColor: p.avatar_color }}
+                            >
+                              {p.is_kids ? "👶" : p.name.charAt(0).toUpperCase()}
+                            </span>
+                            {p.name}
+                          </button>
+                        ))}
+                    </div>
+                  )}
+
+                  <div className="py-1">
+                    <Link
+                      to="/profiles"
+                      onClick={() => setProfileOpen(false)}
+                      className="block px-4 py-2 text-sm hover:bg-accent"
+                    >
+                      All Profiles
+                    </Link>
+                    <Link
+                      to="/account"
+                      onClick={() => setProfileOpen(false)}
+                      className="block px-4 py-2 text-sm hover:bg-accent"
+                    >
+                      Account
+                    </Link>
+                    <Link
+                      to="/my-list"
+                      onClick={() => setProfileOpen(false)}
+                      className="block px-4 py-2 text-sm hover:bg-accent"
+                    >
+                      My List
+                    </Link>
+                    {isAdmin && (
+                      <Link
+                        to="/admin"
+                        onClick={() => setProfileOpen(false)}
+                        className="block px-4 py-2 text-sm font-semibold text-primary hover:bg-accent"
+                      >
+                        Admin Panel
+                      </Link>
+                    )}
+                    <button
+                      onClick={async () => { setProfileOpen(false); await signOut(); navigate("/"); }}
+                      className="block w-full px-4 py-2 text-left text-sm text-destructive hover:bg-accent"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <Link
@@ -100,16 +183,19 @@ export function Navbar() {
       {mobileOpen && (
         <nav className="flex flex-col gap-1 border-t border-border bg-background/98 px-4 py-3 md:hidden">
           {LINKS.map((l) => (
-            <Link
+            <NavLink
               key={l.to}
               to={l.to}
+              end={l.to === "/"}
               onClick={() => setMobileOpen(false)}
-              className="rounded px-2 py-2 text-sm text-foreground/80 hover:bg-accent"
-              activeProps={{ className: "text-foreground font-semibold" }}
-              activeOptions={{ exact: l.to === "/" }}
+              className={({ isActive }) =>
+                `rounded px-2 py-2 text-sm hover:bg-accent ${
+                  isActive ? "text-foreground font-semibold" : "text-foreground/80"
+                }`
+              }
             >
               {l.label}
-            </Link>
+            </NavLink>
           ))}
         </nav>
       )}

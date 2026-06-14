@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import type { TmdbItem } from "@/lib/tmdb.functions";
+import type { TmdbItem } from "@/lib/tmdb.functions.app";
 
 type Target = { id: number; mediaType: "movie" | "tv"; title?: string };
 

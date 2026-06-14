@@ -1,64 +1,72 @@
 import { useEffect, useState } from "react";
+import { img } from "@/lib/tmdb";
 
-/**
- * Netflix-style TTFLIX loading overlay.
- * - Fades in on mount
- * - Shows the TTFLIX logo pulsing
- * - When `explode` becomes true → blasts outward and disappears
- * - Calls `onDone` after the explosion animation finishes
- */
 export function TTFlixLoader({
   explode,
   onDone,
+  backdrop,
 }: {
   explode: boolean;
   onDone: () => void;
+  backdrop?: string;
 }) {
   const [phase, setPhase] = useState<"entering" | "idle" | "exploding" | "done">("entering");
 
-  // Fade in
   useEffect(() => {
     const t = setTimeout(() => setPhase("idle"), 50);
     return () => clearTimeout(t);
   }, []);
 
-  // Trigger explosion when player is ready
   useEffect(() => {
-    if (explode && phase === "idle") {
+    if (explode && (phase === "idle" || phase === "entering")) {
       setPhase("exploding");
-      // Wait for explosion animation then unmount
       const t = setTimeout(() => {
         setPhase("done");
         onDone();
-      }, 600);
+      }, 400);
       return () => clearTimeout(t);
     }
   }, [explode, phase, onDone]);
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setPhase("done");
+      onDone();
+    }, 4500);
+    return () => clearTimeout(t);
+  }, [onDone]);
+
   if (phase === "done") return null;
 
   const isExploding = phase === "exploding";
-  const isVisible = phase === "idle" || phase === "exploding";
+  const backdropUrl = backdrop ? img(backdrop, "w780") : null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black"
+      className="fixed inset-0 z-50 flex items-center justify-center"
       style={{
-        opacity: isVisible ? 1 : 0,
-        transition: isExploding ? "none" : "opacity 0.3s ease",
-        // Explosion: scale up massively + fade
-        transform: isExploding ? "scale(8)" : "scale(1)",
-        transitionProperty: isExploding ? "transform, opacity" : "opacity",
-        transitionDuration: isExploding ? "0.55s" : "0.3s",
-        transitionTimingFunction: isExploding ? "cubic-bezier(0.4, 0, 1, 1)" : "ease",
+        opacity: isExploding ? 0 : 1,
+        transform: isExploding ? "scale(4)" : "scale(1)",
+        transition: isExploding
+          ? "opacity 0.35s ease-out, transform 0.35s ease-out"
+          : "opacity 0.3s ease",
+        pointerEvents: "none",
+        backgroundColor: "#000",
       }}
     >
-      {/* Logo */}
-      <div
-        style={{
-          animation: isExploding ? "none" : "ttflix-pulse 1.6s ease-in-out infinite",
-        }}
-      >
+      {/* Movie backdrop behind the logo */}
+      {backdropUrl && (
+        <img
+          src={backdropUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ opacity: 0.35 }}
+        />
+      )}
+      {/* Dark overlay so logo stays readable */}
+      <div className="absolute inset-0 bg-black/50" />
+
+      <div className="relative z-10" style={{ animation: isExploding ? "none" : "ttflix-pulse 1.6s ease-in-out infinite" }}>
         <span
           style={{
             fontFamily: "'Arial Black', 'Impact', sans-serif",
@@ -74,13 +82,10 @@ export function TTFlixLoader({
         </span>
       </div>
 
-      {/* Loading bar at bottom — shrinks as it loads */}
       {!isExploding && (
         <div
           className="absolute bottom-0 left-0 h-0.5 bg-primary"
-          style={{
-            animation: "ttflix-bar 3s ease-in-out infinite",
-          }}
+          style={{ animation: "ttflix-bar 3s ease-in-out infinite" }}
         />
       )}
 

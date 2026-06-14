@@ -1,8 +1,12 @@
 import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link } from "react-router-dom";
 import { Navbar } from "./Navbar";
+import { useProfile } from "@/lib/ProfileContext";
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const { activeProfile } = useProfile();
+  const isKids = activeProfile?.is_kids ?? false;
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -18,11 +22,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link to="/cartoons" className="hover:text-foreground">Cartoons</Link>
             <Link to="/my-list" className="hover:text-foreground">My List</Link>
             <Link to="/account" className="hover:text-foreground">Account</Link>
-            <Link to="/search" className="hover:text-foreground">Search</Link>
+            {!isKids && (
+              <Link to="/search" className="hover:text-foreground">Search</Link>
+            )}
           </div>
           <p className="text-xs">
-            © {new Date().getFullYear()} TTFlix. Available in Trinidad & Tobago. Powered by TMDB &
-            Nexstream.
+            © {new Date().getFullYear()} TTFlix. Available in Trinidad & Tobago.
           </p>
         </div>
       </footer>

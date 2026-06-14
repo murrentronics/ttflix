@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { getCategory } from "@/lib/tmdb.functions";
+import { getCategory } from "@/lib/tmdb.functions.app";
+import { useProfile } from "@/lib/ProfileContext";
 import { AppShell } from "./AppShell";
 import { Browse } from "./Browse";
 
@@ -10,9 +11,12 @@ export function CategoryView({
   category: "movies" | "tv" | "cartoons";
   heading: string;
 }) {
+  const { activeProfile } = useProfile();
+  const isKids = activeProfile?.is_kids ?? false;
+
   const { data, isLoading } = useQuery({
-    queryKey: ["category", category],
-    queryFn: () => getCategory({ data: { category } }),
+    queryKey: ["category", category, isKids],
+    queryFn: () => getCategory({ data: { category, isKids } }),
   });
 
   return (

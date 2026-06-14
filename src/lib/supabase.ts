@@ -9,7 +9,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: false,
+    storage: typeof window !== "undefined" ? window.localStorage : undefined,
   },
 });
 
@@ -30,6 +31,6 @@ export const PLANS: Record<
   PlanId,
   { id: PlanId; name: string; price: number; screens: number; quality: string }
 > = {
-  basic: { id: "basic", name: "Standard", price: 49, screens: 2, quality: "Full HD (1080p)" },
-  premium: { id: "premium", name: "Premium", price: 99, screens: 5, quality: "Ultra HD (4K)" },
+  basic: { id: "basic", name: "Standard", price: 50, screens: 2, quality: "Full HD (1080p)" },
+  premium: { id: "premium", name: "Premium", price: 100, screens: 5, quality: "Ultra HD (4K)" },
 };

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Play, Info, Star, Lock } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
 import { useDetail } from "./DetailContext";
 import { useAuth } from "@/lib/auth";
 import { img } from "@/lib/tmdb";
-import type { TmdbItem } from "@/lib/tmdb.functions";
+import type { TmdbItem } from "@/lib/tmdb.functions.app";
 
 export function Hero({ items }: { items: TmdbItem[] }) {
   const [index, setIndex] = useState(0);
@@ -24,21 +24,8 @@ export function Hero({ items }: { items: TmdbItem[] }) {
   if (!item) return null;
 
   const handlePlay = () => {
-    if (!canWatch) {
-      navigate({ to: "/" });
-      return;
-    }
-    navigate({
-      to: "/watch/$mediaType/$id",
-      params: { mediaType: item.media_type, id: String(item.id) },
-      search: {
-        title: item.title,
-        poster: item.poster_path ?? "",
-        backdrop: item.backdrop_path ?? "",
-        season: 1,
-        episode: 1,
-      },
-    });
+    if (!canWatch) { navigate("/"); return; }
+    navigate(`/watch/${item.media_type}/${item.id}?title=${encodeURIComponent(item.title)}&poster=${encodeURIComponent(item.poster_path ?? "")}&backdrop=${encodeURIComponent(item.backdrop_path ?? "")}&season=1&episode=1`);
   };
 
   return (
@@ -69,11 +56,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
             onClick={handlePlay}
             className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85"
           >
-            {canWatch ? (
-              <Play className="h-5 w-5 fill-current" />
-            ) : (
-              <Lock className="h-5 w-5" />
-            )}
+            {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
             {canWatch ? "Play" : "Unlock"}
           </button>
           <button
@@ -91,9 +74,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
             <button
               key={i}
               onClick={() => setIndex(i)}
-              className={`h-1 rounded-full transition-all ${
-                i === index ? "w-6 bg-primary" : "w-3 bg-foreground/40"
-              }`}
+              className={`h-1 rounded-full transition-all ${i === index ? "w-6 bg-primary" : "w-3 bg-foreground/40"}`}
               aria-label={`Slide ${i + 1}`}
             />
           ))}

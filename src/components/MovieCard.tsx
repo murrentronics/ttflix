@@ -1,7 +1,7 @@
 import { Star, Plus } from "lucide-react";
 import { useDetail } from "./DetailContext";
 import { img, year } from "@/lib/tmdb";
-import type { TmdbItem } from "@/lib/tmdb.functions";
+import type { TmdbItem } from "@/lib/tmdb.functions.app";
 
 export function MovieCard({ item }: { item: TmdbItem }) {
   const { open } = useDetail();
@@ -26,6 +26,22 @@ export function MovieCard({ item }: { item: TmdbItem }) {
           </div>
         )}
       </div>
+
+      {/* Title + year — always visible below poster */}
+      <div className="px-1.5 py-2">
+        <p className="line-clamp-1 text-xs font-semibold text-foreground">{item.title}</p>
+        <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+          {item.vote_average > 0 && (
+            <span className="flex items-center gap-1 text-primary">
+              <Star className="h-3 w-3 fill-primary" />
+              {item.vote_average.toFixed(1)}
+            </span>
+          )}
+          <span>{year(item.release_date)}</span>
+        </div>
+      </div>
+
+      {/* Hover overlay with Details button — desktop only */}
       <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/90 via-black/10 to-transparent p-3 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
         <p className="line-clamp-2 text-sm font-semibold">{item.title}</p>
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
