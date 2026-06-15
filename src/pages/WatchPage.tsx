@@ -135,10 +135,8 @@ export function WatchPage() {
 
   // Fetch runtime from TMDB — primary duration source since Videasy postMessages
   // don't reliably fire inside Capacitor Android WebView
-  const watchStartRef = useRef<number>(Date.now());
   const durationReadyRef = useRef(false);
   useEffect(() => {
-    watchStartRef.current = Date.now();
     durationReadyRef.current = false;
 
     async function fetchDuration() {
@@ -232,7 +230,9 @@ export function WatchPage() {
           savedInitial.current = false;
         }
         if (d?.timestamp !== undefined && d?.duration !== undefined) {
-          progressRef.current = { watched: d.timestamp, duration: d.duration, hasPostMessage: true };
+          // Never overwrite a known duration with 0 — Videasy sometimes sends duration: 0
+          const newDuration = d.duration > 0 ? d.duration : progressRef.current.duration;
+          progressRef.current = { watched: d.timestamp, duration: newDuration, hasPostMessage: true };
           if (!playerStartedRef.current) {
             playerStartedRef.current = true;
             triggerExplosion();
@@ -252,14 +252,10 @@ export function WatchPage() {
   useEffect(() => {
     if (!user) return;
     const t = setInterval(() => {
-      // If the player sent a real timestamp (including after seeking), use it.
-      // Only fall back to wall-clock if the player never posted anything.
-      const wallClockWatched = watchStartRef.current > 0
-        ? Math.floor((Date.now() - watchStartRef.current) / 1000)
-        : 0;
-      const watched = progressRef.current.hasPostMessage
-        ? progressRef.current.watched
-        : wallClockWatched;
+      // Only save if the player has sent a real timestamp — never use wall-clock
+      // (wall-clock counts while paused which is wrong)
+      if (!progressRef.current.hasPostMessage) return;
+      const watched = progressRef.current.watched;
       const duration = progressRef.current.duration;
       if (watched > 10) persistRef.current(watched, duration);
     }, 15_000);
@@ -270,12 +266,9 @@ export function WatchPage() {
 
   useEffect(() => {
     const save = () => {
-      const wallClockWatched = watchStartRef.current > 0
-        ? Math.floor((Date.now() - watchStartRef.current) / 1000)
-        : 0;
-      const watched = progressRef.current.hasPostMessage
-        ? progressRef.current.watched
-        : wallClockWatched;
+      // Only save real player position, not wall-clock guesses
+      if (!progressRef.current.hasPostMessage) return;
+      const watched = progressRef.current.watched;
       const duration = progressRef.current.duration;
       if (user && watched > 10) persistRef.current(watched, duration);
     };
