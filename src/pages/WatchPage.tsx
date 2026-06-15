@@ -39,18 +39,6 @@ export function WatchPage() {
     return () => { if (exitTimerRef.current) clearTimeout(exitTimerRef.current); };
   }, [loaderVisible, showExit]);
 
-  // Listen for taps at document level — no overlay div needed, won't steal iframe focus
-  useEffect(() => {
-    if (loaderVisible) return;
-    const onTap = () => showExit();
-    document.addEventListener("touchstart", onTap, { passive: true });
-    document.addEventListener("click", onTap);
-    return () => {
-      document.removeEventListener("touchstart", onTap);
-      document.removeEventListener("click", onTap);
-    };
-  }, [loaderVisible, showExit]);
-
   const title = searchParams.get("title") ?? "";
   const poster = searchParams.get("poster") ?? "";
   const backdrop = searchParams.get("backdrop") ?? "";
@@ -198,6 +186,19 @@ export function WatchPage() {
         setTimeout(() => { clearInterval(check); resolve(); }, 4000);
       });
     }
+    // If TMDB duration still unknown, check DB for an existing value before saving
+    let knownDuration = progressRef.current.duration;
+    if (knownDuration <= 0) {
+      const { data: existing } = await supabase
+        .from("watch_progress")
+        .select("duration_seconds")
+        .eq("user_id", user.id)
+        .eq("profile_id", effectiveProfile.id)
+        .eq("tmdb_id", tmdbId)
+        .eq("media_type", type)
+        .maybeSingle();
+      knownDuration = existing?.duration_seconds ?? 0;
+    }
     await saveProgress({
       user_id: user.id,
       profile_id: effectiveProfile.id,
@@ -207,7 +208,7 @@ export function WatchPage() {
       poster_path: poster || null,
       backdrop_path: backdrop || null,
       watched_seconds: 10,
-      duration_seconds: progressRef.current.duration > 0 ? Math.floor(progressRef.current.duration) : 0,
+      duration_seconds: knownDuration,
       season: type === "tv" ? season : null,
       episode: type === "tv" ? episode : null,
     });
@@ -221,19 +222,36 @@ export function WatchPage() {
   const persist = useCallback(async (watched: number, duration: number) => {
     if (!user || !effectiveProfile || watched < 10) return;
     const { season: currentSeason, episode: currentEp } = currentEpisodeRef.current;
-    await saveProgress({
+
+    // Build the upsert — only include duration_seconds when we know it
+    // to avoid overwriting a previously saved correct value with 0
+    const base = {
       user_id: user.id,
       profile_id: effectiveProfile.id,
       tmdb_id: tmdbId,
-      media_type: type,
+      media_type: type as "movie" | "tv",
       title: title || `Title ${tmdbId}`,
       poster_path: poster || null,
       backdrop_path: backdrop || null,
       watched_seconds: Math.floor(watched),
-      duration_seconds: duration > 0 ? Math.floor(duration) : 0,
       season: type === "tv" ? currentSeason : null,
       episode: type === "tv" ? currentEp : null,
-    });
+    };
+
+    if (duration > 0) {
+      await saveProgress({ ...base, duration_seconds: Math.floor(duration) });
+    } else {
+      // duration unknown — fetch current DB value and preserve it
+      const { data: existing } = await supabase
+        .from("watch_progress")
+        .select("duration_seconds")
+        .eq("user_id", user.id)
+        .eq("profile_id", effectiveProfile.id)
+        .eq("tmdb_id", tmdbId)
+        .eq("media_type", type)
+        .maybeSingle();
+      await saveProgress({ ...base, duration_seconds: existing?.duration_seconds ?? 0 });
+    }
   }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop]);
 
   useEffect(() => {
@@ -283,8 +301,10 @@ export function WatchPage() {
   const persistRef = useRef(persist);
   useEffect(() => { persistRef.current = persist; }, [persist]);
 
-  // Central save function using refs — safe to call anytime
-  const saveNow = useCallback(() => {
+  // Save on exit only — wall-clock can't detect pause so we don't accumulate
+  // the saveNow ref is stable so Exit button and unmount both call the same logic
+  const saveNowRef = useRef<() => void>(() => {});
+  saveNowRef.current = () => {
     const wallClock = accumulatedRef.current +
       (watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0);
     const watched = progressRef.current.hasPostMessage
@@ -292,25 +312,18 @@ export function WatchPage() {
       : wallClock;
     const duration = progressRef.current.duration;
     if (user && watched > 10) persistRef.current(watched, duration);
-  }, [user]);
+  };
 
-  // Save every 15s
+  // Save on unmount (Exit button triggers navigate which unmounts) + browser close
   useEffect(() => {
-    if (!user) return;
-    const t = setInterval(saveNow, 15_000);
-    return () => clearInterval(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, tmdbId]);
-
-  // Save on unmount (covers Exit button navigation) and beforeunload (browser close)
-  useEffect(() => {
-    window.addEventListener("beforeunload", saveNow);
+    const handler = () => saveNowRef.current();
+    window.addEventListener("beforeunload", handler);
     return () => {
-      saveNow();
-      window.removeEventListener("beforeunload", saveNow);
+      saveNowRef.current();
+      window.removeEventListener("beforeunload", handler);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     if (stillLoading) return;
@@ -364,14 +377,24 @@ export function WatchPage() {
         allowFullScreen
       />
 
+      {/* Transparent tap catcher — sits over iframe only when exit is hidden, shows exit on tap */}
+      {!loaderVisible && !exitVisible && (
+        <div
+          className="absolute inset-0 z-10"
+          style={{ background: "transparent" }}
+          onTouchStart={(e) => { e.stopPropagation(); showExit(); }}
+          onClick={(e) => { e.stopPropagation(); showExit(); }}
+        />
+      )}
+
       {!loaderVisible && (
         <div
           className="absolute top-0 left-0 z-20 p-3 transition-opacity duration-300"
           style={{ opacity: exitVisible ? 1 : 0, pointerEvents: exitVisible ? "auto" : "none" }}
         >
           <button
-            onTouchStart={(e) => { e.stopPropagation(); saveNow(); navigate("/"); }}
-            onClick={(e) => { e.stopPropagation(); saveNow(); navigate("/"); }}
+            onTouchStart={(e) => { e.stopPropagation(); saveNowRef.current(); navigate("/"); }}
+            onClick={(e) => { e.stopPropagation(); saveNowRef.current(); navigate("/"); }}
             className="flex items-center gap-2 rounded-full bg-black/80 px-4 py-2.5 text-sm font-bold text-white"
             style={{ WebkitTapHighlightColor: "transparent" }}
           >
