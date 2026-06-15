@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Play, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { fetchContinueWatching, removeProgress, type WatchProgress } from "@/lib/continue-watching";
@@ -104,49 +104,82 @@ export function ContinueWatchingRow() {
             : 0;
           const poster = img(item.poster_path ?? item.backdrop_path, "w500");
 
+          // Human-readable time remaining
+          const secsLeft = item.duration_seconds > 0
+            ? Math.max(0, item.duration_seconds - item.watched_seconds)
+            : null;
+          const minsLeft = secsLeft !== null ? Math.round(secsLeft / 60) : null;
+          const timeLabel = minsLeft !== null
+            ? minsLeft <= 1 ? "< 1 min left" : `${minsLeft} min left`
+            : null;
+
           return (
             <div
               key={`${item.media_type}-${item.tmdb_id}`}
-              className="group relative w-[150px] shrink-0 rounded-md bg-card sm:w-[180px]"
+              className="group relative w-[150px] shrink-0 sm:w-[180px]"
+              style={{ WebkitTapHighlightColor: "transparent" }}
             >
+              {/* ── Poster + progress bar ── */}
               <button
+                onTouchStart={() => handlePlay(item)}
                 onClick={() => handlePlay(item)}
                 className="block w-full cursor-pointer text-left overflow-hidden rounded-md"
                 aria-label={`Play ${item.title}`}
               >
-                <div className="aspect-[2/3] w-full overflow-hidden bg-muted">
+                <div className="aspect-[2/3] w-full overflow-hidden rounded-md bg-muted">
                   {poster
                     ? <img src={poster} alt={item.title} loading="lazy" className="h-full w-full object-cover" />
                     : <div className="flex h-full items-center justify-center px-2 text-center text-xs text-muted-foreground">{item.title}</div>
                   }
                 </div>
+
+                {/* Progress bar — sits flush under the poster */}
+                <div className="h-1 w-full bg-white/20 rounded-b-sm">
+                  <div
+                    className="h-full bg-red-600 rounded-b-sm transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
               </button>
 
-              {/* Progress bar */}
-              <div className="h-1 w-full bg-white/20 rounded-b-md">
-                <div
-                  className="h-full bg-red-600 rounded-b-md"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-
-              {/* Hover overlay — desktop */}
-              <div className="pointer-events-none absolute top-0 left-0 right-0 bottom-1 flex flex-col items-center justify-center gap-2 bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 rounded-t-md">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                  <Play className="h-5 w-5 fill-current" />
-                </div>
-                <p className="line-clamp-2 px-2 text-center text-xs font-semibold">
-                  {item.title}{item.media_type === "tv" && item.season != null ? ` S${item.season}E${item.episode}` : ""}
+              {/* ── Details below the card ── */}
+              <div className="mt-1.5 px-0.5">
+                {/* Title */}
+                <p className="line-clamp-1 text-xs font-semibold text-foreground leading-tight">
+                  {item.title}
                 </p>
-                {item.duration_seconds > 0 && <span className="text-xs text-foreground/70">{pct}% watched</span>}
+
+                {/* Episode label for TV */}
+                {item.media_type === "tv" && item.season != null && (
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    S{item.season} · E{item.episode}
+                  </p>
+                )}
+
+                {/* Movie or TV time remaining */}
+                {timeLabel && (
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {timeLabel}
+                  </p>
+                )}
+
+                {/* Progress percentage when no duration */}
+                {!timeLabel && pct > 0 && (
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {pct}% watched
+                  </p>
+                )}
               </div>
 
+              {/* ── Remove button ── */}
               <button
+                onTouchStart={(e) => { e.stopPropagation(); handleRemove(item); }}
                 onClick={(e) => { e.stopPropagation(); handleRemove(item); }}
-                className="absolute right-1 top-1 z-10 rounded-full bg-black/70 p-1 hover:bg-black"
+                className="absolute right-1 top-1 z-10 rounded-full bg-black/70 p-1.5"
                 aria-label="Remove"
+                style={{ WebkitTapHighlightColor: "transparent" }}
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-3 w-3" />
               </button>
             </div>
           );
