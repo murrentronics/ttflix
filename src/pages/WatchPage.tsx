@@ -17,6 +17,7 @@ export function WatchPage() {
   const effectiveProfile = activeProfile ?? profiles.find((p) => p.is_default) ?? profiles[0] ?? null;
   const navigate = useNavigate();
   const progressRef = useRef({ watched: 0, duration: 0, hasPostMessage: false });
+  const watchStartRef = useRef<number>(Date.now());
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [explodeLoader, setExplodeLoader] = useState(false);
   const [exitVisible, setExitVisible] = useState(true);
@@ -51,7 +52,7 @@ export function WatchPage() {
 
   const [src] = useState(() => streamUrl(type, tmdbId, season, episode));
 
-  // ΓöÇΓöÇ Screen limit check + register active watch ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ── Screen limit check + register active watch ──────────────────────────────
   useEffect(() => {
     if (!user || !session || !profile || isAdmin) return;
 
@@ -59,7 +60,6 @@ export function WatchPage() {
     const max = PLANS[profile.plan]?.screens ?? 2;
 
     async function registerWatch() {
-      // Purge stale watches (no ping in > 5 min = player closed without cleanup)
       const staleDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
       await supabase
         .from("active_watches")
@@ -67,7 +67,6 @@ export function WatchPage() {
         .eq("user_id", user!.id)
         .lt("last_ping", staleDate);
 
-      // Check if this session is already watching (resume/reload)
       const { data: existing } = await supabase
         .from("active_watches")
         .select("id")
@@ -80,7 +79,6 @@ export function WatchPage() {
         return;
       }
 
-      // Count active screens
       const { count } = await supabase
         .from("active_watches")
         .select("*", { count: "exact", head: true })
@@ -95,7 +93,6 @@ export function WatchPage() {
         return;
       }
 
-      // Register this watch
       const { data: inserted } = await supabase
         .from("active_watches")
         .insert({
@@ -114,7 +111,6 @@ export function WatchPage() {
 
     registerWatch();
 
-    // Ping every 30s to keep the watch alive
     const ping = setInterval(() => {
       if (watchIdRef.current) {
         supabase
@@ -124,7 +120,6 @@ export function WatchPage() {
       }
     }, 30_000);
 
-    // Cleanup on unmount
     return () => {
       clearInterval(ping);
       if (watchIdRef.current) {
@@ -133,9 +128,7 @@ export function WatchPage() {
     };
   }, [user, session, profile, isAdmin, tmdbId, type, title, season, episode]);
 
-  // Fetch runtime from TMDB ΓÇö primary duration source since Videasy postMessages
-  // don't reliably fire inside Capacitor Android WebView
-  const watchStartRef = useRef<number>(Date.now());
+  // Fetch runtime from TMDB
   const durationReadyRef = useRef(false);
   useEffect(() => {
     watchStartRef.current = Date.now();
@@ -146,8 +139,6 @@ export function WatchPage() {
         const details = await getDetails({ data: { id: tmdbId, mediaType: type } });
         let runtimeMins = details.runtime;
 
-        // TV shows: episode_run_time is often empty ΓÇö fall back to fetching the
-        // actual episode runtime from the season endpoint
         if (!runtimeMins && type === "tv") {
           try {
             const episodes = await getSeasonEpisodes({ data: { id: tmdbId, season } });
@@ -173,7 +164,6 @@ export function WatchPage() {
     if (savedInitial.current) return;
     if (!user || !effectiveProfile || !title) return;
     savedInitial.current = true;
-    // Wait up to 4s for TMDB duration to resolve before the initial save
     if (!durationReadyRef.current) {
       await new Promise<void>((resolve) => {
         const check = setInterval(() => {
@@ -205,6 +195,7 @@ export function WatchPage() {
   const persist = useCallback(async (watched: number, duration: number) => {
     if (!user || !effectiveProfile || watched < 10) return;
     const { season: currentSeason, episode: currentEp } = currentEpisodeRef.current;
+    // Preserve existing duration in DB if we don't have one
     let safeDuration = duration > 0 ? Math.floor(duration) : 0;
     if (safeDuration === 0) {
       const { data: existing } = await supabase
@@ -244,7 +235,8 @@ export function WatchPage() {
           savedInitial.current = false;
         }
         if (d?.timestamp !== undefined && d?.duration !== undefined) {
-          progressRef.current = { watched: d.timestamp, duration: d.duration, hasPostMessage: true };
+          const newDuration = d.duration > 0 ? d.duration : progressRef.current.duration;
+          progressRef.current = { watched: d.timestamp, duration: newDuration, hasPostMessage: true };
           if (!playerStartedRef.current) {
             playerStartedRef.current = true;
             triggerExplosion();
@@ -264,8 +256,6 @@ export function WatchPage() {
   useEffect(() => {
     if (!user) return;
     const t = setInterval(() => {
-      // If the player sent a real timestamp (including after seeking), use it.
-      // Only fall back to wall-clock if the player never posted anything.
       const wallClockWatched = watchStartRef.current > 0
         ? Math.floor((Date.now() - watchStartRef.current) / 1000)
         : 0;
@@ -275,7 +265,6 @@ export function WatchPage() {
       const duration = progressRef.current.duration;
       if (watched > 10) persistRef.current(watched, duration);
     }, 15_000);
-
     return () => clearInterval(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, tmdbId]);
@@ -302,14 +291,13 @@ export function WatchPage() {
   }, [stillLoading, canWatch, navigate]);
 
   if (stillLoading) return (
-    <div className="flex min-h-screen items-center justify-center text-muted-foreground">LoadingΓÇª</div>
+    <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>
   );
   if (!canWatch) return null;
 
-  // Screen limit reached ΓÇö show message instead of player
   if (screenError) return (
     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center px-6 text-center gap-6">
-      <div className="text-6xl">≡ƒô║</div>
+      <div className="text-6xl">📺</div>
       <h2 className="text-xl font-bold text-white">Too Many Screens</h2>
       <p className="text-sm text-white/70 max-w-xs">{screenError}</p>
       <button
@@ -362,8 +350,8 @@ export function WatchPage() {
           style={{ opacity: exitVisible ? 1 : 0, pointerEvents: exitVisible ? "auto" : "none" }}
         >
           <button
-            onTouchStart={(e) => { e.stopPropagation(); persistRef.current(progressRef.current.hasPostMessage ? progressRef.current.watched : Math.floor((Date.now() - watchStartRef.current) / 1000), progressRef.current.duration); navigate("/"); }}
-            onClick={(e) => { e.stopPropagation(); persistRef.current(progressRef.current.hasPostMessage ? progressRef.current.watched : Math.floor((Date.now() - watchStartRef.current) / 1000), progressRef.current.duration); navigate("/"); }}
+            onTouchStart={(e) => { e.stopPropagation(); navigate("/"); }}
+            onClick={(e) => { e.stopPropagation(); navigate("/"); }}
             className="flex items-center gap-2 rounded-full bg-black/80 px-4 py-2.5 text-sm font-bold text-white"
             style={{ WebkitTapHighlightColor: "transparent" }}
           >
