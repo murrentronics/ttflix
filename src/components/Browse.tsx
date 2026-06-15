@@ -1,6 +1,7 @@
 import { Hero } from "./Hero";
 import { MovieRow } from "./MovieRow";
 import { ContinueWatchingRow } from "./ContinueWatchingRow";
+import { LiveSportsRow } from "./LiveSportsRow";
 import type { TmdbItem } from "@/lib/tmdb.functions";
 
 type Feed = {
@@ -18,6 +19,8 @@ export function Browse({ feed }: { feed: Feed }) {
         {feed.rows.map((row) => (
           <MovieRow key={row.title} title={row.title} items={row.items} />
         ))}
+        {/* Live sports channels — always last */}
+        <LiveSportsRow />
       </div>
     </>
   );
