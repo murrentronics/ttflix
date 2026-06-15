@@ -12,7 +12,7 @@ export function Browse({ feed }: { feed: Feed }) {
   return (
     <>
       <Hero items={feed.hero} />
-      <div className="relative z-10 -mt-8 pb-10">
+      <div className="relative z-10 -mt-16 pb-10">
         {/* Continue watching always appears first if the user has history */}
         <ContinueWatchingRow />
         {feed.rows.map((row) => (

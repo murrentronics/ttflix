@@ -220,6 +220,10 @@ export function WatchPage() {
     return () => window.removeEventListener("message", handler);
   }, [triggerExplosion, saveInitial]);
 
+  // Keep a stable ref to the latest persist so the interval never captures a stale closure
+  const persistRef = useRef(persist);
+  useEffect(() => { persistRef.current = persist; }, [persist]);
+
   useEffect(() => {
     if (!user) return;
     const t = setInterval(() => {
@@ -231,10 +235,11 @@ export function WatchPage() {
         ? progressRef.current.watched
         : wallClockWatched;
       const duration = progressRef.current.duration;
-      if (watched > 10) persist(watched, duration);
+      if (watched > 10) persistRef.current(watched, duration);
     }, 15_000);
     return () => clearInterval(t);
-  }, [user, tmdbId, persist]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, tmdbId]);
 
   useEffect(() => {
     const save = () => {
@@ -245,11 +250,12 @@ export function WatchPage() {
         ? progressRef.current.watched
         : wallClockWatched;
       const duration = progressRef.current.duration;
-      if (user && watched > 10) persist(watched, duration);
+      if (user && watched > 10) persistRef.current(watched, duration);
     };
     window.addEventListener("beforeunload", save);
     return () => { save(); window.removeEventListener("beforeunload", save); };
-  }, [user, persist]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   useEffect(() => {
     if (stillLoading) return;

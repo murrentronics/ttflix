@@ -38,7 +38,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
       <div className="absolute inset-0" style={{ background: "var(--gradient-hero)" }} />
       <div className="absolute inset-0" style={{ background: "var(--gradient-hero-left)" }} />
 
-      <div className="absolute bottom-[14%] left-0 max-w-2xl px-4 sm:px-8">
+      <div className="absolute bottom-[18%] left-0 max-w-2xl px-4 sm:px-8">
         <h1 className="text-balance text-3xl font-extrabold drop-shadow-lg sm:text-5xl md:text-6xl">
           {item.title}
         </h1>
@@ -66,20 +66,21 @@ export function Hero({ items }: { items: TmdbItem[] }) {
             <Info className="h-5 w-5" /> More Info
           </button>
         </div>
-      </div>
 
-      {items.length > 1 && (
-        <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-1.5">
-          {items.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setIndex(i)}
-              className={`h-1 rounded-full transition-all ${i === index ? "w-6 bg-primary" : "w-3 bg-foreground/40"}`}
-              aria-label={`Slide ${i + 1}`}
-            />
-          ))}
-        </div>
-      )}
+        {/* Dots sit below the buttons, inside the hero, well above the content overlap */}
+        {items.length > 1 && (
+          <div className="mt-5 flex gap-1.5">
+            {items.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setIndex(i)}
+                className={`h-1 rounded-full transition-all ${i === index ? "w-6 bg-primary" : "w-3 bg-foreground/40"}`}
+                aria-label={`Slide ${i + 1}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
