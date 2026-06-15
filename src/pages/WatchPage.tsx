@@ -16,7 +16,7 @@ export function WatchPage() {
   const { activeProfile, profiles } = useProfile();
   const effectiveProfile = activeProfile ?? profiles.find((p) => p.is_default) ?? profiles[0] ?? null;
   const navigate = useNavigate();
-  const progressRef = useRef({ watched: 0, duration: 0 });
+  const progressRef = useRef({ watched: 0, duration: 0, hasPostMessage: false });
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [explodeLoader, setExplodeLoader] = useState(false);
   const [exitVisible, setExitVisible] = useState(true);
@@ -228,11 +228,11 @@ export function WatchPage() {
         if (d?.type === "episodeChange" || d?.event === "episodeChange") {
           if (d?.season) currentEpisodeRef.current.season = Number(d.season);
           if (d?.episode) currentEpisodeRef.current.episode = Number(d.episode);
-          progressRef.current = { watched: 0, duration: 0 };
+          progressRef.current = { watched: 0, duration: 0, hasPostMessage: false };
           savedInitial.current = false;
         }
         if (d?.timestamp !== undefined && d?.duration !== undefined) {
-          progressRef.current = { watched: d.timestamp, duration: d.duration };
+          progressRef.current = { watched: d.timestamp, duration: d.duration, hasPostMessage: true };
           if (!playerStartedRef.current) {
             playerStartedRef.current = true;
             triggerExplosion();
@@ -252,11 +252,12 @@ export function WatchPage() {
   useEffect(() => {
     if (!user) return;
     const t = setInterval(() => {
-      // Use postMessage timestamp if available, otherwise fall back to wall-clock time
+      // If the player sent a real timestamp (including after seeking), use it.
+      // Only fall back to wall-clock if the player never posted anything.
       const wallClockWatched = watchStartRef.current > 0
         ? Math.floor((Date.now() - watchStartRef.current) / 1000)
         : 0;
-      const watched = progressRef.current.watched > 10
+      const watched = progressRef.current.hasPostMessage
         ? progressRef.current.watched
         : wallClockWatched;
       const duration = progressRef.current.duration;
@@ -272,7 +273,7 @@ export function WatchPage() {
       const wallClockWatched = watchStartRef.current > 0
         ? Math.floor((Date.now() - watchStartRef.current) / 1000)
         : 0;
-      const watched = progressRef.current.watched > 10
+      const watched = progressRef.current.hasPostMessage
         ? progressRef.current.watched
         : wallClockWatched;
       const duration = progressRef.current.duration;

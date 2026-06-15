@@ -100,8 +100,8 @@ export function ContinueWatchingRow() {
       <div ref={rowRef} className="row-scroll flex gap-3 overflow-x-auto px-4 pb-2 sm:px-8">
         {items.map((item) => {
           const pct = item.duration_seconds > 0
-            ? Math.min(96, Math.max(4, Math.round((item.watched_seconds / item.duration_seconds) * 100)))
-            : item.watched_seconds > 0 ? 5 : 0;
+            ? Math.min(96, Math.round((item.watched_seconds / item.duration_seconds) * 100))
+            : 0;
           const poster = img(item.poster_path ?? item.backdrop_path, "w500");
 
           return (
