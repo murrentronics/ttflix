@@ -159,6 +159,7 @@ export function WatchPage() {
   }, [tmdbId, type, season, episode]);
 
   const triggerExplosion = useCallback(() => setExplodeLoader(true), []);
+  const onLoaderDone = useCallback(() => setLoaderVisible(false), []);
 
   const savedInitial = useRef(false);
   const saveInitial = useCallback(async () => {
@@ -357,7 +358,7 @@ export function WatchPage() {
         <TTFlixLoader
           explode={explodeLoader}
           backdrop={backdrop || poster}
-          onDone={() => setLoaderVisible(false)}
+          onDone={onLoaderDone}
         />
       )}
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { img } from "@/lib/tmdb";
 
 export function TTFlixLoader({
@@ -11,6 +11,9 @@ export function TTFlixLoader({
   backdrop?: string;
 }) {
   const [phase, setPhase] = useState<"entering" | "idle" | "exploding" | "done">("entering");
+  // Keep a stable ref so timers never capture a stale/changing onDone reference
+  const onDoneRef = useRef(onDone);
+  useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
 
   useEffect(() => {
     const t = setTimeout(() => setPhase("idle"), 50);
@@ -22,19 +25,20 @@ export function TTFlixLoader({
       setPhase("exploding");
       const t = setTimeout(() => {
         setPhase("done");
-        onDone();
+        onDoneRef.current();
       }, 400);
       return () => clearTimeout(t);
     }
-  }, [explode, phase, onDone]);
+  }, [explode, phase]);
 
+  // Hard timeout — runs ONCE on mount, never resets
   useEffect(() => {
     const t = setTimeout(() => {
       setPhase("done");
-      onDone();
+      onDoneRef.current();
     }, 2500);
     return () => clearTimeout(t);
-  }, [onDone]);
+  }, []);
 
   if (phase === "done") return null;
 
