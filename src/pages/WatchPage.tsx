@@ -199,7 +199,7 @@ export function WatchPage() {
   }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop, season, episode]);
 
   useEffect(() => {
-    const t = setTimeout(() => { triggerExplosion(); saveInitial(); }, 6000);
+    const t = setTimeout(() => { triggerExplosion(); saveInitial(); }, 2000);
     return () => clearTimeout(t);
   }, [triggerExplosion, saveInitial]);
 
@@ -369,6 +369,7 @@ export function WatchPage() {
         referrerPolicy="no-referrer"
         allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
         allowFullScreen
+        onLoad={() => { triggerExplosion(); saveInitial(); }}
       />
 
       {!loaderVisible && !exitVisible && (

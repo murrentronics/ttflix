@@ -32,7 +32,7 @@ export function TTFlixLoader({
     const t = setTimeout(() => {
       setPhase("done");
       onDone();
-    }, 4500);
+    }, 2500);
     return () => clearTimeout(t);
   }, [onDone]);
 
