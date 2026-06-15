@@ -18,6 +18,7 @@ export function WatchPage() {
   const navigate = useNavigate();
   const progressRef = useRef({ watched: 0, duration: 0, hasPostMessage: false });
   const watchStartRef = useRef<number>(Date.now());
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [explodeLoader, setExplodeLoader] = useState(false);
   const [exitVisible, setExitVisible] = useState(true);
@@ -265,6 +266,27 @@ export function WatchPage() {
   const persistRef = useRef(persist);
   useEffect(() => { persistRef.current = persist; }, [persist]);
 
+  // Poll iframe video element every 5s for currentTime — works in Capacitor WebView
+  // where cross-origin postMessages don't fire reliably
+  useEffect(() => {
+    const t = setInterval(() => {
+      try {
+        const iframe = iframeRef.current;
+        if (!iframe) return;
+        const video = iframe.contentDocument?.querySelector("video") ||
+          iframe.contentWindow?.document?.querySelector("video");
+        if (!video) return;
+        const ct = (video as HTMLVideoElement).currentTime;
+        const dur = (video as HTMLVideoElement).duration;
+        if (ct > 0) {
+          const newDuration = (dur > 0 && isFinite(dur)) ? dur : progressRef.current.duration;
+          progressRef.current = { watched: ct, duration: newDuration, hasPostMessage: true };
+        }
+      } catch { /* cross-origin block — fall back to postMessage */ }
+    }, 5_000);
+    return () => clearInterval(t);
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     const t = setInterval(() => {
@@ -340,6 +362,7 @@ export function WatchPage() {
       )}
 
       <iframe
+        ref={iframeRef}
         src={src}
         title="Player"
         className="absolute inset-0 h-full w-full border-0"
