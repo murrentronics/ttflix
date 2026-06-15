@@ -237,6 +237,7 @@ export function WatchPage() {
     const handler = (e: MessageEvent) => {
       try {
         const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (d && typeof d === "object") console.log("[videasy msg]", JSON.stringify(d));
         if (d?.type === "ready" || d?.event === "ready") { triggerExplosion(); saveInitial(); }
         if (d?.type === "episodeChange" || d?.event === "episodeChange") {
           if (d?.season) currentEpisodeRef.current.season = Number(d.season);

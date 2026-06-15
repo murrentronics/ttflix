@@ -11,8 +11,27 @@ import { AdminPage } from "./pages/AdminPage";
 import { BillingPage } from "./pages/BillingPage";
 import { WatchPage } from "./pages/WatchPage";
 import { ProfilePickerPage } from "./pages/ProfilePickerPage";
+import { TTFlixLoader } from "./components/TTFlixLoader";
+import { useAuth } from "./lib/auth";
+import { useState } from "react";
 
 export function AppRoutes() {
+  const { loading, profileLoading } = useAuth();
+  const [loaderDone, setLoaderDone] = useState(false);
+
+  // Show the splash loader while auth + profile are resolving
+  // explode as soon as both are ready, then hide
+  const isReady = !loading && !profileLoading;
+
+  if (!loaderDone) {
+    return (
+      <TTFlixLoader
+        explode={isReady}
+        onDone={() => setLoaderDone(true)}
+      />
+    );
+  }
+
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />

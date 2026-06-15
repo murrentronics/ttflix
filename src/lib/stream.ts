@@ -9,7 +9,7 @@ export function streamUrl(
 ): string {
   const color = "E50914";
   if (mediaType === "tv") {
-    return `${BASE}/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplayNextEpisode=true`;
+    return `${BASE}/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplayNextEpisode=true&postMessageOrigin=*`;
   }
-  return `${BASE}/movie/${tmdbId}?color=${color}&overlay=true`;
+  return `${BASE}/movie/${tmdbId}?color=${color}&overlay=true&postMessageOrigin=*`;
 }

@@ -23,6 +23,12 @@ public class MainActivity extends BridgeActivity {
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().clearCache(true);
 
+            // Allow cross-origin postMessages from Videasy iframe to reach the app
+            getBridge().getWebView().getSettings().setJavaScriptEnabled(true);
+            getBridge().getWebView().getSettings().setDomStorageEnabled(true);
+            getBridge().getWebView().getSettings().setAllowUniversalAccessFromFileURLs(true);
+            getBridge().getWebView().getSettings().setAllowFileAccessFromFileURLs(true);
+
             // Block all new window / popup / ad redirect attempts from iframes
             getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
                 @Override
