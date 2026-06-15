@@ -121,7 +121,6 @@ export function ContinueWatchingRow() {
             >
               {/* ── Poster + progress bar ── */}
               <button
-                onTouchStart={() => handlePlay(item)}
                 onClick={() => handlePlay(item)}
                 className="block w-full cursor-pointer text-left overflow-hidden rounded-md"
                 aria-label={`Play ${item.title}`}
@@ -173,7 +172,6 @@ export function ContinueWatchingRow() {
 
               {/* ── Remove button ── */}
               <button
-                onTouchStart={(e) => { e.stopPropagation(); handleRemove(item); }}
                 onClick={(e) => { e.stopPropagation(); handleRemove(item); }}
                 className="absolute right-1 top-1 z-10 rounded-full bg-black/70 p-1.5"
                 aria-label="Remove"
