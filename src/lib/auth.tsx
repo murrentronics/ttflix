@@ -196,9 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const isAdminEmail = signedIn.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
       if (!isAdminEmail) {
-        // Use the server-issued access_token as the session identifier —
-        // completely independent of localStorage so deleted apps leave no ghost rows.
-        await registerScreen(signedIn.id, signedInSession.access_token, prof?.plan ?? "basic");
+        // Screen limit is enforced in WatchPage via active_watches table
       }
     } catch (e: any) {
       await supabase.auth.signOut();
