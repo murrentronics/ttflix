@@ -4,7 +4,7 @@ import { Play, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { fetchContinueWatching, removeProgress, type WatchProgress } from "@/lib/continue-watching";
-import { getDetails } from "@/lib/tmdb.functions.app";
+import { getDetails, getSeasonEpisodes } from "@/lib/tmdb.functions.app";
 import { supabase } from "@/lib/supabase";
 import { img } from "@/lib/tmdb";
 
@@ -28,7 +28,21 @@ export function ContinueWatchingRow() {
           const details = await getDetails({
             data: { id: item.tmdb_id, mediaType: item.media_type }
           });
-          const runtimeMins = details.runtime;
+          let runtimeMins = details.runtime;
+
+          // TV shows often have empty episode_run_time — fall back to episode endpoint
+          if (!runtimeMins && item.media_type === "tv") {
+            try {
+              const episodes = await getSeasonEpisodes({
+                data: { id: item.tmdb_id, season: item.season ?? 1 }
+              });
+              const ep = episodes.find((e: { episode_number: number; runtime?: number | null }) =>
+                e.episode_number === (item.episode ?? 1)
+              );
+              runtimeMins = ep?.runtime ?? episodes[0]?.runtime ?? null;
+            } catch { /* ignore */ }
+          }
+
           if (runtimeMins && runtimeMins > 0) {
             const duration = runtimeMins * 60;
             // Patch DB so next load is instant

@@ -6,7 +6,7 @@ import { useProfile } from "@/lib/ProfileContext";
 import { streamUrl } from "@/lib/stream";
 import { saveProgress } from "@/lib/continue-watching";
 import { TTFlixLoader } from "@/components/TTFlixLoader";
-import { getDetails } from "@/lib/tmdb.functions.app";
+import { getDetails, getSeasonEpisodes } from "@/lib/tmdb.functions.app";
 import { supabase, PLANS } from "@/lib/supabase";
 
 export function WatchPage() {
@@ -17,7 +17,6 @@ export function WatchPage() {
   const effectiveProfile = activeProfile ?? profiles.find((p) => p.is_default) ?? profiles[0] ?? null;
   const navigate = useNavigate();
   const progressRef = useRef({ watched: 0, duration: 0 });
-  const [saved, setSaved] = useState(false);
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [explodeLoader, setExplodeLoader] = useState(false);
   const [exitVisible, setExitVisible] = useState(true);
@@ -136,17 +135,36 @@ export function WatchPage() {
 
   // Fetch runtime from TMDB — primary duration source since Videasy postMessages
   // don't reliably fire inside Capacitor Android WebView
-  const watchStartRef = useRef<number>(0);
+  const watchStartRef = useRef<number>(Date.now());
+  const durationReadyRef = useRef(false);
   useEffect(() => {
-    getDetails({ data: { id: tmdbId, mediaType: type } }).then((details) => {
-      const runtimeMins = details.runtime;
-      if (runtimeMins && runtimeMins > 0) {
-        progressRef.current.duration = runtimeMins * 60;
-      }
-    }).catch(() => {});
-    // Record when we started watching for wall-clock fallback
     watchStartRef.current = Date.now();
-  }, [tmdbId, type]);
+    durationReadyRef.current = false;
+
+    async function fetchDuration() {
+      try {
+        const details = await getDetails({ data: { id: tmdbId, mediaType: type } });
+        let runtimeMins = details.runtime;
+
+        // TV shows: episode_run_time is often empty — fall back to fetching the
+        // actual episode runtime from the season endpoint
+        if (!runtimeMins && type === "tv") {
+          try {
+            const episodes = await getSeasonEpisodes({ data: { id: tmdbId, season } });
+            const ep = episodes.find((e: { episode_number: number; runtime?: number | null }) => e.episode_number === episode);
+            runtimeMins = ep?.runtime ?? episodes[0]?.runtime ?? null;
+          } catch { /* ignore */ }
+        }
+
+        if (runtimeMins && runtimeMins > 0) {
+          progressRef.current.duration = runtimeMins * 60;
+        }
+      } catch { /* ignore */ }
+      durationReadyRef.current = true;
+    }
+
+    fetchDuration();
+  }, [tmdbId, type, season, episode]);
 
   const triggerExplosion = useCallback(() => setExplodeLoader(true), []);
 
@@ -155,6 +173,15 @@ export function WatchPage() {
     if (savedInitial.current) return;
     if (!user || !effectiveProfile || !title) return;
     savedInitial.current = true;
+    // Wait up to 4s for TMDB duration to resolve before the initial save
+    if (!durationReadyRef.current) {
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (durationReadyRef.current) { clearInterval(check); resolve(); }
+        }, 200);
+        setTimeout(() => { clearInterval(check); resolve(); }, 4000);
+      });
+    }
     await saveProgress({
       user_id: user.id,
       profile_id: effectiveProfile.id,
@@ -191,8 +218,6 @@ export function WatchPage() {
       season: type === "tv" ? currentSeason : null,
       episode: type === "tv" ? currentEp : null,
     });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
   }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop]);
 
   useEffect(() => {
@@ -237,6 +262,7 @@ export function WatchPage() {
       const duration = progressRef.current.duration;
       if (watched > 10) persistRef.current(watched, duration);
     }, 15_000);
+
     return () => clearInterval(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, tmdbId]);
@@ -330,14 +356,6 @@ export function WatchPage() {
           >
             <X className="h-4 w-4" /> Exit
           </button>
-        </div>
-      )}
-
-      {saved && !loaderVisible && (
-        <div className="absolute top-3 right-3 z-20">
-          <span className="rounded-full bg-primary/30 px-3 py-1 text-xs font-medium text-primary">
-            Progress saved
-          </span>
         </div>
       )}
     </div>
