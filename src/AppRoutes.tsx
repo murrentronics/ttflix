@@ -11,6 +11,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { BillingPage } from "./pages/BillingPage";
 import { WatchPage } from "./pages/WatchPage";
 import { ProfilePickerPage } from "./pages/ProfilePickerPage";
+import { LiveSportsPage } from "./pages/LiveSportsPage";
 import { TTFlixLoader } from "./components/TTFlixLoader";
 import { useAuth } from "./lib/auth";
 import { useState } from "react";
@@ -46,6 +47,7 @@ export function AppRoutes() {
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/billing" element={<BillingPage />} />
       <Route path="/watch/:mediaType/:id" element={<WatchPage />} />
+      <Route path="/live-sports" element={<LiveSportsPage />} />
     </Routes>
   );
 }

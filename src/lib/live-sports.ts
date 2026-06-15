@@ -28,6 +28,7 @@ export type LiveStream = {
   hd: boolean;
   embedUrl: string;
   source: string;
+  viewers?: number;
 };
 
 // ─── Image helpers ────────────────────────────────────────────────────────────

@@ -178,9 +178,10 @@ function LivePlayer({
         setLoadState("error");
         return;
       }
-      // Prefer HD English stream
+      // Prefer HD English stream with most viewers (most reliable)
       const preferred =
-        s.find((x) => x.hd && x.language === "English") ??
+        s.sort((a, b) => (b.viewers ?? 0) - (a.viewers ?? 0))
+         .find((x) => x.hd && x.language.toLowerCase().includes("english")) ??
         s.find((x) => x.hd) ??
         s[0];
       setStreams(s);
@@ -341,16 +342,16 @@ function LivePlayer({
             style={{ WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}>
             {streams.map((s) => (
               <button
-                key={s.id}
+                key={s.id + s.streamNo}
                 onClick={(e) => { e.stopPropagation(); switchStream(s); }}
                 className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold text-white transition-colors"
                 style={{
-                  backgroundColor: activeStream?.id === s.id ? "#E50914" : "rgba(0,0,0,0.7)",
+                  backgroundColor: activeStream?.streamNo === s.streamNo ? "#E50914" : "rgba(0,0,0,0.7)",
                   border: "1px solid rgba(255,255,255,0.15)",
                   WebkitTapHighlightColor: "transparent",
                 }}
               >
-                {s.hd ? "HD" : "SD"} · {s.language}
+                {s.hd ? "HD" : "SD"} · {s.language}{s.viewers ? ` · ${s.viewers.toLocaleString()} 👁` : ""}
               </button>
             ))}
           </div>
