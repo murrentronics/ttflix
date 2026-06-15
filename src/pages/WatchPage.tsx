@@ -181,7 +181,17 @@ export function WatchPage() {
       poster_path: poster || null,
       backdrop_path: backdrop || null,
       watched_seconds: 10,
-      duration_seconds: progressRef.current.duration > 0 ? Math.floor(progressRef.current.duration) : 0,
+      duration_seconds: progressRef.current.duration > 0
+        ? Math.floor(progressRef.current.duration)
+        : await supabase
+            .from("watch_progress")
+            .select("duration_seconds")
+            .eq("user_id", user.id)
+            .eq("profile_id", effectiveProfile.id)
+            .eq("tmdb_id", tmdbId)
+            .eq("media_type", type)
+            .maybeSingle()
+            .then(({ data }) => data?.duration_seconds ?? 0),
       season: type === "tv" ? season : null,
       episode: type === "tv" ? episode : null,
     });
@@ -235,6 +245,7 @@ export function WatchPage() {
           savedInitial.current = false;
         }
         if (d?.timestamp !== undefined && d?.duration !== undefined) {
+          // Never overwrite a known duration with 0 — Videasy often sends duration: 0
           const newDuration = d.duration > 0 ? d.duration : progressRef.current.duration;
           progressRef.current = { watched: d.timestamp, duration: newDuration, hasPostMessage: true };
           if (!playerStartedRef.current) {
