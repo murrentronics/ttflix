@@ -31,7 +31,7 @@ export function WatchPage() {
   const showExit = useCallback(() => {
     setExitVisible(true);
     if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
-    exitTimerRef.current = setTimeout(() => setExitVisible(false), 3000);
+    exitTimerRef.current = setTimeout(() => setExitVisible(false), 5000);
   }, []);
 
   useEffect(() => {

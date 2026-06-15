@@ -66,13 +66,15 @@ public class MainActivity extends BridgeActivity {
             window.setNavigationBarContrastEnforced(false);
         }
 
-        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            | View.SYSTEM_UI_FLAG_FULLSCREEN
-            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
-        decorView.setSystemUiVisibility(flags);
+        applyImmersiveFlags(decorView);
+
+        // Re-apply immersive flags whenever system UI becomes visible (status bar swipe)
+        // This hides it again quickly so the WebView doesn't think it lost focus
+        decorView.setOnSystemUiVisibilityChangeListener(visibility -> {
+            if ((visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0) {
+                decorView.postDelayed(() -> applyImmersiveFlags(decorView), 300);
+            }
+        });
 
         WindowInsetsControllerCompat controller =
             WindowCompat.getInsetsController(window, decorView);
@@ -84,5 +86,15 @@ public class MainActivity extends BridgeActivity {
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             );
         }
+    }
+
+    private void applyImmersiveFlags(View decorView) {
+        int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
+        decorView.setSystemUiVisibility(flags);
     }
 }
