@@ -212,7 +212,7 @@ function LivePlayer({
   const hasTeams = match.teams?.home && match.teams?.away;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black">
+    <div className="fixed inset-0 z-[9999] bg-black">
 
       {/* iframe — always rendered once we have a URL */}
       {activeStream && (
@@ -223,6 +223,7 @@ function LivePlayer({
           className="absolute inset-0 h-full w-full border-0"
           allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
           allowFullScreen
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation"
           referrerPolicy="no-referrer"
           onLoad={() => setLoadState("ready")}
           onError={() => setLoadState("error")}
@@ -378,7 +379,7 @@ function EmptyState() {
 
 // ─── Row ─────────────────────────────────────────────────────────────────────
 
-export function LiveSportsRow() {
+export function LiveSportsRow({ standalone = false }: { standalone?: boolean }) {
   const [matches, setMatches] = useState<LiveMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeMatch, setActiveMatch] = useState<LiveMatch | null>(null);
@@ -400,18 +401,20 @@ export function LiveSportsRow() {
       )}
 
       <section className="relative mb-10">
-        {/* Header */}
-        <div className="mb-3 flex items-center gap-2.5 px-4 sm:px-8">
-          <Radio
-            className="h-5 w-5 text-red-500"
-            style={{ animation: "livepulse 1.2s ease-in-out infinite" }}
-          />
-          <h2 className="text-lg font-bold md:text-xl">Live Sports</h2>
-          {matches.length > 0 && <LiveBadge />}
-          {matches.length > 0 && (
-            <span className="text-xs text-white/30 ml-1">{matches.length} match{matches.length !== 1 ? "es" : ""}</span>
-          )}
-        </div>
+        {/* Header — hidden on standalone page since the page has its own */}
+        {!standalone && (
+          <div className="mb-3 flex items-center gap-2.5 px-4 sm:px-8">
+            <Radio
+              className="h-5 w-5 text-red-500"
+              style={{ animation: "livepulse 1.2s ease-in-out infinite" }}
+            />
+            <h2 className="text-lg font-bold md:text-xl">Live Sports</h2>
+            {matches.length > 0 && <LiveBadge />}
+            {matches.length > 0 && (
+              <span className="text-xs text-white/30 ml-1">{matches.length} match{matches.length !== 1 ? "es" : ""}</span>
+            )}
+          </div>
+        )}
 
         {matches.length === 0 ? (
           <EmptyState />

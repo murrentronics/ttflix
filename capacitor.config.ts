@@ -14,6 +14,10 @@ const config: CapacitorConfig = {
       "player.videasy.net",
     ],
   },
+  android: {
+    // Spoof user agent so third-party stream embeds don't block the Capacitor WebView
+    overrideUserAgent: "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+  },
   plugins: {
     Keyboard: {
       resize: "body",

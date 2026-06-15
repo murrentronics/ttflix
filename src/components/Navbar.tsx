@@ -10,6 +10,7 @@ const LINKS = [
   { to: "/tv", label: "TV Shows" },
   { to: "/cartoons", label: "Cartoons" },
   { to: "/my-list", label: "My List" },
+  { to: "/live-sports", label: "Live Sports" },
 ] as const;
 
 export function Navbar() {
