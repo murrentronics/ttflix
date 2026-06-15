@@ -17,6 +17,9 @@ export function WatchPage() {
   const effectiveProfile = activeProfile ?? profiles.find((p) => p.is_default) ?? profiles[0] ?? null;
   const navigate = useNavigate();
   const progressRef = useRef({ watched: 0, duration: 0, hasPostMessage: false });
+  // Wall-clock tracking — only counts while the page is visible
+  const watchStartRef = useRef<number>(Date.now());
+  const accumulatedRef = useRef<number>(0); // seconds accumulated before last hide
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [explodeLoader, setExplodeLoader] = useState(false);
   const [exitVisible, setExitVisible] = useState(true);
@@ -34,6 +37,18 @@ export function WatchPage() {
   useEffect(() => {
     if (!loaderVisible) showExit();
     return () => { if (exitTimerRef.current) clearTimeout(exitTimerRef.current); };
+  }, [loaderVisible, showExit]);
+
+  // Listen for taps at document level — no overlay div needed, won't steal iframe focus
+  useEffect(() => {
+    if (loaderVisible) return;
+    const onTap = () => showExit();
+    document.addEventListener("touchstart", onTap, { passive: true });
+    document.addEventListener("click", onTap);
+    return () => {
+      document.removeEventListener("touchstart", onTap);
+      document.removeEventListener("click", onTap);
+    };
   }, [loaderVisible, showExit]);
 
   const title = searchParams.get("title") ?? "";
@@ -137,6 +152,9 @@ export function WatchPage() {
   // don't reliably fire inside Capacitor Android WebView
   const durationReadyRef = useRef(false);
   useEffect(() => {
+    // Reset wall-clock on new title
+    watchStartRef.current = Date.now();
+    accumulatedRef.current = 0;
     durationReadyRef.current = false;
 
     async function fetchDuration() {
@@ -245,35 +263,52 @@ export function WatchPage() {
     return () => window.removeEventListener("message", handler);
   }, [triggerExplosion, saveInitial]);
 
+  // Pause wall-clock when user switches away, resume when they come back
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        // Freeze: add elapsed to accumulated, stop the clock
+        accumulatedRef.current += Math.floor((Date.now() - watchStartRef.current) / 1000);
+        watchStartRef.current = 0;
+      } else {
+        // Resume: restart the clock
+        watchStartRef.current = Date.now();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
   // Keep a stable ref to the latest persist so the interval never captures a stale closure
   const persistRef = useRef(persist);
   useEffect(() => { persistRef.current = persist; }, [persist]);
 
+  // Central save function using refs — safe to call anytime
+  const saveNow = useCallback(() => {
+    const wallClock = accumulatedRef.current +
+      (watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0);
+    const watched = progressRef.current.hasPostMessage
+      ? progressRef.current.watched
+      : wallClock;
+    const duration = progressRef.current.duration;
+    if (user && watched > 10) persistRef.current(watched, duration);
+  }, [user]);
+
+  // Save every 15s
   useEffect(() => {
     if (!user) return;
-    const t = setInterval(() => {
-      // Only save if the player has sent a real timestamp — never use wall-clock
-      // (wall-clock counts while paused which is wrong)
-      if (!progressRef.current.hasPostMessage) return;
-      const watched = progressRef.current.watched;
-      const duration = progressRef.current.duration;
-      if (watched > 10) persistRef.current(watched, duration);
-    }, 15_000);
-
+    const t = setInterval(saveNow, 15_000);
     return () => clearInterval(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, tmdbId]);
 
+  // Save on unmount (covers Exit button navigation) and beforeunload (browser close)
   useEffect(() => {
-    const save = () => {
-      // Only save real player position, not wall-clock guesses
-      if (!progressRef.current.hasPostMessage) return;
-      const watched = progressRef.current.watched;
-      const duration = progressRef.current.duration;
-      if (user && watched > 10) persistRef.current(watched, duration);
+    window.addEventListener("beforeunload", saveNow);
+    return () => {
+      saveNow();
+      window.removeEventListener("beforeunload", saveNow);
     };
-    window.addEventListener("beforeunload", save);
-    return () => { save(); window.removeEventListener("beforeunload", save); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -329,22 +364,14 @@ export function WatchPage() {
         allowFullScreen
       />
 
-      {!loaderVisible && !exitVisible && (
-        <div
-          className="absolute inset-x-0 bottom-0 top-16 z-10"
-          onTouchStart={(e) => { e.stopPropagation(); showExit(); }}
-          onClick={(e) => { e.stopPropagation(); showExit(); }}
-        />
-      )}
-
       {!loaderVisible && (
         <div
           className="absolute top-0 left-0 z-20 p-3 transition-opacity duration-300"
           style={{ opacity: exitVisible ? 1 : 0, pointerEvents: exitVisible ? "auto" : "none" }}
         >
           <button
-            onTouchStart={(e) => { e.stopPropagation(); navigate("/"); }}
-            onClick={(e) => { e.stopPropagation(); navigate("/"); }}
+            onTouchStart={(e) => { e.stopPropagation(); saveNow(); navigate("/"); }}
+            onClick={(e) => { e.stopPropagation(); saveNow(); navigate("/"); }}
             className="flex items-center gap-2 rounded-full bg-black/80 px-4 py-2.5 text-sm font-bold text-white"
             style={{ WebkitTapHighlightColor: "transparent" }}
           >
