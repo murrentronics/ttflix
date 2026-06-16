@@ -158,11 +158,14 @@ export function WatchPage() {
     };
   }, [user, session, profile, isAdmin, tmdbId, type, title, season, episode]);
 
-  // Fetch runtime from TMDB
+  // Fetch runtime from TMDB — populate duration before anything is saved
   const durationReadyRef = useRef(false);
   useEffect(() => {
-    watchStartRef.current = Date.now();
     durationReadyRef.current = false;
+    progressRef.current = { watched: 0, duration: 0, hasPostMessage: false };
+    watchStartRef.current = Date.now();
+    savedInitial.current = false;
+    playerStartedRef.current = false;
 
     async function fetchDuration() {
       try {
@@ -191,18 +194,43 @@ export function WatchPage() {
   const onLoaderDone = useCallback(() => setLoaderVisible(false), []);
 
   const savedInitial = useRef(false);
+
   const saveInitial = useCallback(async () => {
     if (savedInitial.current) return;
     if (!user || !effectiveProfile || !title) return;
     savedInitial.current = true;
+
+    // Wait up to 6s for duration to be fetched from TMDB
     if (!durationReadyRef.current) {
       await new Promise<void>((resolve) => {
         const check = setInterval(() => {
           if (durationReadyRef.current) { clearInterval(check); resolve(); }
         }, 200);
-        setTimeout(() => { clearInterval(check); resolve(); }, 4000);
+        setTimeout(() => { clearInterval(check); resolve(); }, 6000);
       });
     }
+
+    const duration = progressRef.current.duration;
+
+    // If we still have no duration, try to pull from DB (existing record)
+    let safeDuration = duration > 0 ? Math.floor(duration) : 0;
+    if (safeDuration === 0) {
+      const { data: existing } = await supabase
+        .from("watch_progress")
+        .select("duration_seconds")
+        .eq("user_id", user.id)
+        .eq("profile_id", effectiveProfile.id)
+        .eq("tmdb_id", tmdbId)
+        .eq("media_type", type)
+        .maybeSingle();
+      safeDuration = existing?.duration_seconds ?? 0;
+    }
+
+    // Also write it back to progressRef so persist() uses it
+    if (safeDuration > 0 && progressRef.current.duration === 0) {
+      progressRef.current.duration = safeDuration;
+    }
+
     await saveProgress({
       user_id: user.id,
       profile_id: effectiveProfile.id,
@@ -212,17 +240,7 @@ export function WatchPage() {
       poster_path: poster || null,
       backdrop_path: backdrop || null,
       watched_seconds: 10,
-      duration_seconds: progressRef.current.duration > 0
-        ? Math.floor(progressRef.current.duration)
-        : await supabase
-            .from("watch_progress")
-            .select("duration_seconds")
-            .eq("user_id", user.id)
-            .eq("profile_id", effectiveProfile.id)
-            .eq("tmdb_id", tmdbId)
-            .eq("media_type", type)
-            .maybeSingle()
-            .then(({ data }) => data?.duration_seconds ?? 0),
+      duration_seconds: safeDuration,
       season: type === "tv" ? season : null,
       episode: type === "tv" ? episode : null,
     });
@@ -293,6 +311,18 @@ export function WatchPage() {
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, [triggerExplosion, saveInitial]);
+
+  // When src changes, force iframe to hard-reload so autoplay fires cleanly
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    // Blank it first, then set new src on next tick — forces a full reload
+    iframe.src = "about:blank";
+    const t = setTimeout(() => {
+      if (iframeRef.current) iframeRef.current.src = src;
+    }, 50);
+    return () => clearTimeout(t);
+  }, [src]);
 
   // Keep a stable ref to the latest persist so the interval never captures a stale closure
   const persistRef = useRef(persist);
@@ -417,7 +447,6 @@ export function WatchPage() {
 
       <iframe
         ref={iframeRef}
-        src={src}
         title="Player"
         className="absolute inset-0 h-full w-full border-0"
         referrerPolicy="no-referrer"
