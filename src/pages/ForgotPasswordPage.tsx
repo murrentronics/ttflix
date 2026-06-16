@@ -110,6 +110,9 @@ export function ForgotPasswordPage() {
             </div>
           )}
         </div>
+        <div className="mt-4 text-center">
+          <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">← Back to Home</Link>
+        </div>
       </div>
 
       <style>{`.input{width:100%;border-radius:0.375rem;border:1px solid var(--border);background:var(--input);padding:0.65rem 0.85rem;outline:none}.input:focus{border-color:var(--primary)}`}</style>

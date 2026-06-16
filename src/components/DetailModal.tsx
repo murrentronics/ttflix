@@ -160,13 +160,15 @@ export function DetailModal() {
                   {canWatch ? "Play" : "Unlock"}
                 </button>
               )}
-              <button
-                onClick={toggleList}
-                className="flex items-center gap-2 rounded-md bg-secondary px-5 py-2.5 font-semibold transition hover:bg-accent"
-              >
-                {inList ? <Check className="h-5 w-5 text-primary" /> : <Plus className="h-5 w-5" />}
-                {inList ? "In My List" : "My List"}
-              </button>
+              {!isBlockedForKids && (
+                <button
+                  onClick={toggleList}
+                  className="flex items-center gap-2 rounded-md bg-secondary px-5 py-2.5 font-semibold transition hover:bg-accent"
+                >
+                  {inList ? <Check className="h-5 w-5 text-primary" /> : <Plus className="h-5 w-5" />}
+                  {inList ? "In My List" : "My List"}
+                </button>
+              )}
             </div>
 
             <p className="text-sm leading-relaxed text-foreground/85">{data.overview}</p>

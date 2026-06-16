@@ -341,6 +341,51 @@ export function WatchPage() {
     return () => clearTimeout(t);
   }, [src]);
 
+  // Auto-click the player's initial play overlay after loader clears or src changes.
+  // Only fires when the player hasn't started yet (hasPostMessage=false).
+  // Once playing, user pause is fully respected — no auto-click interference.
+  useEffect(() => {
+    if (loaderVisible) return;
+
+    const autoClick = () => {
+      if (progressRef.current.hasPostMessage) return; // already playing, leave it alone
+
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+
+      // Try direct DOM access (same-origin or relaxed WebView)
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (doc) {
+          const video = doc.querySelector("video") as HTMLVideoElement | null;
+          if (video && video.paused) { video.play().catch(() => {}); return; }
+          const el = doc.elementFromPoint(
+            doc.documentElement.clientWidth / 2,
+            doc.documentElement.clientHeight / 2,
+          );
+          (el as HTMLElement | null)?.click();
+          return;
+        }
+      } catch { /* cross-origin — fall through */ }
+
+      // Cross-origin fallback: fire pointer events at iframe centre
+      const rect = iframe.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      ["pointerdown", "pointerup", "click"].forEach((type) => {
+        iframe.dispatchEvent(new PointerEvent(type, {
+          bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window,
+        }));
+      });
+    };
+
+    // Retry a few times — player overlay can take a moment to appear
+    const t1 = setTimeout(autoClick, 600);
+    const t2 = setTimeout(autoClick, 1800);
+    const t3 = setTimeout(autoClick, 3500);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [loaderVisible, src]);
+
   // Keep a stable ref to the latest persist so the interval never captures a stale closure
   const persistRef = useRef(persist);
   useEffect(() => { persistRef.current = persist; }, [persist]);

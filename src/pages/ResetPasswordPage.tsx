@@ -41,7 +41,8 @@ function RuleRow({ passed, label }: { passed: boolean; label: string }) {
   );
 }
 
-// ── 6-digit code input (individual boxes) ───────────────────────────────────
+// ── 6-digit code input ───────────────────────────────────────────────────────
+// Single input underneath, visual boxes on top — works reliably on mobile
 function CodeInput({
   value,
   onChange,
@@ -49,57 +50,41 @@ function CodeInput({
   value: string;
   onChange: (v: string) => void;
 }) {
-  const digits = value.padEnd(6, "").split("").slice(0, 6);
-
-  const handleKey = (
-    e: React.KeyboardEvent<HTMLInputElement>,
-    idx: number,
-  ) => {
-    const inputs = Array.from(
-      document.querySelectorAll<HTMLInputElement>(".code-box"),
-    );
-    if (e.key === "Backspace") {
-      const next = [...digits];
-      if (next[idx] && next[idx] !== " ") {
-        next[idx] = "";
-      } else if (idx > 0) {
-        next[idx - 1] = "";
-        inputs[idx - 1]?.focus();
-      }
-      onChange(next.join("").replace(/ /g, ""));
-    } else if (/^\d$/.test(e.key)) {
-      const next = [...digits];
-      next[idx] = e.key;
-      onChange(next.join("").replace(/ /g, ""));
-      if (idx < 5) inputs[idx + 1]?.focus();
-    }
-  };
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    onChange(pasted);
-    // Focus last filled box
-    const inputs = Array.from(
-      document.querySelectorAll<HTMLInputElement>(".code-box"),
-    );
-    inputs[Math.min(pasted.length, 5)]?.focus();
-  };
+  const digits = value.split("").slice(0, 6);
+  while (digits.length < 6) digits.push("");
 
   return (
-    <div className="flex justify-center gap-2">
+    <div className="relative flex justify-center gap-2">
+      {/* Visual boxes */}
       {digits.map((d, i) => (
-        <input
+        <div
           key={i}
-          className="code-box h-12 w-10 rounded-lg border border-border bg-input text-center text-xl font-bold outline-none focus:border-primary focus:ring-1 focus:ring-primary"
-          maxLength={1}
-          inputMode="numeric"
-          value={d === " " || !d ? "" : d}
-          onChange={() => {}} // controlled via onKeyDown
-          onKeyDown={(e) => handleKey(e, i)}
-          onPaste={handlePaste}
-          autoFocus={i === 0}
-        />
+          className={`flex h-12 w-10 items-center justify-center rounded-lg border text-xl font-bold transition-colors ${
+            value.length === i
+              ? "border-primary ring-1 ring-primary"
+              : d
+              ? "border-border bg-input"
+              : "border-border bg-input"
+          }`}
+        >
+          {d || ""}
+        </div>
       ))}
+      {/* Invisible input covering the boxes */}
+      <input
+        type="tel"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        maxLength={6}
+        value={value}
+        autoFocus
+        onChange={(e) => {
+          const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+          onChange(v);
+        }}
+        className="absolute inset-0 h-full w-full cursor-text opacity-0"
+        aria-label="6-digit reset code"
+      />
     </div>
   );
 }
@@ -188,6 +173,12 @@ export function ResetPasswordPage() {
           {/* ── Step 1: Enter code ── */}
           {step === "code" && (
             <>
+              <button
+                onClick={() => navigate("/auth")}
+                className="mb-4 flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+              >
+                ← Back to Sign In
+              </button>
               <h1 className="text-2xl font-extrabold">Enter Reset Code</h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 Enter the 6-digit code we sent to{" "}
@@ -343,6 +334,7 @@ export function ResetPasswordPage() {
               >
                 Sign In
               </button>
+              <Link to="/" className="block text-sm text-muted-foreground hover:text-foreground">← Back to Home</Link>
             </div>
           )}
         </div>

@@ -1,9 +1,16 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertCircle, Check, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Check, Eye, EyeOff, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { PLANS, type PlanId } from "@/lib/supabase";
 import heroBg from "@/assets/landing-hero.jpg";
+
+const PASSWORD_RULES = [
+  { key: "length",  label: "At least 8 characters",      test: (v: string) => v.length >= 8 },
+  { key: "upper",   label: "At least 1 uppercase letter", test: (v: string) => /[A-Z]/.test(v) },
+  { key: "number",  label: "At least 1 number",           test: (v: string) => /[0-9]/.test(v) },
+  { key: "special", label: "At least 1 special character",test: (v: string) => /[^A-Za-z0-9]/.test(v) },
+] as const;
 
 /** Format phone as NNN-NNNN (7 digits max, auto-hyphen after 3rd digit) */
 function formatPhone(raw: string): string {
@@ -27,6 +34,9 @@ export function AuthPage() {
   const [plan, setPlan] = useState<PlanId>("basic");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const rulePassed = PASSWORD_RULES.map((r) => r.test(password));
+  const allRulesPassed = rulePassed.every(Boolean);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setPhone(formatPhone(e.target.value));
@@ -108,6 +118,19 @@ export function AuthPage() {
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
+              {/* Password validator — signup only, shows as user types */}
+              {isSignup && password.length > 0 && (
+                <ul className="mt-2 space-y-1 rounded-lg border border-border bg-muted/40 p-3">
+                  {PASSWORD_RULES.map((r, i) => (
+                    <li key={r.key} className="flex items-center gap-2 text-sm">
+                      {rulePassed[i]
+                        ? <Check className="h-4 w-4 shrink-0 text-green-500" />
+                        : <X     className="h-4 w-4 shrink-0 text-red-500" />}
+                      <span className={rulePassed[i] ? "text-green-400" : "text-red-400"}>{r.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Field>
 
             {isSignup && (
@@ -153,7 +176,7 @@ export function AuthPage() {
               </>
             )}
 
-            <button type="submit" disabled={busy}
+            <button type="submit" disabled={busy || (isSignup && !allRulesPassed)}
               className="w-full rounded-md bg-primary py-3 font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-60">
               {busy ? "Please wait…" : isSignup ? "Sign Up" : "Sign In"}
             </button>
@@ -173,6 +196,14 @@ export function AuthPage() {
               </Link>
             </p>
           )}
+          <div className="mt-6 border-t border-border pt-5">
+            <Link
+              to="/"
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-border py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-accent hover:text-foreground"
+            >
+              ← Back to Home
+            </Link>
+          </div>
         </div>
       </div>
       <style>{`.input{width:100%;border-radius:0.375rem;border:1px solid var(--border);background:var(--input);padding:0.65rem 0.85rem;outline:none}.input:focus{border-color:var(--primary)}`}</style>
