@@ -3,12 +3,14 @@ import { Radio, X, RefreshCw, WifiOff, Tv2 } from "lucide-react";
 import {
   fetchLiveMatches,
   fetchStreams,
-  badgeUrl,
   sportEmoji,
   sportColor,
   type LiveMatch,
   type LiveStream,
 } from "@/lib/live-sports";
+
+// Badge URL is now a full URL from sportsrc.org — use directly
+function badgeUrl(badge: string) { return badge; }
 
 // ─── Pulsing LIVE badge ───────────────────────────────────────────────────────
 

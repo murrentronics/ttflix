@@ -1,9 +1,10 @@
 /**
- * streamed.pk API — free, no key needed.
- * Provides live sports matches with real embed URLs for iframe players.
+ * sportsrc.org API — free, no key, CORS enabled.
+ * Returns real matches with embed URLs on embed.streamapi.cc
+ * which works correctly inside an Android WebView iframe.
  */
 
-const API = "https://streamed.pk";
+const API = "https://api.sportsrc.org";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,7 +19,6 @@ export type LiveMatch = {
     home?: { name: string; badge: string };
     away?: { name: string; badge: string };
   };
-  sources: { source: string; id: string }[];
 };
 
 export type LiveStream = {
@@ -30,16 +30,6 @@ export type LiveStream = {
   source: string;
   viewers?: number;
 };
-
-// ─── Image helpers ────────────────────────────────────────────────────────────
-
-export function badgeUrl(badge: string) {
-  return `${API}/api/images/badge/${badge}.webp`;
-}
-
-export function posterUrl(poster: string) {
-  return `${API}/api/images/proxy/${poster}.webp`;
-}
 
 // ─── Sport category emoji map ─────────────────────────────────────────────────
 
@@ -85,47 +75,61 @@ export function sportColor(category: string) {
 
 // ─── API calls ────────────────────────────────────────────────────────────────
 
+const SPORT_CATEGORIES = ["football", "basketball", "baseball", "hockey", "tennis", "mma", "boxing", "rugby", "cricket"];
+
 /**
- * Fetch all currently live matches.
- * Falls back to popular today's matches if nothing is live.
+ * Fetch live/upcoming matches across all sports.
+ * Fetches football + basketball in parallel, merges, sorts by date.
+ * Falls back to upcoming if nothing is currently live.
  */
 export async function fetchLiveMatches(): Promise<LiveMatch[]> {
   try {
-    const res = await fetch(`${API}/api/matches/live`, {
-      headers: { Accept: "application/json" },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data: LiveMatch[] = await res.json();
-    if (Array.isArray(data) && data.length > 0) return data;
+    const now = Date.now();
 
-    // Nothing live right now — fall back to today's popular matches
-    const res2 = await fetch(`${API}/api/matches/all-today/popular`, {
-      headers: { Accept: "application/json" },
-    });
-    if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
-    const data2: LiveMatch[] = await res2.json();
-    return Array.isArray(data2) ? data2 : [];
+    // Fetch football and basketball in parallel (most popular for T&T viewers)
+    const results = await Promise.allSettled(
+      ["football", "basketball"].map((cat) =>
+        fetch(`${API}/?data=matches&category=${cat}`, { headers: { Accept: "application/json" } })
+          .then((r) => r.json())
+          .then((d) => (d.success && Array.isArray(d.data) ? (d.data as LiveMatch[]) : []))
+          .catch(() => [] as LiveMatch[])
+      )
+    );
+
+    const all: LiveMatch[] = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+
+    // Sort by date, show matches within ±4 hours of now first
+    const relevant = all
+      .filter((m) => Math.abs(m.date - now) < 4 * 60 * 60 * 1000)
+      .sort((a, b) => Math.abs(a.date - now) - Math.abs(b.date - now));
+
+    if (relevant.length > 0) return relevant;
+
+    // Nothing near-live — return next 20 upcoming sorted by time
+    return all.sort((a, b) => a.date - b.date).slice(0, 20);
   } catch {
     return [];
   }
 }
 
 /**
- * Fetch stream embed URLs for a match.
- * Tries each source in order and returns the first one that has streams.
+ * Fetch stream embed URLs for a specific match via the detail endpoint.
+ * Returns streams sorted by viewers desc — most watched = most reliable.
  */
 export async function fetchStreams(match: LiveMatch): Promise<LiveStream[]> {
-  for (const src of match.sources) {
-    try {
-      const res = await fetch(`${API}/api/stream/${src.source}/${src.id}`, {
-        headers: { Accept: "application/json" },
-      });
-      if (!res.ok) continue;
-      const streams: LiveStream[] = await res.json();
-      if (Array.isArray(streams) && streams.length > 0) return streams;
-    } catch {
-      continue;
-    }
+  try {
+    const res = await fetch(
+      `${API}/?data=detail&category=${match.category}&id=${match.id}`,
+      { headers: { Accept: "application/json" } }
+    );
+    if (!res.ok) return [];
+    const json = await res.json();
+    if (!json.success || !json.data?.sources) return [];
+
+    const streams: LiveStream[] = json.data.sources;
+    // Sort by viewers desc so the most active stream is first
+    return streams.sort((a, b) => (b.viewers ?? 0) - (a.viewers ?? 0));
+  } catch {
+    return [];
   }
-  return [];
 }
