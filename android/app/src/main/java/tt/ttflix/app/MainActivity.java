@@ -23,6 +23,10 @@ public class MainActivity extends BridgeActivity {
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().clearCache(true);
 
+            // Disable the native Android scrollbar drawn by WebView
+            getBridge().getWebView().setVerticalScrollBarEnabled(false);
+            getBridge().getWebView().setHorizontalScrollBarEnabled(false);
+
             // Allow cross-origin postMessages from Videasy iframe to reach the app
             getBridge().getWebView().getSettings().setJavaScriptEnabled(true);
             getBridge().getWebView().getSettings().setDomStorageEnabled(true);
