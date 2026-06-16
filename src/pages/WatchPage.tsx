@@ -386,6 +386,35 @@ export function WatchPage() {
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [loaderVisible, src]);
 
+  // When app returns to foreground after being backgrounded, the WebView
+  // suspends the iframe leaving a black screen. Reload the current src to recover.
+  useEffect(() => {
+    let hiddenAt = 0;
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+      } else if (document.visibilityState === "visible") {
+        // Only reload if we were backgrounded for more than 3 seconds
+        // (avoids reload on brief screen-off flickers)
+        const awayMs = Date.now() - hiddenAt;
+        if (hiddenAt > 0 && awayMs > 3000) {
+          const iframe = iframeRef.current;
+          if (!iframe) return;
+          // Reset hasPostMessage so auto-click fires again on reload
+          progressRef.current.hasPostMessage = false;
+          iframe.src = "about:blank";
+          setTimeout(() => {
+            if (iframeRef.current) iframeRef.current.src = src;
+          }, 100);
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [src]);
+
   // Keep a stable ref to the latest persist so the interval never captures a stale closure
   const persistRef = useRef(persist);
   useEffect(() => { persistRef.current = persist; }, [persist]);
