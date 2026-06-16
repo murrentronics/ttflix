@@ -60,14 +60,6 @@ export function ContinueWatchingRow() {
         {items.map((item) => {
           const poster = img(item.poster_path ?? item.backdrop_path, "w500");
 
-          const secsLeft = item.duration_seconds > 0
-            ? Math.max(0, item.duration_seconds - item.watched_seconds)
-            : null;
-          const minsLeft = secsLeft !== null ? Math.round(secsLeft / 60) : null;
-          const timeLabel = minsLeft !== null
-            ? minsLeft <= 1 ? "< 1 min left" : `${minsLeft} min left`
-            : null;
-
           return (
             <div
               key={`${item.media_type}-${item.tmdb_id}`}
@@ -97,9 +89,6 @@ export function ContinueWatchingRow() {
                   <p className="mt-0.5 text-[11px] text-muted-foreground">
                     S{item.season} · E{item.episode}
                   </p>
-                )}
-                {timeLabel && (
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">{timeLabel}</p>
                 )}
               </div>
 
