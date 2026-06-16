@@ -48,7 +48,7 @@ export function WatchPage() {
   const tmdbId = Number(id);
   const stillLoading = loading || profileLoading;
   const canWatch = isAdmin || (!!user && profile?.status === "approved");
-  const isKidsProfile = (activeProfile?.is_kids ?? false) && !isAdmin;
+  const isKidsProfile = activeProfile?.is_kids ?? false;
 
   // Kids cert check — fetch details to get certification, block explicit ratings
   const KIDS_BLOCKED_RATINGS = new Set(["PG-13", "R", "NC-17", "TV-14", "TV-MA", "18+", "18", "X"]);
