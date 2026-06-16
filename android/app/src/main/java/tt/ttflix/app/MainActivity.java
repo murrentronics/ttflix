@@ -29,6 +29,13 @@ public class MainActivity extends BridgeActivity {
             getBridge().getWebView().getSettings().setAllowUniversalAccessFromFileURLs(true);
             getBridge().getWebView().getSettings().setAllowFileAccessFromFileURLs(true);
 
+            // Override UA globally — removes the "wv" WebView marker so stream
+            // sites don't detect and block Capacitor's WebView
+            String cleanUA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) "
+                + "AppleWebKit/537.36 (KHTML, like Gecko) "
+                + "Chrome/124.0.0.0 Mobile Safari/537.36";
+            getBridge().getWebView().getSettings().setUserAgentString(cleanUA);
+
             // Block all new window / popup / ad redirect attempts from iframes
             getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
                 @Override
@@ -40,15 +47,21 @@ public class MainActivity extends BridgeActivity {
             });
 
             // Block navigation away from the app origin
+            // Allow embed.st and streamed.pk so live sports iframes can load
             getBridge().getWebView().setWebViewClient(new com.getcapacitor.BridgeWebViewClient(getBridge()) {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                     String url = request.getUrl().toString();
-                    // Allow internal app URLs only
+                    // Always allow internal app URLs
                     if (url.startsWith("capacitor://") || url.startsWith("http://localhost")) {
                         return false;
                     }
-                    // Block everything else (ad redirects, external links from iframe)
+                    // Allow live sports stream domains
+                    if (url.contains("embed.st") || url.contains("streamed.pk")
+                            || url.contains("strmd.link") || url.contains("videasy.net")) {
+                        return false;
+                    }
+                    // Block everything else (ad redirects, external links)
                     return true;
                 }
             });

@@ -224,7 +224,6 @@ function LivePlayer({
           className="absolute inset-0 h-full w-full border-0"
           allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
           allowFullScreen
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-presentation allow-top-navigation-by-user-activation"
           referrerPolicy="no-referrer"
           onLoad={() => setLoadState("ready")}
           onError={() => setLoadState("error")}
