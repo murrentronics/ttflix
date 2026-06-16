@@ -45,7 +45,7 @@ export function Navbar() {
       {/* Background overlay */}
       <div
         className={`fixed inset-0 z-30 bg-black transition-opacity duration-300 ${
-          anyMenuOpen ? "opacity-60 pointer-events-auto" : "opacity-0 pointer-events-none"
+          anyMenuOpen ? "opacity-85 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
         onClick={() => { setMobileOpen(false); setProfileOpen(false); }}
         aria-hidden="true"
@@ -185,31 +185,33 @@ export function Navbar() {
             </Link>
           )}
 
-          <button className="md:hidden" onClick={() => { setProfileOpen(false); setMobileOpen((o) => !o); }} aria-label="Menu">
-            {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
+          <div className="relative md:hidden">
+            <button onClick={() => { setProfileOpen(false); setMobileOpen((o) => !o); }} aria-label="Menu">
+              {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+
+            {mobileOpen && (
+              <nav className="absolute right-0 top-full mt-1 w-52 rounded-md border border-border bg-popover py-1 shadow-xl z-50">
+                {LINKS.map((l) => (
+                  <NavLink
+                    key={l.to}
+                    to={l.to}
+                    end={l.to === "/"}
+                    onClick={() => setMobileOpen(false)}
+                    className={({ isActive }) =>
+                      `block px-4 py-2 text-sm hover:bg-accent ${
+                        isActive ? "text-foreground font-semibold" : "text-foreground/80"
+                      }`
+                    }
+                  >
+                    {l.label}
+                  </NavLink>
+                ))}
+              </nav>
+            )}
+          </div>
         </div>
       </div>
-
-      {mobileOpen && (
-        <nav className="flex flex-col gap-1 border-t border-border bg-background/98 px-4 py-3 md:hidden">
-          {LINKS.map((l) => (
-            <NavLink
-              key={l.to}
-              to={l.to}
-              end={l.to === "/"}
-              onClick={() => setMobileOpen(false)}
-              className={({ isActive }) =>
-                `rounded px-2 py-2 text-sm hover:bg-accent ${
-                  isActive ? "text-foreground font-semibold" : "text-foreground/80"
-                }`
-              }
-            >
-              {l.label}
-            </NavLink>
-          ))}
-        </nav>
-      )}
     </header>
     </>
   );

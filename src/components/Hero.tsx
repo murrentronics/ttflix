@@ -38,11 +38,11 @@ export function Hero({ items }: { items: TmdbItem[] }) {
       <div className="absolute inset-0" style={{ background: "var(--gradient-hero)" }} />
       <div className="absolute inset-0" style={{ background: "var(--gradient-hero-left)" }} />
 
-      <div className="absolute bottom-[18%] left-0 right-0 flex flex-col items-center px-4 text-center sm:px-8">
+      <div className="absolute bottom-[18%] left-0 max-w-2xl px-4 sm:px-8">
         <h1 className="text-balance text-3xl font-extrabold drop-shadow-lg sm:text-5xl md:text-6xl">
           {item.title}
         </h1>
-        <div className="mt-3 flex items-center justify-center gap-3 text-sm">
+        <div className="mt-3 flex items-center gap-3 text-sm">
           <span className="flex items-center gap-1 text-primary">
             <Star className="h-4 w-4 fill-primary" /> {item.vote_average.toFixed(1)}
           </span>

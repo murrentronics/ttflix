@@ -1,6 +1,6 @@
 ﻿import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { X, ChevronRight } from "lucide-react";
+import { X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { getProviders, type Provider } from "@/lib/stream";
@@ -444,48 +444,6 @@ export function WatchPage() {
           >
             <X className="h-4 w-4" /> Exit
           </button>
-        </div>
-      )}
-
-      {/* Provider switcher — top right */}
-      {!loaderVisible && (
-        <div
-          className="absolute top-0 right-0 z-20 p-3 transition-opacity duration-300"
-          style={{ opacity: exitVisible ? 1 : 0, pointerEvents: exitVisible ? "auto" : "none" }}
-        >
-          <div className="flex items-center gap-1.5 rounded-full bg-black/80 px-3 py-2">
-            {providers.map((p, i) => (
-              <button
-                key={p.name}
-                onTouchStart={(e) => {
-                  e.stopPropagation();
-                  if (i !== providerIndex) {
-                    providerSignalRef.current = false;
-                    setProviderIndex(i);
-                    setSrc(p.url);
-                  }
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (i !== providerIndex) {
-                    providerSignalRef.current = false;
-                    setProviderIndex(i);
-                    setSrc(p.url);
-                  }
-                }}
-                className={`rounded-full px-2.5 py-1 text-xs font-bold transition ${
-                  i === providerIndex
-                    ? "bg-primary text-white"
-                    : "text-white/60 hover:text-white"
-                }`}
-                style={{ WebkitTapHighlightColor: "transparent" }}
-                aria-label={`Switch to ${p.name}`}
-              >
-                {i === providerIndex && <ChevronRight className="mr-0.5 inline h-3 w-3" />}
-                {p.name}
-              </button>
-            ))}
-          </div>
         </div>
       )}
     </div>

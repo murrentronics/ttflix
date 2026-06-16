@@ -8,9 +8,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isKids = activeProfile?.is_kids ?? false;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <Navbar />
-      <main>{children}</main>
+      <main className="flex-1">{children}</main>
       <footer className="border-t border-border px-4 py-10 text-sm text-muted-foreground sm:px-8">
         <div className="mx-auto max-w-6xl space-y-4 text-center">
           <Link to="/" className="block text-xl font-extrabold text-primary">
