@@ -21,6 +21,7 @@ export function WatchPage() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [explodeLoader, setExplodeLoader] = useState(false);
+  const [loaderKey, setLoaderKey] = useState(0); // increment to force fresh TTFlixLoader mount
   const [exitVisible, setExitVisible] = useState(true);
   const [screenError, setScreenError] = useState<string | null>(null);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -359,54 +360,55 @@ export function WatchPage() {
     return () => clearTimeout(t);
   }, [src]);
 
-  // Auto-click the player's initial play overlay whenever src is set.
-  // Fires behind the loader so playback starts as soon as the loader clears.
-  // Only fires when the player hasn't started yet (hasPostMessage=false).
-  // Once playing, user pause is fully respected — no auto-click interference.
+  // Send a play command via postMessage — works for players that listen for it
+  // (Videasy and most embed players accept player.js-style or basic play commands)
+  const sendPlayCommand = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentWindow) return;
+    // Try multiple command formats different players accept
+    const commands = [
+      { method: "play" },                          // player.js standard
+      { type: "play" },                            // generic
+      { event: "command", func: "playVideo" },     // YouTube-style
+      "play",                                      // plain string
+    ];
+    commands.forEach((cmd) => {
+      try { iframe.contentWindow!.postMessage(typeof cmd === "string" ? cmd : JSON.stringify(cmd), "*"); } catch {}
+    });
+  }, []);
+
+  // Auto-play: send postMessage play commands on a schedule after src loads.
+  // The autoplay=1 URL param handles the initial load; postMessage handles
+  // cases where the player shows a click-to-play overlay.
   useEffect(() => {
-    const autoClick = () => {
-      if (progressRef.current.hasPostMessage) return; // already playing, leave it alone
+    const t1 = setTimeout(sendPlayCommand, 1000);
+    const t2 = setTimeout(sendPlayCommand, 2500);
+    const t3 = setTimeout(sendPlayCommand, 4500);
+    const t4 = setTimeout(sendPlayCommand, 7000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
+  }, [src, sendPlayCommand]);
 
-      const iframe = iframeRef.current;
-      if (!iframe || !iframe.src || iframe.src === "about:blank") return;
-
-      // Try direct DOM access (same-origin or relaxed WebView)
-      try {
-        const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (doc && doc.location.href !== "about:blank") {
-          const video = doc.querySelector("video") as HTMLVideoElement | null;
-          if (video && video.paused) { video.play().catch(() => {}); return; }
-          const el = doc.elementFromPoint(
-            doc.documentElement.clientWidth / 2,
-            doc.documentElement.clientHeight / 2,
-          );
-          (el as HTMLElement | null)?.click();
-          return;
-        }
-      } catch { /* cross-origin — fall through */ }
-
-      // Cross-origin fallback: fire pointer events at iframe centre
-      const rect = iframe.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      ["pointerdown", "pointerup", "click"].forEach((evtType) => {
-        iframe.dispatchEvent(new PointerEvent(evtType, {
-          bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window,
-        }));
-      });
-    };
-
-    // Spread retries over 8 seconds — Videasy's play overlay can be slow to appear
-    const t1 = setTimeout(autoClick, 800);
-    const t2 = setTimeout(autoClick, 2000);
-    const t3 = setTimeout(autoClick, 3500);
-    const t4 = setTimeout(autoClick, 5000);
-    const t5 = setTimeout(autoClick, 8000);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); clearTimeout(t5); };
-  }, [src]);
+  // ── Helper: reload the iframe and show the loader while it recovers ──────────
+  const reloadPlayer = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    // Reset loader to fresh state (new key forces TTFlixLoader to fully remount)
+    setExplodeLoader(false);
+    setLoaderKey((k) => k + 1);
+    setLoaderVisible(true);
+    progressRef.current.hasPostMessage = false;
+    playerStartedRef.current = false;
+    providerSignalRef.current = false;
+    iframe.src = "about:blank";
+    setTimeout(() => {
+      if (iframeRef.current) iframeRef.current.src = src;
+      // Trigger explosion after a grace period so loader has time to animate in
+      setTimeout(() => triggerExplosion(), 4000);
+    }, 150);
+  }, [src, triggerExplosion]);
 
   // When app returns to foreground after being backgrounded, the WebView
-  // suspends the iframe leaving a black screen. Reload the current src to recover.
+  // suspends the iframe leaving a black screen. Show loader and reload.
   useEffect(() => {
     let hiddenAt = 0;
 
@@ -414,26 +416,49 @@ export function WatchPage() {
       if (document.visibilityState === "hidden") {
         hiddenAt = Date.now();
       } else if (document.visibilityState === "visible") {
-        // Only reload if we were backgrounded for more than 3 seconds
-        // (avoids reload on brief screen-off flickers)
         const awayMs = Date.now() - hiddenAt;
+        // Only reload if backgrounded for more than 3 seconds
         if (hiddenAt > 0 && awayMs > 3000) {
-          const iframe = iframeRef.current;
-          if (!iframe) return;
-          // Reset hasPostMessage so auto-click fires again on reload
-          progressRef.current.hasPostMessage = false;
-          playerStartedRef.current = false;
-          iframe.src = "about:blank";
-          setTimeout(() => {
-            if (iframeRef.current) iframeRef.current.src = src;
-          }, 100);
+          reloadPlayer();
         }
       }
     };
 
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [src]);
+  }, [reloadPlayer]);
+
+  // ── Crash/stall watchdog ─────────────────────────────────────────────────────
+  // Once the player has started (playerStartedRef=true), check every 15s that
+  // currentTime is still advancing. If it's frozen for 2 consecutive checks,
+  // treat it as a crash and reload.
+  useEffect(() => {
+    let lastTime = -1;
+    let frozenCount = 0;
+
+    const t = setInterval(() => {
+      // Only watch-dog once the player has actually started
+      if (!playerStartedRef.current) { lastTime = -1; frozenCount = 0; return; }
+      // Skip check if page is hidden (backgrounded — handled by visibility handler)
+      if (document.visibilityState === "hidden") { lastTime = -1; frozenCount = 0; return; }
+
+      const ct = progressRef.current.watched;
+      if (ct === lastTime && ct > 0) {
+        frozenCount++;
+        if (frozenCount >= 2) {
+          // Frozen for ~30s — treat as a crash, reload
+          frozenCount = 0;
+          lastTime = -1;
+          reloadPlayer();
+        }
+      } else {
+        frozenCount = 0;
+        lastTime = ct;
+      }
+    }, 15_000);
+
+    return () => clearInterval(t);
+  }, [reloadPlayer]);
 
   // Keep a stable ref to the latest persist so the interval never captures a stale closure
   const persistRef = useRef(persist);
@@ -566,6 +591,7 @@ export function WatchPage() {
     <div className="fixed inset-0 bg-black">
       {loaderVisible && (
         <TTFlixLoader
+          key={loaderKey}
           explode={explodeLoader}
           backdrop={backdrop || poster}
           onDone={onLoaderDone}
