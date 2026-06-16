@@ -166,8 +166,13 @@ function LivePlayer({
   }, []);
 
   useEffect(() => {
+    // Hide the fixed navbar so player is truly fullscreen
+    document.body.classList.add("live-player-open");
     showExit();
-    return () => { if (exitTimerRef.current) clearTimeout(exitTimerRef.current); };
+    return () => {
+      document.body.classList.remove("live-player-open");
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+    };
   }, [showExit]);
 
   // Fetch stream URLs from the API

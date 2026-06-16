@@ -199,8 +199,9 @@ export function WatchPage() {
     });
   }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop, season, episode]);
 
+  // Dismiss loader after 3s — don't wait for signals that may never fire on Android WebView
   useEffect(() => {
-    const t = setTimeout(() => { triggerExplosion(); saveInitial(); }, 2000);
+    const t = setTimeout(() => { triggerExplosion(); saveInitial(); }, 3000);
     return () => clearTimeout(t);
   }, [triggerExplosion, saveInitial]);
 

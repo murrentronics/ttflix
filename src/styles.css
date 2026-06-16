@@ -102,4 +102,9 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Hide the fixed navbar when a fullscreen live player is open */
+  body.live-player-open header {
+    display: none !important;
+  }
 }
