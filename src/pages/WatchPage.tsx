@@ -1,9 +1,9 @@
 ﻿import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { X } from "lucide-react";
+import { X, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
-import { streamUrl } from "@/lib/stream";
+import { getProviders, type Provider } from "@/lib/stream";
 import { saveProgress } from "@/lib/continue-watching";
 import { TTFlixLoader } from "@/components/TTFlixLoader";
 import { getDetails, getSeasonEpisodes } from "@/lib/tmdb.functions.app";
@@ -51,7 +51,36 @@ export function WatchPage() {
 
   const currentEpisodeRef = useRef({ season, episode });
 
-  const [src] = useState(() => streamUrl(type, tmdbId, season, episode));
+  const providers = getProviders(type, tmdbId, season, episode);
+  const [providerIndex, setProviderIndex] = useState(0);
+  const [src, setSrc] = useState(() => providers[0].url);
+  const providerSignalRef = useRef(false); // did current provider fire a ready/progress signal?
+
+  // Fallback: if provider fires no signal after 35s, try the next one
+  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const startFallbackTimer = useCallback(() => {
+    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+    providerSignalRef.current = false;
+    fallbackTimerRef.current = setTimeout(() => {
+      if (!providerSignalRef.current) {
+        setProviderIndex((prev) => {
+          const next = prev + 1;
+          if (next < providers.length) {
+            setSrc(providers[next].url);
+            return next;
+          }
+          return prev; // exhausted all providers
+        });
+      }
+    }, 35_000);
+  }, [providers]);
+
+  // Start fallback timer whenever src changes
+  useEffect(() => {
+    startFallbackTimer();
+    return () => { if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current); };
+  }, [src, startFallbackTimer]);
 
   // ── Screen limit check + register active watch ──────────────────────────────
   useEffect(() => {
@@ -241,7 +270,7 @@ export function WatchPage() {
       try {
         const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         if (d && typeof d === "object") console.log("[videasy msg]", JSON.stringify(d));
-        if (d?.type === "ready" || d?.event === "ready") { triggerExplosion(); saveInitial(); }
+        if (d?.type === "ready" || d?.event === "ready") { providerSignalRef.current = true; triggerExplosion(); saveInitial(); }
         if (d?.type === "episodeChange" || d?.event === "episodeChange") {
           if (d?.season) currentEpisodeRef.current.season = Number(d.season);
           if (d?.episode) currentEpisodeRef.current.episode = Number(d.episode);
@@ -252,6 +281,7 @@ export function WatchPage() {
           // Never overwrite a known duration with 0 — Videasy often sends duration: 0
           const newDuration = d.duration > 0 ? d.duration : progressRef.current.duration;
           progressRef.current = { watched: d.timestamp, duration: newDuration, hasPostMessage: true };
+          providerSignalRef.current = true; // provider is alive
           if (!playerStartedRef.current) {
             playerStartedRef.current = true;
             triggerExplosion();
@@ -283,6 +313,7 @@ export function WatchPage() {
         if (ct > 0) {
           const newDuration = (dur > 0 && isFinite(dur)) ? dur : progressRef.current.duration;
           progressRef.current = { watched: ct, duration: newDuration, hasPostMessage: true };
+          providerSignalRef.current = true; // video is playing — cancel fallback
         }
       } catch { /* cross-origin block — fall back to postMessage */ }
     }, 5_000);
@@ -413,6 +444,48 @@ export function WatchPage() {
           >
             <X className="h-4 w-4" /> Exit
           </button>
+        </div>
+      )}
+
+      {/* Provider switcher — top right */}
+      {!loaderVisible && (
+        <div
+          className="absolute top-0 right-0 z-20 p-3 transition-opacity duration-300"
+          style={{ opacity: exitVisible ? 1 : 0, pointerEvents: exitVisible ? "auto" : "none" }}
+        >
+          <div className="flex items-center gap-1.5 rounded-full bg-black/80 px-3 py-2">
+            {providers.map((p, i) => (
+              <button
+                key={p.name}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  if (i !== providerIndex) {
+                    providerSignalRef.current = false;
+                    setProviderIndex(i);
+                    setSrc(p.url);
+                  }
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (i !== providerIndex) {
+                    providerSignalRef.current = false;
+                    setProviderIndex(i);
+                    setSrc(p.url);
+                  }
+                }}
+                className={`rounded-full px-2.5 py-1 text-xs font-bold transition ${
+                  i === providerIndex
+                    ? "bg-primary text-white"
+                    : "text-white/60 hover:text-white"
+                }`}
+                style={{ WebkitTapHighlightColor: "transparent" }}
+                aria-label={`Switch to ${p.name}`}
+              >
+                {i === providerIndex && <ChevronRight className="mr-0.5 inline h-3 w-3" />}
+                {p.name}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

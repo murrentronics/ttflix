@@ -166,6 +166,13 @@ export function AuthPage() {
               {isSignup ? "Sign in" : "Sign up now"}
             </button>
           </p>
+          {!isSignup && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              <Link to="/forgot-password" className="font-semibold text-foreground hover:underline">
+                Forgot password?
+              </Link>
+            </p>
+          )}
         </div>
       </div>
       <style>{`.input{width:100%;border-radius:0.375rem;border:1px solid var(--border);background:var(--input);padding:0.65rem 0.85rem;outline:none}.input:focus{border-color:var(--primary)}`}</style>
