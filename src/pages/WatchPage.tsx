@@ -54,16 +54,18 @@ export function WatchPage() {
   const KIDS_BLOCKED_RATINGS = new Set(["PG-13", "R", "NC-17", "TV-14", "TV-MA", "18+", "18", "X"]);
   const [kidsBlocked, setKidsBlocked] = useState(false);
   const [kidsBlockedRating, setKidsBlockedRating] = useState<string | null>(null);
+  const kidsCheckDoneRef = useRef(!isKidsProfile); // if not a kids profile, check is instantly "done"
 
   useEffect(() => {
-    if (!isKidsProfile) return;
+    if (!isKidsProfile) { kidsCheckDoneRef.current = true; return; }
+    kidsCheckDoneRef.current = false;
     getDetails({ data: { id: tmdbId, mediaType: type } }).then((details) => {
       const cert = details.certification?.toUpperCase() ?? null;
       if (cert && KIDS_BLOCKED_RATINGS.has(cert)) {
         setKidsBlocked(true);
         setKidsBlockedRating(cert);
       }
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => { kidsCheckDoneRef.current = true; });
   }, [tmdbId, type, isKidsProfile]);
 
   const currentEpisodeRef = useRef({ season, episode });
