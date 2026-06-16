@@ -13,6 +13,7 @@ export type WatchProgress = {
   duration_seconds: number;
   season?: number | null;
   episode?: number | null;
+  vote_average?: number | null;
   updated_at?: string;
 };
 

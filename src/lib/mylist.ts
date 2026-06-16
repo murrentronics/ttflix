@@ -8,6 +8,7 @@ export type ListItem = {
   media_type: "movie" | "tv";
   title: string;
   poster_path: string | null;
+  vote_average?: number | null;
 };
 
 export async function fetchMyList(userId: string, profileId: string) {

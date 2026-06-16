@@ -79,11 +79,9 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-4">
-          {!activeProfile?.is_kids && (
-            <Link to="/search" className="text-foreground/90 transition hover:text-primary" aria-label="Search">
-              <Search className="h-5 w-5" />
-            </Link>
-          )}
+          <Link to="/search" className="text-foreground/90 transition hover:text-primary" aria-label="Search">
+            <Search className="h-5 w-5" />
+          </Link>
 
           {user ? (
             <div className="relative" ref={dropdownRef}>

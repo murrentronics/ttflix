@@ -32,7 +32,7 @@ export function SearchPage() {
             autoFocus
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Search movies, TV shows, cartoons…"
+            placeholder={isKids ? "Search cartoons, animal shows, adventures…" : "Search movies, TV shows, cartoons…"}
             className="w-full rounded-md border border-border bg-input py-3 pl-12 pr-12 text-lg outline-none focus:border-primary"
           />
           {input && (
@@ -45,7 +45,10 @@ export function SearchPage() {
             </button>
           )}
         </div>
-        {query.length <= 1 && <p className="text-muted-foreground">Type at least 2 characters to search.</p>}
+        {isKids && query.length <= 1 && (
+          <p className="text-muted-foreground">Search for your favourite cartoon or animal show 🐾</p>
+        )}
+        {!isKids && query.length <= 1 && <p className="text-muted-foreground">Type at least 2 characters to search.</p>}
         {isFetching && <p className="text-muted-foreground">Searching…</p>}
         {data && data.results.length === 0 && query.length > 1 && !isFetching && <p className="text-muted-foreground">No results for "{query}".</p>}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">

@@ -60,12 +60,19 @@ export function DetailModal() {
       await removeFromList(user.id, activeProfile.id, current.id, current.mediaType);
       setInList(false);
     } else {
-      await addToList({ user_id: user.id, profile_id: activeProfile.id, tmdb_id: current.id, media_type: current.mediaType, title: data.title, poster_path: data.poster_path });
+      await addToList({ user_id: user.id, profile_id: activeProfile.id, tmdb_id: current.id, media_type: current.mediaType, title: data.title, poster_path: data.poster_path, vote_average: data.vote_average ?? null });
       setInList(true);
     }
   };
 
+  // Ratings that are NOT allowed for kids profiles
+  const KIDS_BLOCKED_RATINGS = new Set(["R", "NC-17", "TV-MA", "TV-14", "18+", "18", "X"]);
+
+  const isKidsProfile = activeProfile?.is_kids ?? false;
+  const isBlockedForKids = isKidsProfile && !!data?.certification && KIDS_BLOCKED_RATINGS.has(data.certification.toUpperCase());
+
   const handlePlay = (season = 1, episode = 1) => {
+    if (isBlockedForKids) return; // safety — button is hidden but guard here too
     close();
     if (!canWatch) { navigate("/"); return; }
     const poster = data?.poster_path ?? current.poster_path ?? "";
@@ -123,17 +130,36 @@ export function DetailModal() {
               <span>{year(data.release_date)}</span>
               {data.runtime ? <span>{data.runtime} min</span> : null}
               {data.number_of_seasons ? <span>{data.number_of_seasons} seasons</span> : null}
+              {data.certification ? (
+                <span className="rounded border border-border px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
+                  {data.certification}
+                </span>
+              ) : null}
             </div>
+
+            {isBlockedForKids && (
+              <div className="flex items-center gap-2 rounded-md bg-destructive/15 px-3 py-2 text-sm font-semibold text-destructive">
+                <Lock className="h-4 w-4 shrink-0" />
+                This title is rated <span className="mx-1 font-bold">{data.certification}</span> and is not available on Kids profiles.
+              </div>
+            )}
 
             {/* Action buttons */}
             <div className="flex flex-wrap gap-3">
-              <button
-                onClick={() => handlePlay(isTv ? selectedSeason : 1, 1)}
-                className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85"
-              >
-                {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
-                {canWatch ? "Play" : "Unlock"}
-              </button>
+              {isBlockedForKids ? (
+                <div className="flex items-center gap-2 rounded-md bg-muted px-6 py-2.5 font-semibold text-muted-foreground cursor-not-allowed select-none">
+                  <Lock className="h-5 w-5" />
+                  Not for Kids
+                </div>
+              ) : (
+                <button
+                  onClick={() => handlePlay(isTv ? selectedSeason : 1, 1)}
+                  className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85"
+                >
+                  {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
+                  {canWatch ? "Play" : "Unlock"}
+                </button>
+              )}
               <button
                 onClick={toggleList}
                 className="flex items-center gap-2 rounded-md bg-secondary px-5 py-2.5 font-semibold transition hover:bg-accent"
@@ -196,8 +222,9 @@ export function DetailModal() {
                     {(episodes ?? []).map((ep) => (
                       <button
                         key={ep.episode_number}
-                        onClick={() => handlePlay(selectedSeason, ep.episode_number)}
-                        className="flex w-full items-start gap-3 rounded-lg p-2 text-left transition hover:bg-accent active:bg-accent/80"
+                        onClick={() => { if (!isBlockedForKids) handlePlay(selectedSeason, ep.episode_number); }}
+                        disabled={isBlockedForKids}
+                        className={`flex w-full items-start gap-3 rounded-lg p-2 text-left transition hover:bg-accent active:bg-accent/80 ${isBlockedForKids ? "opacity-40 cursor-not-allowed" : ""}`}
                       >
                         {/* Thumbnail */}
                         <div className="relative w-28 shrink-0 overflow-hidden rounded-md bg-muted sm:w-36">
