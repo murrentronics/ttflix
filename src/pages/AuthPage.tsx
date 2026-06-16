@@ -101,7 +101,7 @@ export function AuthPage() {
                 <input
                   type={showPassword ? "text" : "password"}
                   required
-                  minLength={8}
+                  minLength={isSignup ? 8 : 1}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input pr-10"
