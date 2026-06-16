@@ -142,6 +142,7 @@ export function ResetPasswordPage() {
     setError("");
     setBusy(true);
     try {
+      // verifyOtp signs the user in — if it succeeds, go straight to password form
       await verifyResetCode(email, code);
       setStep("password");
     } catch (err) {
@@ -158,6 +159,7 @@ export function ResetPasswordPage() {
     setError("");
     setBusy(true);
     try {
+      // After verifyOtp a session exists — updateUser works directly
       await resetPassword(email, code, password);
       setStep("done");
     } catch (err) {

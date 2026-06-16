@@ -48,6 +48,23 @@ export function WatchPage() {
   const tmdbId = Number(id);
   const stillLoading = loading || profileLoading;
   const canWatch = isAdmin || (!!user && profile?.status === "approved");
+  const isKidsProfile = (activeProfile?.is_kids ?? false) && !isAdmin;
+
+  // Kids cert check — fetch details to get certification, block explicit ratings
+  const KIDS_BLOCKED_RATINGS = new Set(["PG-13", "R", "NC-17", "TV-14", "TV-MA", "18+", "18", "X"]);
+  const [kidsBlocked, setKidsBlocked] = useState(false);
+  const [kidsBlockedRating, setKidsBlockedRating] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isKidsProfile) return;
+    getDetails({ data: { id: tmdbId, mediaType: type } }).then((details) => {
+      const cert = details.certification?.toUpperCase() ?? null;
+      if (cert && KIDS_BLOCKED_RATINGS.has(cert)) {
+        setKidsBlocked(true);
+        setKidsBlockedRating(cert);
+      }
+    }).catch(() => {});
+  }, [tmdbId, type, isKidsProfile]);
 
   const currentEpisodeRef = useRef({ season, episode });
 
@@ -412,6 +429,22 @@ export function WatchPage() {
     <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>
   );
   if (!canWatch) return null;
+
+  if (kidsBlocked) return (
+    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center px-6 text-center gap-6">
+      <div className="text-6xl">🔒</div>
+      <h2 className="text-xl font-bold text-white">Not Available for Kids</h2>
+      <p className="text-sm text-white/70 max-w-xs">
+        This title is rated <span className="font-bold text-primary">{kidsBlockedRating}</span> and cannot be played on a Kids profile.
+      </p>
+      <button
+        onClick={() => navigate("/")}
+        className="rounded-full bg-primary px-8 py-3 text-sm font-bold text-white"
+      >
+        Go Back
+      </button>
+    </div>
+  );
 
   if (screenError) return (
     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center px-6 text-center gap-6">

@@ -60,16 +60,14 @@ function normalize(raw: any, fallbackType?: "movie" | "tv"): TmdbItem {
 export async function getHomeFeed(isKids = false) {
   // Kids mode: only fetch G/PG certified content, no adult genres
   if (isKids) {
-    const kidsParams = {
+    const base = {
       language: "en-US",
       certification_country: "US",
       "certification.lte": "PG",
-      "vote_count.gte": "50",
       include_adult: "false",
       without_genres: "27,53,80,10752,10749,9648,18,10770",
     };
 
-    // 3 pages = ~60 items per row
     async function tmdb3Pages(path: string, params: Record<string, string> = {}) {
       const [p1, p2, p3] = await Promise.all([
         tmdb(path, { ...params, page: "1" }),
@@ -79,74 +77,52 @@ export async function getHomeFeed(isKids = false) {
       return { results: [...(p1.results ?? []), ...(p2.results ?? []), ...(p3.results ?? [])] };
     }
 
+    const tvBase = { language: "en-US", include_adult: "false", without_genres: "27,53,80,10752,10749,9648,18" };
+
     const [
-      familyPopular,
-      familyAnimation,
-      familyAdventure,
-      kidsTV,
-      kidsAnimatedSeries,
-      kidsNewShows,
-      adventure,
-      adventureAnimation,
-      adventureComedy,
-      comedy,
-      comedyAnimation,
-      comedyFamily,
-      classicPre2005,
-      classic2006to2015,
-      classicAnimation,
-      newMovies,
-      newAnimation,
-      newTV,
+      movies,        // popular family+animation movies
+      cartoons,      // animation-only, sorted by vote average (different titles)
+      adventure,     // adventure genre, popularity
+      comedy,        // comedy genre, popularity
+      kidsTV,        // kids TV genre, popularity
+      kidsShows,     // kids+animation TV, vote average (different titles)
+      newShows,      // new kids TV releases
+      classics,      // pre-2005, high vote average
+      newMovies,     // new releases 2020+
     ] = await Promise.all([
-      // ── Family Movies ──
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "10751", sort_by: "popularity.desc" }),
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "10751,16", sort_by: "popularity.desc" }),
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "10751,12", sort_by: "popularity.desc" }),
-      // ── Kids TV ──
-      tmdb3Pages("/discover/tv", { language: "en-US", include_adult: "false", with_genres: "10762", sort_by: "popularity.desc" }),
-      tmdb3Pages("/discover/tv", { language: "en-US", include_adult: "false", with_genres: "10762,16", sort_by: "popularity.desc" }),
-      tmdb3Pages("/discover/tv", { language: "en-US", include_adult: "false", with_genres: "10762", sort_by: "first_air_date.desc", "vote_count.gte": "20" }),
-      // ── Adventure ──
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "12", sort_by: "popularity.desc" }),
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "12,16", sort_by: "popularity.desc" }),
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "12,35", sort_by: "popularity.desc" }),
-      // ── Comedy ──
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "35", sort_by: "popularity.desc" }),
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "35,16", sort_by: "popularity.desc" }),
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "35,10751", sort_by: "vote_average.desc", "vote_count.gte": "100" }),
-      // ── Classics ──
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "10751,16", sort_by: "vote_average.desc", "vote_count.gte": "200", "primary_release_date.lte": "2005-12-31" }),
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "10751", sort_by: "vote_average.desc", "vote_count.gte": "200", "primary_release_date.gte": "2006-01-01", "primary_release_date.lte": "2015-12-31" }),
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "16", sort_by: "vote_average.desc", "vote_count.gte": "300" }),
-      // ── New for Kids ──
-      tmdb3Pages("/discover/movie", { ...kidsParams, sort_by: "primary_release_date.desc", "vote_count.gte": "10" }),
-      tmdb3Pages("/discover/movie", { ...kidsParams, with_genres: "16", sort_by: "primary_release_date.desc", "vote_count.gte": "10" }),
-      tmdb3Pages("/discover/tv", { language: "en-US", include_adult: "false", with_genres: "10762,16", sort_by: "first_air_date.desc", "vote_count.gte": "10" }),
+      // Movies: family genre, popularity — e.g. Shrek, Moana
+      tmdb3Pages("/discover/movie", { ...base, with_genres: "10751", sort_by: "popularity.desc", "vote_count.gte": "100" }),
+      // Cartoons: pure animation, vote average sort — different from above
+      tmdb3Pages("/discover/movie", { ...base, with_genres: "16", without_genres: "10751,27,53,80,10752,10749,9648,18,10770", sort_by: "vote_average.desc", "vote_count.gte": "200" }),
+      // Adventure: genre 12 only, not family tagged
+      tmdb3Pages("/discover/movie", { ...base, with_genres: "12", without_genres: "10751,27,53,80,10752,10749,9648,18,10770", sort_by: "popularity.desc", "vote_count.gte": "50" }),
+      // Comedy: genre 35, not family tagged
+      tmdb3Pages("/discover/movie", { ...base, with_genres: "35", without_genres: "10751,27,53,80,10752,10749,9648,18,10770", sort_by: "popularity.desc", "vote_count.gte": "50" }),
+      // Kids TV: genre 10762, popularity
+      tmdb3Pages("/discover/tv", { ...tvBase, with_genres: "10762", sort_by: "popularity.desc", "vote_count.gte": "50" }),
+      // Animated series: genre 16 TV, vote average — different sort = different titles
+      tmdb3Pages("/discover/tv", { ...tvBase, with_genres: "16", sort_by: "vote_average.desc", "vote_count.gte": "100" }),
+      // New kids shows: first air date descending
+      tmdb3Pages("/discover/tv", { ...tvBase, with_genres: "10762,16", sort_by: "first_air_date.desc", "vote_count.gte": "10" }),
+      // Classics: pre-2005, family+animation, high vote average
+      tmdb3Pages("/discover/movie", { ...base, with_genres: "10751,16", sort_by: "vote_average.desc", "vote_count.gte": "300", "primary_release_date.lte": "2005-12-31" }),
+      // New movies: 2020 onwards
+      tmdb3Pages("/discover/movie", { ...base, sort_by: "primary_release_date.desc", "primary_release_date.gte": "2020-01-01", "vote_count.gte": "20" }),
     ]);
 
-    const heroSource = (familyPopular.results ?? []).map((r: any) => normalize(r, "movie"));
+    const heroSource = (movies.results ?? []).map((r: any) => normalize(r, "movie"));
     return {
       hero: heroSource.slice(0, 6),
       rows: [
-        { title: "Family Movies",        items: (familyPopular.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Family Animation",     items: (familyAnimation.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Family Adventure",     items: (familyAdventure.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Kids TV Shows",        items: (kidsTV.results ?? []).map((r: any) => normalize(r, "tv")) },
-        { title: "Animated Series",      items: (kidsAnimatedSeries.results ?? []).map((r: any) => normalize(r, "tv")) },
-        { title: "New Kids Shows",       items: (kidsNewShows.results ?? []).map((r: any) => normalize(r, "tv")) },
-        { title: "Adventure",            items: (adventure.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Animated Adventures",  items: (adventureAnimation.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Adventure Comedy",     items: (adventureComedy.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Fun & Comedy",         items: (comedy.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Animated Comedy",      items: (comedyAnimation.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Family Laughs",        items: (comedyFamily.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Classic Favourites",   items: (classicPre2005.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "2000s Favourites",     items: (classic2006to2015.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Classic Animation",    items: (classicAnimation.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "New for Kids",         items: (newMovies.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "New Animated Movies",  items: (newAnimation.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "New Animated Shows",   items: (newTV.results ?? []).map((r: any) => normalize(r, "tv")) },
+        { title: "Movies",           items: (movies.results ?? []).map((r: any) => normalize(r, "movie")) },
+        { title: "Cartoons",         items: (cartoons.results ?? []).map((r: any) => normalize(r, "movie")) },
+        { title: "Adventure",        items: (adventure.results ?? []).map((r: any) => normalize(r, "movie")) },
+        { title: "Comedy",           items: (comedy.results ?? []).map((r: any) => normalize(r, "movie")) },
+        { title: "Kids TV Shows",    items: (kidsTV.results ?? []).map((r: any) => normalize(r, "tv")) },
+        { title: "Animated Series",  items: (kidsShows.results ?? []).map((r: any) => normalize(r, "tv")) },
+        { title: "New Shows",        items: (newShows.results ?? []).map((r: any) => normalize(r, "tv")) },
+        { title: "Classics",         items: (classics.results ?? []).map((r: any) => normalize(r, "movie")) },
+        { title: "New Releases",     items: (newMovies.results ?? []).map((r: any) => normalize(r, "movie")) },
       ],
     };
   }
