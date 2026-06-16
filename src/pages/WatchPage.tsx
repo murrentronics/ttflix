@@ -53,15 +53,18 @@ export function WatchPage() {
   // Kids cert check — fetch details to get certification, block explicit ratings
   const KIDS_BLOCKED_RATINGS = new Set(["PG-13", "R", "NC-17", "TV-14", "TV-MA", "18+", "18", "X"]);
   const [kidsBlocked, setKidsBlocked] = useState(false);
+  const kidsBlockedRef = useRef(false); // ref so async callbacks always read the latest value
   const [kidsBlockedRating, setKidsBlockedRating] = useState<string | null>(null);
   const kidsCheckDoneRef = useRef(!isKidsProfile); // if not a kids profile, check is instantly "done"
 
   useEffect(() => {
-    if (!isKidsProfile) { kidsCheckDoneRef.current = true; return; }
+    if (!isKidsProfile) { kidsCheckDoneRef.current = true; kidsBlockedRef.current = false; return; }
     kidsCheckDoneRef.current = false;
+    kidsBlockedRef.current = false;
     getDetails({ data: { id: tmdbId, mediaType: type } }).then((details) => {
       const cert = details.certification?.toUpperCase() ?? null;
       if (cert && KIDS_BLOCKED_RATINGS.has(cert)) {
+        kidsBlockedRef.current = true;
         setKidsBlocked(true);
         setKidsBlockedRating(cert);
       }
@@ -217,7 +220,18 @@ export function WatchPage() {
   const saveInitial = useCallback(async () => {
     if (savedInitial.current) return;
     if (!user || !effectiveProfile || !title) return;
-    if (kidsBlocked) return; // never save blocked content
+
+    // Wait for the kids rating check to finish before deciding whether to save
+    if (!kidsCheckDoneRef.current) {
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (kidsCheckDoneRef.current) { clearInterval(check); resolve(); }
+        }, 100);
+        setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+      });
+    }
+
+    if (kidsBlockedRef.current) return; // never save blocked content
     savedInitial.current = true;
 
     // Wait up to 6s for duration to be fetched from TMDB
@@ -274,7 +288,7 @@ export function WatchPage() {
 
   const persist = useCallback(async (watched: number, duration: number) => {
     if (!user || !effectiveProfile || watched < 10) return;
-    if (kidsBlocked) return; // never save blocked content
+    if (kidsBlockedRef.current) return; // never save blocked content
     const { season: currentSeason, episode: currentEp } = currentEpisodeRef.current;
     // Preserve existing duration in DB if we don't have one
     let safeDuration = duration > 0 ? Math.floor(duration) : 0;
@@ -345,22 +359,21 @@ export function WatchPage() {
     return () => clearTimeout(t);
   }, [src]);
 
-  // Auto-click the player's initial play overlay after loader clears or src changes.
+  // Auto-click the player's initial play overlay whenever src is set.
+  // Fires behind the loader so playback starts as soon as the loader clears.
   // Only fires when the player hasn't started yet (hasPostMessage=false).
   // Once playing, user pause is fully respected — no auto-click interference.
   useEffect(() => {
-    if (loaderVisible) return;
-
     const autoClick = () => {
       if (progressRef.current.hasPostMessage) return; // already playing, leave it alone
 
       const iframe = iframeRef.current;
-      if (!iframe) return;
+      if (!iframe || !iframe.src || iframe.src === "about:blank") return;
 
       // Try direct DOM access (same-origin or relaxed WebView)
       try {
         const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (doc) {
+        if (doc && doc.location.href !== "about:blank") {
           const video = doc.querySelector("video") as HTMLVideoElement | null;
           if (video && video.paused) { video.play().catch(() => {}); return; }
           const el = doc.elementFromPoint(
@@ -376,19 +389,21 @@ export function WatchPage() {
       const rect = iframe.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
-      ["pointerdown", "pointerup", "click"].forEach((type) => {
-        iframe.dispatchEvent(new PointerEvent(type, {
+      ["pointerdown", "pointerup", "click"].forEach((evtType) => {
+        iframe.dispatchEvent(new PointerEvent(evtType, {
           bubbles: true, cancelable: true, clientX: cx, clientY: cy, view: window,
         }));
       });
     };
 
-    // Retry a few times — player overlay can take a moment to appear
-    const t1 = setTimeout(autoClick, 600);
-    const t2 = setTimeout(autoClick, 1800);
+    // Spread retries over 8 seconds — Videasy's play overlay can be slow to appear
+    const t1 = setTimeout(autoClick, 800);
+    const t2 = setTimeout(autoClick, 2000);
     const t3 = setTimeout(autoClick, 3500);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [loaderVisible, src]);
+    const t4 = setTimeout(autoClick, 5000);
+    const t5 = setTimeout(autoClick, 8000);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); clearTimeout(t5); };
+  }, [src]);
 
   // When app returns to foreground after being backgrounded, the WebView
   // suspends the iframe leaving a black screen. Reload the current src to recover.
@@ -407,6 +422,7 @@ export function WatchPage() {
           if (!iframe) return;
           // Reset hasPostMessage so auto-click fires again on reload
           progressRef.current.hasPostMessage = false;
+          playerStartedRef.current = false;
           iframe.src = "about:blank";
           setTimeout(() => {
             if (iframeRef.current) iframeRef.current.src = src;
@@ -563,7 +579,13 @@ export function WatchPage() {
         referrerPolicy="no-referrer"
         allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
         allowFullScreen
-        onLoad={() => { triggerExplosion(); saveInitial(); }}
+        onLoad={() => {
+          // Ignore the blank load we fire before setting the real src
+          const iframe = iframeRef.current;
+          if (!iframe || !iframe.src || iframe.src === "about:blank") return;
+          triggerExplosion();
+          saveInitial();
+        }}
       />
 
       {!loaderVisible && !exitVisible && (

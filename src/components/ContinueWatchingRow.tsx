@@ -6,6 +6,9 @@ import { useProfile } from "@/lib/ProfileContext";
 import { fetchContinueWatching, removeProgress, type WatchProgress } from "@/lib/continue-watching";
 import { img } from "@/lib/tmdb";
 
+// Ratings that should not appear in a kids profile's Continue Watching row
+const KIDS_BLOCKED_RATINGS = new Set(["PG-13", "R", "NC-17", "TV-14", "TV-MA", "18+", "18", "X"]);
+
 export function ContinueWatchingRow() {
   const { user, profile, isAdmin } = useAuth();
   const { activeProfile, profiles } = useProfile();
@@ -15,13 +18,23 @@ export function ContinueWatchingRow() {
 
   const canWatch = isAdmin || profile?.status === "approved";
   const effectiveProfile = activeProfile ?? profiles.find((p) => p.is_default) ?? profiles[0] ?? null;
+  const isKidsProfile = activeProfile?.is_kids ?? false;
 
   const load = useCallback(() => {
     if (!user || !canWatch || !effectiveProfile) return;
     fetchContinueWatching(user.id, effectiveProfile.id).then((fetched) => {
-      setItems(fetched);
+      if (isKidsProfile) {
+        // Filter out any items whose stored certification is blocked for kids.
+        // Items without a certification stored are shown (safe default).
+        setItems(fetched.filter((item) => {
+          const cert = (item as any).certification?.toUpperCase() ?? null;
+          return !cert || !KIDS_BLOCKED_RATINGS.has(cert);
+        }));
+      } else {
+        setItems(fetched);
+      }
     });
-  }, [user, canWatch, effectiveProfile]);
+  }, [user, canWatch, effectiveProfile, isKidsProfile]);
 
   useEffect(() => { load(); }, [load]);
 

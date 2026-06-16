@@ -18,14 +18,6 @@ export function getProviders(
         name: "Videasy",
         url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplayNextEpisode=true&autoplay=1&postMessageOrigin=*`,
       },
-      {
-        name: "VidSrc",
-        url: `https://vidsrc.me/embed/tv?tmdb=${tmdbId}&season=${season}&episode=${episode}&autoplay=1`,
-      },
-      {
-        name: "VidSrc.to",
-        url: `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}?autoplay=1`,
-      },
     ];
   }
 
@@ -33,14 +25,6 @@ export function getProviders(
     {
       name: "Videasy",
       url: `https://player.videasy.net/movie/${tmdbId}?color=${color}&overlay=true&autoplay=1&postMessageOrigin=*`,
-    },
-    {
-      name: "VidSrc",
-      url: `https://vidsrc.me/embed/movie?tmdb=${tmdbId}&autoplay=1`,
-    },
-    {
-      name: "VidSrc.to",
-      url: `https://vidsrc.to/embed/movie/${tmdbId}?autoplay=1`,
     },
   ];
 }
