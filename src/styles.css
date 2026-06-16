@@ -75,20 +75,20 @@
   }
   html {
     color-scheme: dark;
+    /* Hide scrollbar on Android WebView — the track line is visible otherwise */
+    overflow-y: scroll;
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
-  }
-  ::-webkit-scrollbar {
-    height: 8px;
-    width: 8px;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: var(--color-muted);
-    border-radius: 99px;
   }
 }
 

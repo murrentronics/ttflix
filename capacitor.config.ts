@@ -5,11 +5,15 @@ const config: CapacitorConfig = {
   appName: "TTFlix",
   webDir: "dist",
   server: {
+    hostname: "app.ttflix.tt",
+    androidScheme: "https",
     allowNavigation: [
       "*.streamed.pk",
       "streamed.pk",
       "*.strmd.link",
       "strmd.link",
+      "embed.st",
+      "*.embed.st",
       "*.videasy.net",
       "player.videasy.net",
     ],
