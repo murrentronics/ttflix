@@ -258,7 +258,7 @@ export function WatchPage() {
       title: title || `Title ${tmdbId}`,
       poster_path: poster || null,
       backdrop_path: backdrop || null,
-      watched_seconds: Math.floor(watched),
+      watched_seconds: safeDuration > 0 ? Math.min(Math.floor(watched), safeDuration) : Math.floor(watched),
       duration_seconds: safeDuration,
       season: type === "tv" ? currentSeason : null,
       episode: type === "tv" ? currentEp : null,
@@ -326,10 +326,12 @@ export function WatchPage() {
       const wallClockWatched = watchStartRef.current > 0
         ? Math.floor((Date.now() - watchStartRef.current) / 1000)
         : 0;
-      const watched = progressRef.current.hasPostMessage
+      const duration = progressRef.current.duration;
+      const rawWatched = progressRef.current.hasPostMessage
         ? progressRef.current.watched
         : wallClockWatched;
-      const duration = progressRef.current.duration;
+      // Never save more watched time than the known duration
+      const watched = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
       if (watched > 10) persistRef.current(watched, duration);
     }, 15_000);
     return () => clearInterval(t);
@@ -341,10 +343,11 @@ export function WatchPage() {
       const wallClockWatched = watchStartRef.current > 0
         ? Math.floor((Date.now() - watchStartRef.current) / 1000)
         : 0;
-      const watched = progressRef.current.hasPostMessage
+      const duration = progressRef.current.duration;
+      const rawWatched = progressRef.current.hasPostMessage
         ? progressRef.current.watched
         : wallClockWatched;
-      const duration = progressRef.current.duration;
+      const watched = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
       if (user && watched > 10) persistRef.current(watched, duration);
     };
     window.addEventListener("beforeunload", save);

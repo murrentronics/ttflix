@@ -51,7 +51,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
           </span>
         </div>
         <p className="mt-3 line-clamp-3 text-sm text-foreground/85 sm:text-base">{item.overview}</p>
-        <div className="mt-5 flex justify-center gap-3">
+        <div className="mt-5 flex gap-3">
           <button
             onClick={handlePlay}
             className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85"
