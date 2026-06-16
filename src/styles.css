@@ -72,14 +72,20 @@
 @layer base {
   * {
     border-color: var(--color-border);
+    scrollbar-width: none;
+  }
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
   html {
     color-scheme: dark;
-    /* Hide scrollbar on Android WebView — the track line is visible otherwise */
-    overflow-y: scroll;
     scrollbar-width: none;
+    overflow-y: auto;
   }
-  html::-webkit-scrollbar {
+  html::-webkit-scrollbar,
+  body::-webkit-scrollbar {
     display: none;
     width: 0;
     height: 0;
@@ -89,6 +95,8 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    scrollbar-width: none;
+    overflow-y: auto;
   }
 }
 
@@ -101,10 +109,5 @@
   }
   .text-balance {
     text-wrap: balance;
-  }
-
-  /* Hide the fixed navbar when a fullscreen live player is open */
-  body.live-player-open header {
-    display: none !important;
   }
 }

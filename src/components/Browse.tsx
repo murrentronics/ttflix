@@ -1,7 +1,6 @@
 import { Hero } from "./Hero";
 import { MovieRow } from "./MovieRow";
 import { ContinueWatchingRow } from "./ContinueWatchingRow";
-import { LiveSportsRow } from "./LiveSportsRow";
 import type { TmdbItem } from "@/lib/tmdb.functions";
 
 type Feed = {
@@ -14,13 +13,10 @@ export function Browse({ feed }: { feed: Feed }) {
     <>
       <Hero items={feed.hero} />
       <div className="relative z-10 -mt-16 pb-10">
-        {/* Continue watching always appears first if the user has history */}
         <ContinueWatchingRow />
         {feed.rows.map((row) => (
           <MovieRow key={row.title} title={row.title} items={row.items} />
         ))}
-        {/* Live sports channels — always last */}
-        <LiveSportsRow />
       </div>
     </>
   );

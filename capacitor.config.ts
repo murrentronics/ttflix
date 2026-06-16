@@ -8,10 +8,6 @@ const config: CapacitorConfig = {
     hostname: "app.ttflix.tt",
     androidScheme: "https",
     allowNavigation: [
-      "*.sportsrc.org",
-      "sportsrc.org",
-      "*.streamapi.cc",
-      "embed.streamapi.cc",
       "*.videasy.net",
       "player.videasy.net",
     ],

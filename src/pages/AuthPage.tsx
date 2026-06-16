@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertCircle, Check } from "lucide-react";
+import { AlertCircle, Check, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { PLANS, type PlanId } from "@/lib/supabase";
 import heroBg from "@/assets/landing-hero.jpg";
@@ -20,6 +20,7 @@ export function AuthPage() {
   const [isSignup, setIsSignup] = useState(searchParams.get("mode") === "signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [country, setCountry] = useState("Trinidad & Tobago");
@@ -86,7 +87,27 @@ export function AuthPage() {
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input" />
             </Field>
             <Field label="Password">
-              <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="input" />
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="input"
+                  style={{ paddingRight: "2.75rem" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  style={{ WebkitTapHighlightColor: "transparent" }}
+                  tabIndex={-1}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </Field>
 
             {isSignup && (

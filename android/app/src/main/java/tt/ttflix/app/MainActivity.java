@@ -57,8 +57,7 @@ public class MainActivity extends BridgeActivity {
                         return false;
                     }
                     // Allow live sports stream domains
-                    if (url.contains("streamapi.cc") || url.contains("sportsrc.org")
-                            || url.contains("videasy.net")) {
+                    if (url.contains("videasy.net")) {
                         return false;
                     }                    // Block everything else (ad redirects, external links)
                     return true;
