@@ -101,11 +101,10 @@ export function AuthPage() {
                 <input
                   type={showPassword ? "text" : "password"}
                   required
-                  minLength={6}
+                  minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="input"
-                  style={{ paddingRight: "2.75rem" }}
+                  className="input pr-10"
                 />
                 <button
                   type="button"
@@ -206,7 +205,7 @@ export function AuthPage() {
           </div>
         </div>
       </div>
-      <style>{`.input{width:100%;border-radius:0.375rem;border:1px solid var(--border);background:var(--input);padding:0.65rem 0.85rem;outline:none}.input:focus{border-color:var(--primary)}`}</style>
+      <style>{`.input{width:100%;border-radius:0.375rem;border:1px solid var(--border);background:var(--input);color:var(--foreground);padding:0.65rem 0.85rem;outline:none;-webkit-appearance:none;appearance:none}.input:focus{border-color:var(--primary)}.input.pr-10{padding-right:2.75rem}`}</style>
     </div>
   );
 }

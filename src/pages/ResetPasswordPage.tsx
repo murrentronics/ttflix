@@ -340,7 +340,7 @@ export function ResetPasswordPage() {
         </div>
       </div>
 
-      <style>{`.input{width:100%;border-radius:0.375rem;border:1px solid var(--border);background:var(--input);padding:0.65rem 0.85rem;outline:none}.input:focus{border-color:var(--primary)}`}</style>
+      <style>{`.input{width:100%;border-radius:0.375rem;border:1px solid var(--border);background:var(--input);color:var(--foreground);padding:0.65rem 0.85rem;outline:none}.input:focus{border-color:var(--primary)}`}</style>
     </div>
   );
 }

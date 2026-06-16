@@ -215,6 +215,7 @@ export function WatchPage() {
   const saveInitial = useCallback(async () => {
     if (savedInitial.current) return;
     if (!user || !effectiveProfile || !title) return;
+    if (kidsBlocked) return; // never save blocked content
     savedInitial.current = true;
 
     // Wait up to 6s for duration to be fetched from TMDB
@@ -263,14 +264,15 @@ export function WatchPage() {
     });
   }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop, season, episode]);
 
-  // Dismiss loader after 3s — don't wait for signals that may never fire on Android WebView
+  // Dismiss loader after 3s — but do NOT save progress until player signals it's actually playing
   useEffect(() => {
-    const t = setTimeout(() => { triggerExplosion(); saveInitial(); }, 3000);
+    const t = setTimeout(() => { triggerExplosion(); }, 3000);
     return () => clearTimeout(t);
-  }, [triggerExplosion, saveInitial]);
+  }, [triggerExplosion]);
 
   const persist = useCallback(async (watched: number, duration: number) => {
     if (!user || !effectiveProfile || watched < 10) return;
+    if (kidsBlocked) return; // never save blocked content
     const { season: currentSeason, episode: currentEp } = currentEpisodeRef.current;
     // Preserve existing duration in DB if we don't have one
     let safeDuration = duration > 0 ? Math.floor(duration) : 0;
