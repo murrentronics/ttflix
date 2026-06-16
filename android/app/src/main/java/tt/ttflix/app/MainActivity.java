@@ -1,11 +1,13 @@
 package tt.ttflix.app;
 
+import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
@@ -16,6 +18,27 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+
+    /** Exposed to JavaScript as window.AndroidOrientation */
+    public class OrientationBridge {
+        @JavascriptInterface
+        public void lockLandscape() {
+            runOnUiThread(() ->
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE));
+        }
+
+        @JavascriptInterface
+        public void lockPortrait() {
+            runOnUiThread(() ->
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT));
+        }
+
+        @JavascriptInterface
+        public void unlock() {
+            runOnUiThread(() ->
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT));
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,6 +55,9 @@ public class MainActivity extends BridgeActivity {
             getBridge().getWebView().getSettings().setDomStorageEnabled(true);
             getBridge().getWebView().getSettings().setAllowUniversalAccessFromFileURLs(true);
             getBridge().getWebView().getSettings().setAllowFileAccessFromFileURLs(true);
+
+            // Register orientation bridge so JS can call window.AndroidOrientation.lockLandscape() etc.
+            getBridge().getWebView().addJavascriptInterface(new OrientationBridge(), "AndroidOrientation");
 
             // Override UA globally — removes the "wv" WebView marker so stream
             // sites don't detect and block Capacitor's WebView

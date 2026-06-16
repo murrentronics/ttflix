@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { useProfile } from "@/lib/ProfileContext";
 import { fetchMyList } from "@/lib/mylist";
 import { useDetail } from "@/components/DetailContext";
 import { AppShell } from "@/components/AppShell";
@@ -8,12 +9,13 @@ import { img } from "@/lib/tmdb";
 
 export function MyListPage() {
   const { user, loading } = useAuth();
+  const { activeProfile } = useProfile();
   const { open } = useDetail();
 
   const { data, isLoading } = useQuery({
-    queryKey: ["my-list", user?.id],
-    queryFn: () => fetchMyList(user!.id),
-    enabled: !!user,
+    queryKey: ["my-list", user?.id, activeProfile?.id],
+    queryFn: () => fetchMyList(user!.id, activeProfile!.id),
+    enabled: !!user && !!activeProfile,
   });
 
   return (

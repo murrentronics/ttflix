@@ -326,6 +326,24 @@ export function WatchPage() {
     if (!canWatch) navigate("/");
   }, [stillLoading, canWatch, navigate]);
 
+  // Lock to landscape when the player opens, restore portrait on exit
+  useEffect(() => {
+    const android = (window as any).AndroidOrientation;
+    if (android?.lockLandscape) {
+      android.lockLandscape();
+    } else {
+      // Fallback: Screen Orientation API (works in some browsers/PWA contexts)
+      try { (screen.orientation as any).lock("landscape").catch(() => {}); } catch {}
+    }
+    return () => {
+      if (android?.lockPortrait) {
+        android.lockPortrait();
+      } else {
+        try { screen.orientation.unlock(); } catch {}
+      }
+    };
+  }, []);
+
   if (stillLoading) return (
     <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>
   );

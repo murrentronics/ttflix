@@ -38,7 +38,18 @@ export function Navbar() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const anyMenuOpen = mobileOpen || profileOpen;
+
   return (
+    <>
+      {/* Background overlay */}
+      <div
+        className={`fixed inset-0 z-30 bg-black transition-opacity duration-300 ${
+          anyMenuOpen ? "opacity-60 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        onClick={() => { setMobileOpen(false); setProfileOpen(false); }}
+        aria-hidden="true"
+      />
     <header
       className={`fixed inset-x-0 top-0 z-40 transition-colors duration-300 ${
         scrolled ? "bg-background/95 backdrop-blur" : "bg-gradient-to-b from-black/80 to-transparent"
@@ -77,7 +88,7 @@ export function Navbar() {
           {user ? (
             <div className="relative" ref={dropdownRef}>
               <button
-                onClick={() => setProfileOpen((o) => !o)}
+                onClick={() => { setMobileOpen(false); setProfileOpen((o) => !o); }}
                 className="flex items-center gap-1 rounded text-sm font-bold text-white"
                 aria-label="Profile menu"
               >
@@ -174,7 +185,7 @@ export function Navbar() {
             </Link>
           )}
 
-          <button className="md:hidden" onClick={() => setMobileOpen((o) => !o)} aria-label="Menu">
+          <button className="md:hidden" onClick={() => { setProfileOpen(false); setMobileOpen((o) => !o); }} aria-label="Menu">
             {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
@@ -200,5 +211,6 @@ export function Navbar() {
         </nav>
       )}
     </header>
+    </>
   );
 }

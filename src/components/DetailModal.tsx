@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { X, Play, Plus, Check, Star, Lock, ChevronDown } from "lucide-react";
 import { useDetail } from "./DetailContext";
 import { useAuth } from "@/lib/auth";
+import { useProfile } from "@/lib/ProfileContext";
 import { getDetails, getSeasonEpisodes, type TmdbItem } from "@/lib/tmdb.functions.app";
 import { addToList, removeFromList, fetchMyList } from "@/lib/mylist";
 import { img, year } from "@/lib/tmdb";
@@ -12,6 +13,7 @@ import { MovieCard } from "./MovieCard";
 export function DetailModal() {
   const { current, close } = useDetail();
   const { user, profile, isAdmin } = useAuth();
+  const { activeProfile } = useProfile();
   const navigate = useNavigate();
   const [inList, setInList] = useState(false);
   const [selectedSeason, setSelectedSeason] = useState(1);
@@ -37,11 +39,11 @@ export function DetailModal() {
   });
 
   useEffect(() => {
-    if (!current || !user) { setInList(false); return; }
-    fetchMyList(user.id).then((list) =>
+    if (!current || !user || !activeProfile) { setInList(false); return; }
+    fetchMyList(user.id, activeProfile.id).then((list) =>
       setInList(list.some((l) => l.tmdb_id === current.id && l.media_type === current.mediaType)),
     );
-  }, [current, user]);
+  }, [current, user, activeProfile]);
 
   useEffect(() => {
     if (current) {
@@ -53,12 +55,12 @@ export function DetailModal() {
   if (!current) return null;
 
   const toggleList = async () => {
-    if (!user || !data) { navigate("/auth"); return; }
+    if (!user || !data || !activeProfile) { navigate("/auth"); return; }
     if (inList) {
-      await removeFromList(user.id, current.id, current.mediaType);
+      await removeFromList(user.id, activeProfile.id, current.id, current.mediaType);
       setInList(false);
     } else {
-      await addToList({ user_id: user.id, tmdb_id: current.id, media_type: current.mediaType, title: data.title, poster_path: data.poster_path });
+      await addToList({ user_id: user.id, profile_id: activeProfile.id, tmdb_id: current.id, media_type: current.mediaType, title: data.title, poster_path: data.poster_path });
       setInList(true);
     }
   };

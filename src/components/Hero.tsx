@@ -38,11 +38,11 @@ export function Hero({ items }: { items: TmdbItem[] }) {
       <div className="absolute inset-0" style={{ background: "var(--gradient-hero)" }} />
       <div className="absolute inset-0" style={{ background: "var(--gradient-hero-left)" }} />
 
-      <div className="absolute bottom-[18%] left-0 max-w-2xl px-4 sm:px-8">
+      <div className="absolute bottom-[18%] left-0 right-0 flex flex-col items-center px-4 text-center sm:px-8">
         <h1 className="text-balance text-3xl font-extrabold drop-shadow-lg sm:text-5xl md:text-6xl">
           {item.title}
         </h1>
-        <div className="mt-3 flex items-center gap-3 text-sm">
+        <div className="mt-3 flex items-center justify-center gap-3 text-sm">
           <span className="flex items-center gap-1 text-primary">
             <Star className="h-4 w-4 fill-primary" /> {item.vote_average.toFixed(1)}
           </span>
@@ -51,7 +51,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
           </span>
         </div>
         <p className="mt-3 line-clamp-3 text-sm text-foreground/85 sm:text-base">{item.overview}</p>
-        <div className="mt-5 flex gap-3">
+        <div className="mt-5 flex justify-center gap-3">
           <button
             onClick={handlePlay}
             className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85"
@@ -69,7 +69,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
 
         {/* Dots sit below the buttons, inside the hero, well above the content overlap */}
         {items.length > 1 && (
-          <div className="mt-5 flex gap-1.5">
+          <div className="mt-5 flex justify-center gap-1.5">
             {items.map((_, i) => (
               <button
                 key={i}

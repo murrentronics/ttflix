@@ -23,6 +23,15 @@ async function tmdb(path: string, params: Record<string, string> = {}) {
   return res.json();
 }
 
+/** Fetch two pages in parallel and merge results (up to ~40 items) */
+async function tmdbPages(path: string, params: Record<string, string> = {}) {
+  const [p1, p2] = await Promise.all([
+    tmdb(path, { ...params, page: "1" }),
+    tmdb(path, { ...params, page: "2" }),
+  ]);
+  return { results: [...(p1.results ?? []), ...(p2.results ?? [])] };
+}
+
 export type TmdbItem = {
   id: number;
   title: string;
@@ -59,10 +68,10 @@ export async function getHomeFeed(isKids = false) {
       "vote_count.gte": "50",
     };
     const [animation, family, kidsTV, kidsMovies] = await Promise.all([
-      tmdb("/discover/movie", { ...kidsParams, with_genres: "16", sort_by: "popularity.desc" }),
-      tmdb("/discover/movie", { ...kidsParams, with_genres: "10751", sort_by: "popularity.desc" }),
-      tmdb("/discover/tv", { language: "en-US", page: "1", with_genres: "10762", sort_by: "popularity.desc" }),
-      tmdb("/discover/movie", { ...kidsParams, sort_by: "vote_average.desc", "vote_count.gte": "200" }),
+      tmdbPages("/discover/movie", { ...kidsParams, with_genres: "16", sort_by: "popularity.desc" }),
+      tmdbPages("/discover/movie", { ...kidsParams, with_genres: "10751", sort_by: "popularity.desc" }),
+      tmdbPages("/discover/tv", { language: "en-US", with_genres: "10762", sort_by: "popularity.desc" }),
+      tmdbPages("/discover/movie", { ...kidsParams, sort_by: "vote_average.desc", "vote_count.gte": "200" }),
     ]);
     const hero = (animation.results ?? []).map((r: any) => normalize(r, "movie")).slice(0, 6);
     return {
@@ -79,11 +88,11 @@ export async function getHomeFeed(isKids = false) {
   const [trending, popularMovies, topRatedMovies, popularTV, cartoons, action] =
     await Promise.all([
       tmdb("/trending/all/week", { language: "en-US" }),
-      tmdb("/movie/popular", { language: "en-US", page: "1" }),
-      tmdb("/movie/top_rated", { language: "en-US", page: "1" }),
-      tmdb("/tv/popular", { language: "en-US", page: "1" }),
-      tmdb("/discover/movie", { with_genres: "16", sort_by: "popularity.desc", language: "en-US", page: "1" }),
-      tmdb("/discover/movie", { with_genres: "28", sort_by: "popularity.desc", language: "en-US", page: "1" }),
+      tmdbPages("/movie/popular", { language: "en-US" }),
+      tmdbPages("/movie/top_rated", { language: "en-US" }),
+      tmdbPages("/tv/popular", { language: "en-US" }),
+      tmdbPages("/discover/movie", { with_genres: "16", sort_by: "popularity.desc", language: "en-US", include_adult: "false" }),
+      tmdbPages("/discover/movie", { with_genres: "28", sort_by: "popularity.desc", language: "en-US", include_adult: "false" }),
     ]);
 
   const trendingItems = (trending.results ?? [])
@@ -138,9 +147,9 @@ export async function getCategory(input: { data: { category: "movies" | "tv" | "
       // Kids TV: use /discover/tv with family/kids genre filters
       const kidsTVGenres = "10762,10751,16"; // Kids, Family, Animation
       const [popular, topRated, newShows] = await Promise.all([
-        tmdb("/discover/tv", { ...kidsDiscoverBase, with_genres: kidsTVGenres, sort_by: "popularity.desc", page: "1" }),
-        tmdb("/discover/tv", { ...kidsDiscoverBase, with_genres: kidsTVGenres, sort_by: "vote_average.desc", "vote_count.gte": "200", page: "1" }),
-        tmdb("/discover/tv", { ...kidsDiscoverBase, with_genres: kidsTVGenres, sort_by: "first_air_date.desc", page: "1" }),
+        tmdbPages("/discover/tv", { ...kidsDiscoverBase, with_genres: kidsTVGenres, sort_by: "popularity.desc" }),
+        tmdbPages("/discover/tv", { ...kidsDiscoverBase, with_genres: kidsTVGenres, sort_by: "vote_average.desc", "vote_count.gte": "200" }),
+        tmdbPages("/discover/tv", { ...kidsDiscoverBase, with_genres: kidsTVGenres, sort_by: "first_air_date.desc" }),
       ]);
       const filterFn = (r: any) => isKidsSafe(r);
       return {
@@ -153,8 +162,8 @@ export async function getCategory(input: { data: { category: "movies" | "tv" | "
       };
     }
     const [popular, top, trending] = await Promise.all([
-      tmdb("/tv/popular", { page: "1" }),
-      tmdb("/tv/top_rated", { page: "1" }),
+      tmdbPages("/tv/popular", { page: "1" }),
+      tmdbPages("/tv/top_rated", { page: "1" }),
       tmdb("/trending/tv/week", {}),
     ]);
     return {
@@ -170,9 +179,9 @@ export async function getCategory(input: { data: { category: "movies" | "tv" | "
     if (isKids) {
       // Kids cartoons: animation + family genres with strict cert filter
       const [animMovies, animTV, topRated] = await Promise.all([
-        tmdb("/discover/movie", { ...kidsDiscoverBase, with_genres: "16,10751", sort_by: "popularity.desc", page: "1" }),
-        tmdb("/discover/tv", { ...kidsDiscoverBase, with_genres: "16,10762", sort_by: "popularity.desc", page: "1" }),
-        tmdb("/discover/movie", { ...kidsDiscoverBase, with_genres: "16", sort_by: "vote_average.desc", "vote_count.gte": "200", page: "1" }),
+        tmdbPages("/discover/movie", { ...kidsDiscoverBase, with_genres: "16,10751", sort_by: "popularity.desc" }),
+        tmdbPages("/discover/tv", { ...kidsDiscoverBase, with_genres: "16,10762", sort_by: "popularity.desc" }),
+        tmdbPages("/discover/movie", { ...kidsDiscoverBase, with_genres: "16", sort_by: "vote_average.desc", "vote_count.gte": "200" }),
       ]);
       const filterFn = (r: any) => isKidsSafe(r);
       return {
@@ -186,9 +195,9 @@ export async function getCategory(input: { data: { category: "movies" | "tv" | "
     }
     // Non-kids cartoons — no cert restrictions
     const [movies, tv, trending] = await Promise.all([
-      tmdb("/discover/movie", { with_genres: "16", sort_by: "popularity.desc", page: "1", include_adult: "false" }),
-      tmdb("/discover/tv", { with_genres: "16", sort_by: "popularity.desc", page: "1", include_adult: "false" }),
-      tmdb("/discover/movie", { with_genres: "16", sort_by: "vote_count.desc", page: "1", include_adult: "false" }),
+      tmdbPages("/discover/movie", { with_genres: "16", sort_by: "popularity.desc", include_adult: "false" }),
+      tmdbPages("/discover/tv", { with_genres: "16", sort_by: "popularity.desc", include_adult: "false" }),
+      tmdbPages("/discover/movie", { with_genres: "16", sort_by: "vote_count.desc", include_adult: "false" }),
     ]);
     return {
       hero: (trending.results ?? []).map((r: any) => normalize(r, "movie")).slice(0, 6),
@@ -203,10 +212,10 @@ export async function getCategory(input: { data: { category: "movies" | "tv" | "
   if (isKids) {
     // Kids movies: use /discover so certification + genre filters are enforced
     const [popular, topRated, family, upcoming] = await Promise.all([
-      tmdb("/discover/movie", { ...kidsDiscoverBase, sort_by: "popularity.desc", page: "1" }),
-      tmdb("/discover/movie", { ...kidsDiscoverBase, sort_by: "vote_average.desc", "vote_count.gte": "200", page: "1" }),
-      tmdb("/discover/movie", { ...kidsDiscoverBase, with_genres: "10751,16", sort_by: "popularity.desc", page: "1" }),
-      tmdb("/discover/movie", { ...kidsDiscoverBase, sort_by: "primary_release_date.desc", page: "1" }),
+      tmdbPages("/discover/movie", { ...kidsDiscoverBase, sort_by: "popularity.desc" }),
+      tmdbPages("/discover/movie", { ...kidsDiscoverBase, sort_by: "vote_average.desc", "vote_count.gte": "200" }),
+      tmdbPages("/discover/movie", { ...kidsDiscoverBase, with_genres: "10751,16", sort_by: "popularity.desc" }),
+      tmdbPages("/discover/movie", { ...kidsDiscoverBase, sort_by: "primary_release_date.desc" }),
     ]);
     const filterFn = (r: any) => isKidsSafe(r);
     return {
@@ -220,10 +229,10 @@ export async function getCategory(input: { data: { category: "movies" | "tv" | "
     };
   }
   const [popular, top, trending, upcoming] = await Promise.all([
-    tmdb("/movie/popular", { page: "1" }),
-    tmdb("/movie/top_rated", { page: "1" }),
+    tmdbPages("/movie/popular", { page: "1" }),
+    tmdbPages("/movie/top_rated", { page: "1" }),
     tmdb("/trending/movie/week", {}),
-    tmdb("/movie/upcoming", { page: "1" }),
+    tmdbPages("/movie/upcoming", { page: "1" }),
   ]);
   return {
     hero: (trending.results ?? []).map((r: any) => normalize(r, "movie")).slice(0, 6),
