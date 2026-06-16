@@ -108,10 +108,8 @@ export function AccountPage() {
   const requestEmailChange = async () => {
     if (!newEmail.trim() || newEmail === profile.email) return;
     setEmailBusy(true); setEmailMsg("");
-    const { error } = await supabase.auth.signInWithOtp({ email: newEmail.toLowerCase(), options: { shouldCreateUser: false } });
-    // We send OTP to the NEW email to verify ownership
-    const { error: err2 } = await supabase.auth.updateUser({ email: newEmail.toLowerCase() });
-    if (err2) { setEmailMsg("Failed to send verification. Try again."); setEmailBusy(false); return; }
+    const { error } = await supabase.auth.updateUser({ email: newEmail.toLowerCase() });
+    if (error) { setEmailMsg("Failed to send verification. Try again."); setEmailBusy(false); return; }
     setEmailStep("otp");
     setEmailMsg("A verification code was sent to your new email.");
     setEmailBusy(false);
@@ -196,6 +194,64 @@ export function AccountPage() {
               className="rounded-md bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-60">
               {saving ? "Saving…" : "Save"}
             </button>
+
+            {/* ── Change Email (inline in Profile card) ── */}
+            <div className="border-t border-border pt-4 mt-2 space-y-3">
+              <h3 className="text-sm font-bold">Change Email</h3>
+              {emailMsg && (
+                <p className={`rounded-md px-3 py-2 text-sm ${emailMsg.includes("success") ? "bg-primary/15 text-primary" : "bg-destructive/15 text-destructive"}`}>
+                  {emailMsg}
+                </p>
+              )}
+              {emailStep === "idle" ? (
+                <>
+                  <input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder={`New email (current: ${profile.email})`}
+                    className="w-full rounded-md border border-border bg-input px-3 py-2 text-foreground outline-none focus:border-primary"
+                  />
+                  <button
+                    onClick={requestEmailChange}
+                    disabled={emailBusy || !newEmail.trim() || newEmail === profile.email}
+                    className="rounded-md bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-50"
+                  >
+                    {emailBusy ? "Sending…" : "Send Verification Code"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Enter the 6-digit code sent to <span className="font-medium text-foreground">{newEmail}</span>
+                  </p>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={emailOtp}
+                    onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="000000"
+                    className="w-full rounded-md border border-border bg-input px-3 py-2 text-center text-xl font-bold tracking-widest text-foreground outline-none focus:border-primary"
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => { setEmailStep("idle"); setEmailOtp(""); setEmailMsg(""); }}
+                      className="flex-1 rounded-md border border-border py-2 text-sm font-semibold hover:bg-accent"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={verifyEmailOtp}
+                      disabled={emailBusy || emailOtp.length !== 6}
+                      className="flex-1 rounded-md bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/85 disabled:opacity-50"
+                    >
+                      {emailBusy ? "Verifying…" : "Verify"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </section>
 
@@ -353,52 +409,6 @@ export function AccountPage() {
             )}
           </>
         )}
-
-        {/* ── Change Email ── */}
-        <section className="rounded-xl border border-border bg-card p-6">
-          <h2 className="mb-4 text-lg font-bold">Change Email</h2>
-          {emailMsg && <p className="mb-3 rounded-md bg-primary/15 px-3 py-2 text-sm text-primary">{emailMsg}</p>}
-          {emailStep === "idle" ? (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Current: <span className="text-foreground font-medium">{profile.email}</span></p>
-              <input
-                type="email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="New email address"
-                className="w-full rounded-md border border-border bg-input px-3 py-2 text-foreground outline-none focus:border-primary"
-              />
-              <button
-                onClick={requestEmailChange}
-                disabled={emailBusy || !newEmail.trim() || newEmail === profile.email}
-                className="rounded-md bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-50"
-              >
-                {emailBusy ? "Sending…" : "Send Verification Code"}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Enter the 6-digit code sent to <span className="font-medium text-foreground">{newEmail}</span></p>
-              <input
-                type="tel"
-                inputMode="numeric"
-                maxLength={6}
-                value={emailOtp}
-                onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="000000"
-                className="w-full rounded-md border border-border bg-input px-3 py-2 text-center text-xl font-bold tracking-widest text-foreground outline-none focus:border-primary"
-              />
-              <div className="flex gap-3">
-                <button onClick={() => { setEmailStep("idle"); setEmailOtp(""); setEmailMsg(""); }}
-                  className="flex-1 rounded-md border border-border py-2 text-sm font-semibold hover:bg-accent">Cancel</button>
-                <button onClick={verifyEmailOtp} disabled={emailBusy || emailOtp.length !== 6}
-                  className="flex-1 rounded-md bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/85 disabled:opacity-50">
-                  {emailBusy ? "Verifying…" : "Verify"}
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
 
         {/* ── Change Password ── */}
         <section className="rounded-xl border border-border bg-card p-6">
