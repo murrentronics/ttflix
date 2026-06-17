@@ -21,7 +21,7 @@ export function WatchPage() {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [explodeLoader, setExplodeLoader] = useState(false);
-  const [loaderKey, setLoaderKey] = useState(0); // increment to force fresh TTFlixLoader mount
+  const [loaderKey, setLoaderKey] = useState(0);
   const [exitVisible, setExitVisible] = useState(true);
   const [screenError, setScreenError] = useState<string | null>(null);
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -51,12 +51,11 @@ export function WatchPage() {
   const canWatch = isAdmin || (!!user && profile?.status === "approved");
   const isKidsProfile = activeProfile?.is_kids ?? false;
 
-  // Kids cert check — fetch details to get certification, block explicit ratings
   const KIDS_BLOCKED_RATINGS = new Set(["PG-13", "R", "NC-17", "TV-14", "TV-MA", "18+", "18", "X"]);
   const [kidsBlocked, setKidsBlocked] = useState(false);
-  const kidsBlockedRef = useRef(false); // ref so async callbacks always read the latest value
+  const kidsBlockedRef = useRef(false);
   const [kidsBlockedRating, setKidsBlockedRating] = useState<string | null>(null);
-  const kidsCheckDoneRef = useRef(!isKidsProfile); // if not a kids profile, check is instantly "done"
+  const kidsCheckDoneRef = useRef(!isKidsProfile);
 
   useEffect(() => {
     if (!isKidsProfile) { kidsCheckDoneRef.current = true; kidsBlockedRef.current = false; return; }
@@ -77,9 +76,8 @@ export function WatchPage() {
   const providers = getProviders(type, tmdbId, season, episode);
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc] = useState(() => providers[0].url);
-  const providerSignalRef = useRef(false); // did current provider fire a ready/progress signal?
+  const providerSignalRef = useRef(false);
 
-  // Fallback: if provider fires no signal after 35s, try the next one
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const startFallbackTimer = useCallback(() => {
@@ -93,13 +91,12 @@ export function WatchPage() {
             setSrc(providers[next].url);
             return next;
           }
-          return prev; // exhausted all providers
+          return prev;
         });
       }
     }, 35_000);
   }, [providers]);
 
-  // Start fallback timer whenever src changes
   useEffect(() => {
     startFallbackTimer();
     return () => { if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current); };
@@ -114,50 +111,28 @@ export function WatchPage() {
 
     async function registerWatch() {
       const staleDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      await supabase
-        .from("active_watches")
-        .delete()
-        .eq("user_id", user!.id)
-        .lt("last_ping", staleDate);
+      await supabase.from("active_watches").delete().eq("user_id", user!.id).lt("last_ping", staleDate);
 
       const { data: existing } = await supabase
-        .from("active_watches")
-        .select("id")
-        .eq("user_id", user!.id)
-        .eq("session_id", sessionId)
-        .maybeSingle();
+        .from("active_watches").select("id")
+        .eq("user_id", user!.id).eq("session_id", sessionId).maybeSingle();
 
-      if (existing) {
-        watchIdRef.current = existing.id;
-        return;
-      }
+      if (existing) { watchIdRef.current = existing.id; return; }
 
       const { count } = await supabase
-        .from("active_watches")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", user!.id);
+        .from("active_watches").select("*", { count: "exact", head: true }).eq("user_id", user!.id);
 
       if ((count ?? 0) >= max) {
         const planName = PLANS[profile!.plan]?.name ?? profile!.plan;
-        const upgradeMsg = profile!.plan === "basic"
-          ? " Upgrade to Premium for up to 5 screens."
-          : "";
+        const upgradeMsg = profile!.plan === "basic" ? " Upgrade to Premium for up to 5 screens." : "";
         setScreenError(`Too many screens watching. Your ${planName} plan allows ${max} screen${max === 1 ? "" : "s"}.${upgradeMsg}`);
         return;
       }
 
-      const { data: inserted } = await supabase
-        .from("active_watches")
-        .insert({
-          user_id: user!.id,
-          session_id: sessionId,
-          tmdb_id: tmdbId,
-          media_type: type,
-          title: title || `Title ${tmdbId}`,
-          last_ping: new Date().toISOString(),
-        })
-        .select("id")
-        .single();
+      const { data: inserted } = await supabase.from("active_watches").insert({
+        user_id: user!.id, session_id: sessionId, tmdb_id: tmdbId, media_type: type,
+        title: title || `Title ${tmdbId}`, last_ping: new Date().toISOString(),
+      }).select("id").single();
 
       if (inserted) watchIdRef.current = inserted.id;
     }
@@ -166,22 +141,16 @@ export function WatchPage() {
 
     const ping = setInterval(() => {
       if (watchIdRef.current) {
-        supabase
-          .from("active_watches")
-          .update({ last_ping: new Date().toISOString() })
-          .eq("id", watchIdRef.current);
+        supabase.from("active_watches").update({ last_ping: new Date().toISOString() }).eq("id", watchIdRef.current);
       }
     }, 30_000);
 
     return () => {
       clearInterval(ping);
-      if (watchIdRef.current) {
-        supabase.from("active_watches").delete().eq("id", watchIdRef.current);
-      }
+      if (watchIdRef.current) supabase.from("active_watches").delete().eq("id", watchIdRef.current);
     };
   }, [user, session, profile, isAdmin, tmdbId, type, title, season, episode]);
 
-  // Fetch runtime from TMDB — populate duration before anything is saved
   const durationReadyRef = useRef(false);
   useEffect(() => {
     durationReadyRef.current = false;
@@ -194,7 +163,6 @@ export function WatchPage() {
       try {
         const details = await getDetails({ data: { id: tmdbId, mediaType: type } });
         let runtimeMins = details.runtime;
-
         if (!runtimeMins && type === "tv") {
           try {
             const episodes = await getSeasonEpisodes({ data: { id: tmdbId, season } });
@@ -202,10 +170,7 @@ export function WatchPage() {
             runtimeMins = ep?.runtime ?? episodes[0]?.runtime ?? null;
           } catch { /* ignore */ }
         }
-
-        if (runtimeMins && runtimeMins > 0) {
-          progressRef.current.duration = runtimeMins * 60;
-        }
+        if (runtimeMins && runtimeMins > 0) progressRef.current.duration = runtimeMins * 60;
       } catch { /* ignore */ }
       durationReadyRef.current = true;
     }
@@ -222,66 +187,42 @@ export function WatchPage() {
     if (savedInitial.current) return;
     if (!user || !effectiveProfile || !title) return;
 
-    // Wait for the kids rating check to finish before deciding whether to save
     if (!kidsCheckDoneRef.current) {
       await new Promise<void>((resolve) => {
-        const check = setInterval(() => {
-          if (kidsCheckDoneRef.current) { clearInterval(check); resolve(); }
-        }, 100);
+        const check = setInterval(() => { if (kidsCheckDoneRef.current) { clearInterval(check); resolve(); } }, 100);
         setTimeout(() => { clearInterval(check); resolve(); }, 5000);
       });
     }
 
-    if (kidsBlockedRef.current) return; // never save blocked content
+    if (kidsBlockedRef.current) return;
     savedInitial.current = true;
 
-    // Wait up to 6s for duration to be fetched from TMDB
     if (!durationReadyRef.current) {
       await new Promise<void>((resolve) => {
-        const check = setInterval(() => {
-          if (durationReadyRef.current) { clearInterval(check); resolve(); }
-        }, 200);
+        const check = setInterval(() => { if (durationReadyRef.current) { clearInterval(check); resolve(); } }, 200);
         setTimeout(() => { clearInterval(check); resolve(); }, 6000);
       });
     }
 
     const duration = progressRef.current.duration;
-
-    // If we still have no duration, try to pull from DB (existing record)
     let safeDuration = duration > 0 ? Math.floor(duration) : 0;
     if (safeDuration === 0) {
-      const { data: existing } = await supabase
-        .from("watch_progress")
-        .select("duration_seconds")
-        .eq("user_id", user.id)
-        .eq("profile_id", effectiveProfile.id)
-        .eq("tmdb_id", tmdbId)
-        .eq("media_type", type)
-        .maybeSingle();
+      const { data: existing } = await supabase.from("watch_progress").select("duration_seconds")
+        .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
+        .eq("tmdb_id", tmdbId).eq("media_type", type).maybeSingle();
       safeDuration = existing?.duration_seconds ?? 0;
     }
-
-    // Also write it back to progressRef so persist() uses it
-    if (safeDuration > 0 && progressRef.current.duration === 0) {
-      progressRef.current.duration = safeDuration;
-    }
+    if (safeDuration > 0 && progressRef.current.duration === 0) progressRef.current.duration = safeDuration;
 
     await saveProgress({
-      user_id: user.id,
-      profile_id: effectiveProfile.id,
-      tmdb_id: tmdbId,
-      media_type: type,
-      title,
-      poster_path: poster || null,
-      backdrop_path: backdrop || null,
-      watched_seconds: 10,
-      duration_seconds: safeDuration,
-      season: type === "tv" ? season : null,
-      episode: type === "tv" ? episode : null,
+      user_id: user.id, profile_id: effectiveProfile.id, tmdb_id: tmdbId, media_type: type,
+      title, poster_path: poster || null, backdrop_path: backdrop || null,
+      watched_seconds: 10, duration_seconds: safeDuration,
+      season: type === "tv" ? season : null, episode: type === "tv" ? episode : null,
     });
   }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop, season, episode]);
 
-  // Dismiss loader after 3s — but do NOT save progress until player signals it's actually playing
+  // Dismiss loader after 3s
   useEffect(() => {
     const t = setTimeout(() => { triggerExplosion(); }, 3000);
     return () => clearTimeout(t);
@@ -289,33 +230,21 @@ export function WatchPage() {
 
   const persist = useCallback(async (watched: number, duration: number) => {
     if (!user || !effectiveProfile || watched < 10) return;
-    if (kidsBlockedRef.current) return; // never save blocked content
+    if (kidsBlockedRef.current) return;
     const { season: currentSeason, episode: currentEp } = currentEpisodeRef.current;
-    // Preserve existing duration in DB if we don't have one
     let safeDuration = duration > 0 ? Math.floor(duration) : 0;
     if (safeDuration === 0) {
-      const { data: existing } = await supabase
-        .from("watch_progress")
-        .select("duration_seconds")
-        .eq("user_id", user.id)
-        .eq("profile_id", effectiveProfile.id)
-        .eq("tmdb_id", tmdbId)
-        .eq("media_type", type)
-        .maybeSingle();
+      const { data: existing } = await supabase.from("watch_progress").select("duration_seconds")
+        .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
+        .eq("tmdb_id", tmdbId).eq("media_type", type).maybeSingle();
       safeDuration = existing?.duration_seconds ?? 0;
     }
     await saveProgress({
-      user_id: user.id,
-      profile_id: effectiveProfile.id,
-      tmdb_id: tmdbId,
-      media_type: type,
-      title: title || `Title ${tmdbId}`,
-      poster_path: poster || null,
-      backdrop_path: backdrop || null,
+      user_id: user.id, profile_id: effectiveProfile.id, tmdb_id: tmdbId, media_type: type,
+      title: title || `Title ${tmdbId}`, poster_path: poster || null, backdrop_path: backdrop || null,
       watched_seconds: safeDuration > 0 ? Math.min(Math.floor(watched), safeDuration) : Math.floor(watched),
       duration_seconds: safeDuration,
-      season: type === "tv" ? currentSeason : null,
-      episode: type === "tv" ? currentEp : null,
+      season: type === "tv" ? currentSeason : null, episode: type === "tv" ? currentEp : null,
     });
   }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop]);
 
@@ -332,10 +261,9 @@ export function WatchPage() {
           savedInitial.current = false;
         }
         if (d?.timestamp !== undefined && d?.duration !== undefined) {
-          // Never overwrite a known duration with 0 — Videasy often sends duration: 0
           const newDuration = d.duration > 0 ? d.duration : progressRef.current.duration;
           progressRef.current = { watched: d.timestamp, duration: newDuration, hasPostMessage: true };
-          providerSignalRef.current = true; // provider is alive
+          providerSignalRef.current = true;
           if (!playerStartedRef.current) {
             playerStartedRef.current = true;
             triggerExplosion();
@@ -348,124 +276,77 @@ export function WatchPage() {
     return () => window.removeEventListener("message", handler);
   }, [triggerExplosion, saveInitial]);
 
-  // When src changes, force iframe to hard-reload so autoplay fires cleanly
+  // When src changes, force iframe to hard-reload
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    // Blank it first, then set new src on next tick — forces a full reload
     iframe.src = "about:blank";
-    const t = setTimeout(() => {
-      if (iframeRef.current) iframeRef.current.src = src;
-    }, 50);
+    const t = setTimeout(() => { if (iframeRef.current) iframeRef.current.src = src; }, 50);
     return () => clearTimeout(t);
   }, [src]);
 
-  // Send a play command via postMessage — works for players that listen for it
-  // (Videasy and most embed players accept player.js-style or basic play commands)
-  const sendPlayCommand = useCallback(() => {
-    const iframe = iframeRef.current;
-    if (!iframe || !iframe.contentWindow) return;
-    // Try multiple command formats different players accept
-    const commands = [
-      { method: "play" },                          // player.js standard
-      { type: "play" },                            // generic
-      { event: "command", func: "playVideo" },     // YouTube-style
-      "play",                                      // plain string
-    ];
-    commands.forEach((cmd) => {
-      try { iframe.contentWindow!.postMessage(typeof cmd === "string" ? cmd : JSON.stringify(cmd), "*"); } catch {}
-    });
-  }, []);
-
-  // Auto-play: send postMessage play commands on a schedule after src loads.
-  // The autoplay=1 URL param handles the initial load; postMessage handles
-  // cases where the player shows a click-to-play overlay.
-  useEffect(() => {
-    const t1 = setTimeout(sendPlayCommand, 1000);
-    const t2 = setTimeout(sendPlayCommand, 2500);
-    const t3 = setTimeout(sendPlayCommand, 4500);
-    const t4 = setTimeout(sendPlayCommand, 7000);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
-  }, [src, sendPlayCommand]);
-
-  // ── Helper: reload the iframe and show the loader while it recovers ──────────
+  // ── Helper: show loader and reload the iframe ────────────────────────────────
+  // Used for both crash recovery and background-restore.
+  // The loader gives the user visual feedback while Videasy reloads.
+  // Once the iframe loads, Videasy shows its own play button — user taps it as normal.
   const reloadPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    // Reset loader to fresh state (new key forces TTFlixLoader to fully remount)
     setExplodeLoader(false);
-    setLoaderKey((k) => k + 1);
+    setLoaderKey((k) => k + 1);   // remount TTFlixLoader fresh
     setLoaderVisible(true);
     progressRef.current.hasPostMessage = false;
     playerStartedRef.current = false;
     providerSignalRef.current = false;
+    savedInitial.current = false;
     iframe.src = "about:blank";
     setTimeout(() => {
       if (iframeRef.current) iframeRef.current.src = src;
-      // Trigger explosion after a grace period so loader has time to animate in
+      // Dismiss loader after grace period so Videasy has time to render
       setTimeout(() => triggerExplosion(), 4000);
     }, 150);
   }, [src, triggerExplosion]);
 
-  // When app returns to foreground after being backgrounded, the WebView
-  // suspends the iframe leaving a black screen. Show loader and reload.
+  // When app returns from background — WebView suspends iframe → black screen.
+  // Reload so Videasy comes back with its play button.
   useEffect(() => {
     let hiddenAt = 0;
-
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
         hiddenAt = Date.now();
       } else if (document.visibilityState === "visible") {
-        const awayMs = Date.now() - hiddenAt;
-        // Only reload if backgrounded for more than 3 seconds
-        if (hiddenAt > 0 && awayMs > 3000) {
-          reloadPlayer();
-        }
+        if (hiddenAt > 0 && Date.now() - hiddenAt > 3000) reloadPlayer();
       }
     };
-
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [reloadPlayer]);
 
   // ── Crash/stall watchdog ─────────────────────────────────────────────────────
-  // Once the player has started (playerStartedRef=true), check every 15s that
-  // currentTime is still advancing. If it's frozen for 2 consecutive checks,
-  // treat it as a crash and reload.
+  // Once playing, checks every 15s that currentTime is advancing.
+  // 2 consecutive frozen checks (~30s) = crash → reload.
   useEffect(() => {
     let lastTime = -1;
     let frozenCount = 0;
-
     const t = setInterval(() => {
-      // Only watch-dog once the player has actually started
       if (!playerStartedRef.current) { lastTime = -1; frozenCount = 0; return; }
-      // Skip check if page is hidden (backgrounded — handled by visibility handler)
       if (document.visibilityState === "hidden") { lastTime = -1; frozenCount = 0; return; }
-
       const ct = progressRef.current.watched;
       if (ct === lastTime && ct > 0) {
         frozenCount++;
-        if (frozenCount >= 2) {
-          // Frozen for ~30s — treat as a crash, reload
-          frozenCount = 0;
-          lastTime = -1;
-          reloadPlayer();
-        }
+        if (frozenCount >= 2) { frozenCount = 0; lastTime = -1; reloadPlayer(); }
       } else {
         frozenCount = 0;
         lastTime = ct;
       }
     }, 15_000);
-
     return () => clearInterval(t);
   }, [reloadPlayer]);
 
-  // Keep a stable ref to the latest persist so the interval never captures a stale closure
   const persistRef = useRef(persist);
   useEffect(() => { persistRef.current = persist; }, [persist]);
 
-  // Poll iframe video element every 5s for currentTime — works in Capacitor WebView
-  // where cross-origin postMessages don't fire reliably
+  // Poll iframe video element every 5s for currentTime
   useEffect(() => {
     const t = setInterval(() => {
       try {
@@ -479,9 +360,9 @@ export function WatchPage() {
         if (ct > 0) {
           const newDuration = (dur > 0 && isFinite(dur)) ? dur : progressRef.current.duration;
           progressRef.current = { watched: ct, duration: newDuration, hasPostMessage: true };
-          providerSignalRef.current = true; // video is playing — cancel fallback
+          providerSignalRef.current = true;
         }
-      } catch { /* cross-origin block — fall back to postMessage */ }
+      } catch { /* cross-origin */ }
     }, 5_000);
     return () => clearInterval(t);
   }, []);
@@ -489,14 +370,9 @@ export function WatchPage() {
   useEffect(() => {
     if (!user) return;
     const t = setInterval(() => {
-      const wallClockWatched = watchStartRef.current > 0
-        ? Math.floor((Date.now() - watchStartRef.current) / 1000)
-        : 0;
+      const wallClockWatched = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
       const duration = progressRef.current.duration;
-      const rawWatched = progressRef.current.hasPostMessage
-        ? progressRef.current.watched
-        : wallClockWatched;
-      // Never save more watched time than the known duration
+      const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClockWatched;
       const watched = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
       if (watched > 10) persistRef.current(watched, duration);
     }, 15_000);
@@ -506,13 +382,9 @@ export function WatchPage() {
 
   useEffect(() => {
     const save = () => {
-      const wallClockWatched = watchStartRef.current > 0
-        ? Math.floor((Date.now() - watchStartRef.current) / 1000)
-        : 0;
+      const wallClockWatched = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
       const duration = progressRef.current.duration;
-      const rawWatched = progressRef.current.hasPostMessage
-        ? progressRef.current.watched
-        : wallClockWatched;
+      const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClockWatched;
       const watched = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
       if (user && watched > 10) persistRef.current(watched, duration);
     };
@@ -526,13 +398,11 @@ export function WatchPage() {
     if (!canWatch) navigate("/");
   }, [stillLoading, canWatch, navigate]);
 
-  // Lock to landscape when the player opens, restore portrait on exit
   useEffect(() => {
     const android = (window as any).AndroidOrientation;
     if (android?.lockLandscape) {
       android.lockLandscape();
     } else {
-      // Fallback: Screen Orientation API (works in some browsers/PWA contexts)
       try { (screen.orientation as any).lock("landscape").catch(() => {}); } catch {}
     }
     return () => {
@@ -556,10 +426,7 @@ export function WatchPage() {
       <p className="text-sm text-white/70 max-w-xs">
         This title is rated <span className="font-bold text-primary">{kidsBlockedRating}</span> and cannot be played on a Kids profile.
       </p>
-      <button
-        onClick={() => navigate("/")}
-        className="rounded-full bg-primary px-8 py-3 text-sm font-bold text-white"
-      >
+      <button onClick={() => navigate("/")} className="rounded-full bg-primary px-8 py-3 text-sm font-bold text-white">
         Go Back
       </button>
     </div>
@@ -570,17 +437,11 @@ export function WatchPage() {
       <div className="text-6xl">📺</div>
       <h2 className="text-xl font-bold text-white">Too Many Screens</h2>
       <p className="text-sm text-white/70 max-w-xs">{screenError}</p>
-      <button
-        onClick={() => navigate("/")}
-        className="rounded-full bg-primary px-8 py-3 text-sm font-bold text-white"
-      >
+      <button onClick={() => navigate("/")} className="rounded-full bg-primary px-8 py-3 text-sm font-bold text-white">
         Back to Home
       </button>
       {profile?.plan === "basic" && (
-        <button
-          onClick={() => navigate("/account")}
-          className="rounded-full border border-white/30 px-8 py-3 text-sm font-semibold text-white/80"
-        >
+        <button onClick={() => navigate("/account")} className="rounded-full border border-white/30 px-8 py-3 text-sm font-semibold text-white/80">
           Upgrade Plan
         </button>
       )}
@@ -606,7 +467,6 @@ export function WatchPage() {
         allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
         allowFullScreen
         onLoad={() => {
-          // Ignore the blank load we fire before setting the real src
           const iframe = iframeRef.current;
           if (!iframe || !iframe.src || iframe.src === "about:blank") return;
           triggerExplosion();
