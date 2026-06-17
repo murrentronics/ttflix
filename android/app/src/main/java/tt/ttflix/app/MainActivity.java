@@ -12,15 +12,12 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-
-    private long pausedAt = 0;
 
     /** Exposed to JavaScript as window.AndroidOrientation */
     public class OrientationBridge {
@@ -56,7 +53,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         // Fire androidresume into the WebView so WatchPage can save progress
         // when PlayerActivity closes and we return here
