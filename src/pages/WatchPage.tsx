@@ -233,6 +233,18 @@ export function WatchPage() {
     const handler = (e: MessageEvent) => {
       try {
         const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+
+        // Videasy "not found" — immediately switch to VidSrc fallback
+        if (d?.type === "notFound" || d?.event === "notFound" ||
+            d?.type === "error" || d?.event === "error") {
+          const next = providerIndex + 1;
+          if (next < providers.length) {
+            setProviderIndex(next);
+            setSrc(providers[next].url);
+          }
+          return;
+        }
+
         if (d?.type === "ready" || d?.event === "ready") { providerSignalRef.current = true; triggerExplosion(); saveInitial(); }
         if (d?.type === "episodeChange" || d?.event === "episodeChange") {
           if (d?.season) currentEpisodeRef.current.season = Number(d.season);
@@ -256,7 +268,7 @@ export function WatchPage() {
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [triggerExplosion, saveInitial]);
+  }, [triggerExplosion, saveInitial, providerIndex, providers]);
 
   // When src changes, force iframe reload
   useEffect(() => {
@@ -319,10 +331,33 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // ── Open via native PlayerActivity on Android, iframe fallback elsewhere ──
+  const isAndroid = !!(window as any).AndroidPlayer;
+
+  // On Android: open PlayerActivity immediately when we know we can watch
   useEffect(() => {
+    if (!isAndroid) return;
+    if (stillLoading || !canWatch || kidsBlocked || screenError) return;
+    const url = providers[providerIndex].url;
+    saveInitial();
+    (window as any).AndroidPlayer.open(url);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAndroid, stillLoading, canWatch, kidsBlocked, screenError]);
+
+  // When PlayerActivity closes, navigate home
+  useEffect(() => {
+    if (!isAndroid) return;
+    const onResume = () => { navigate("/"); };
+    window.addEventListener("androidresume", onResume);
+    return () => window.removeEventListener("androidresume", onResume);
+  }, [isAndroid, navigate]);
+
+  // Non-Android: redirect if not allowed
+  useEffect(() => {
+    if (isAndroid) return;
     if (stillLoading) return;
     if (!canWatch) navigate("/");
-  }, [stillLoading, canWatch, navigate]);
+  }, [isAndroid, stillLoading, canWatch, navigate]);
 
   useEffect(() => {
     const android = (window as any).AndroidOrientation;
@@ -373,20 +408,22 @@ export function WatchPage() {
         />
       )}
 
-      <iframe
-        ref={iframeRef}
-        title="Player"
-        className="absolute inset-0 h-full w-full border-0"
-        referrerPolicy="no-referrer"
-        allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-        allowFullScreen
-        onLoad={() => {
-          const iframe = iframeRef.current;
-          if (!iframe || !iframe.src || iframe.src === "about:blank") return;
-          triggerExplosion();
-          saveInitial();
-        }}
-      />
+      {!isAndroid && (
+        <iframe
+          ref={iframeRef}
+          title="Player"
+          className="absolute inset-0 h-full w-full border-0"
+          referrerPolicy="no-referrer"
+          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+          allowFullScreen
+          onLoad={() => {
+            const iframe = iframeRef.current;
+            if (!iframe || !iframe.src || iframe.src === "about:blank") return;
+            triggerExplosion();
+            saveInitial();
+          }}
+        />
+      )}
 
       {!loaderVisible && !exitVisible && (
         <div

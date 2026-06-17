@@ -26,7 +26,8 @@ public class PlayerActivity extends Activity {
     private WebView playerWebView;
     private View mCustomView;
     private WebChromeClient.CustomViewCallback mCustomViewCallback;
-    private FrameLayout rootLayout;
+    private FrameLayout customViewContainer; // dedicated layer for fullscreen video
+    private ImageButton exitBtn;
     public static final String EXTRA_URL = "player_url";
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -45,15 +46,15 @@ public class PlayerActivity extends Activity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         setupImmersiveMode();
 
-        // Root layout
-        rootLayout = new FrameLayout(this);
+        // ── Layer 0: root (black background) ──────────────────────────────
+        FrameLayout rootLayout = new FrameLayout(this);
         rootLayout.setBackgroundColor(Color.BLACK);
         rootLayout.setLayoutParams(new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        // Player WebView
+        // ── Layer 1: WebView (Videasy player page) ─────────────────────────
         playerWebView = new WebView(this);
         playerWebView.setLayoutParams(new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -64,7 +65,7 @@ public class PlayerActivity extends Activity {
         WebSettings settings = playerWebView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setMediaPlaybackRequiresUserGesture(false); // allows autoplay
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setAllowFileAccess(true);
@@ -79,60 +80,24 @@ public class PlayerActivity extends Activity {
             "Chrome/124.0.0.0 Mobile Safari/537.36"
         );
 
-        playerWebView.setWebChromeClient(new WebChromeClient() {
-            // Handle Videasy going fullscreen — show the video view filling the screen
-            @Override
-            public void onShowCustomView(View view, CustomViewCallback callback) {
-                mCustomView = view;
-                mCustomViewCallback = callback;
-                view.setBackgroundColor(Color.BLACK);
-                rootLayout.addView(view, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                ));
-                setupImmersiveMode();
-            }
+        // ── Layer 2: custom view container — for Videasy fullscreen video ──
+        // Starts hidden, shown only when onShowCustomView fires
+        customViewContainer = new FrameLayout(this);
+        customViewContainer.setBackgroundColor(Color.BLACK);
+        customViewContainer.setLayoutParams(new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        customViewContainer.setVisibility(View.GONE);
 
-            @Override
-            public void onHideCustomView() {
-                if (mCustomView != null) {
-                    rootLayout.removeView(mCustomView);
-                    mCustomView = null;
-                }
-                if (mCustomViewCallback != null) {
-                    mCustomViewCallback.onCustomViewHidden();
-                    mCustomViewCallback = null;
-                }
-                setupImmersiveMode();
-            }
-        });
+        // ── Layer 3: exit button container — always on top ─────────────────
+        FrameLayout exitContainer = new FrameLayout(this);
+        exitContainer.setLayoutParams(new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
 
-        playerWebView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                String host = request.getUrl().getHost() != null
-                    ? request.getUrl().getHost() : "";
-                // Block ad networks only
-                if (host.contains("doubleclick.net") || host.contains("googlesyndication.com")
-                        || host.contains("adservice.google") || host.contains("amazon-adsystem.com")
-                        || host.contains("moatads.com") || host.contains("outbrain.com")
-                        || host.contains("taboola.com")) {
-                    return true;
-                }
-                return false; // allow everything else
-            }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                setupImmersiveMode();
-            }
-        });
-
-        rootLayout.addView(playerWebView);
-
-        // Native Exit button — always on top
-        ImageButton exitBtn = new ImageButton(this);
+        exitBtn = new ImageButton(this);
         exitBtn.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
         exitBtn.setBackgroundColor(Color.argb(180, 0, 0, 0));
         exitBtn.setColorFilter(Color.WHITE);
@@ -145,7 +110,64 @@ public class PlayerActivity extends Activity {
         exitBtn.setLayoutParams(btnParams);
         exitBtn.setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10));
         exitBtn.setOnClickListener(v -> finish());
-        rootLayout.addView(exitBtn);
+        exitContainer.addView(exitBtn);
+
+        // Stack layers: WebView → customViewContainer → exitContainer
+        rootLayout.addView(playerWebView);
+        rootLayout.addView(customViewContainer);
+        rootLayout.addView(exitContainer);
+
+        // ── WebChromeClient: handle Videasy fullscreen video ───────────────
+        playerWebView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onShowCustomView(View view, CustomViewCallback callback) {
+                mCustomView = view;
+                mCustomViewCallback = callback;
+                view.setBackgroundColor(Color.BLACK);
+                customViewContainer.addView(view, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ));
+                customViewContainer.setVisibility(View.VISIBLE);
+                playerWebView.setVisibility(View.GONE);
+                setupImmersiveMode();
+            }
+
+            @Override
+            public void onHideCustomView() {
+                customViewContainer.setVisibility(View.GONE);
+                customViewContainer.removeAllViews();
+                playerWebView.setVisibility(View.VISIBLE);
+                if (mCustomViewCallback != null) {
+                    mCustomViewCallback.onCustomViewHidden();
+                    mCustomViewCallback = null;
+                }
+                mCustomView = null;
+                setupImmersiveMode();
+            }
+        });
+
+        playerWebView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String host = request.getUrl().getHost() != null
+                    ? request.getUrl().getHost() : "";
+                // Block known ad networks only — allow everything else Videasy needs
+                if (host.contains("doubleclick.net") || host.contains("googlesyndication.com")
+                        || host.contains("adservice.google") || host.contains("amazon-adsystem.com")
+                        || host.contains("moatads.com") || host.contains("outbrain.com")
+                        || host.contains("taboola.com")) {
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                setupImmersiveMode();
+            }
+        });
 
         setContentView(rootLayout);
 
@@ -178,6 +200,11 @@ public class PlayerActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        // If fullscreen video is showing, exit fullscreen first
+        if (mCustomView != null && mCustomViewCallback != null) {
+            mCustomViewCallback.onCustomViewHidden();
+            return;
+        }
         finish();
     }
 
