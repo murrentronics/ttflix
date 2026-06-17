@@ -1,13 +1,12 @@
 ﻿import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { X, Play } from "lucide-react";
+import { X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { getProviders } from "@/lib/stream";
 import { saveProgress } from "@/lib/continue-watching";
 import { getDetails, getSeasonEpisodes } from "@/lib/tmdb.functions.app";
 import { supabase, PLANS } from "@/lib/supabase";
-import { img } from "@/lib/tmdb";
 
 export function WatchPage() {
   const { mediaType, id } = useParams<{ mediaType: string; id: string }>();
@@ -169,10 +168,16 @@ export function WatchPage() {
     }
   }, [type, tmdbId, season, episode, saveInitial]);
 
+  // Auto-open player as soon as we know the user can watch
+  // No intermediate screen needed — go straight to PlayerActivity
   useEffect(() => {
     if (stillLoading) return;
-    if (!canWatch) navigate("/");
-  }, [stillLoading, canWatch, navigate]);
+    if (!canWatch) return;
+    if (kidsBlocked) return;
+    if (screenError) return;
+    openPlayer();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stillLoading, canWatch, kidsBlocked, screenError]);
 
   if (stillLoading) return (
     <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>
@@ -208,16 +213,12 @@ export function WatchPage() {
 
   const backdropUrl = backdrop ? img(backdrop, "original") : poster ? img(poster, "w780") : null;
 
+  // This page auto-launches PlayerActivity immediately.
+  // Show a plain black screen while that happens.
+  // Error/blocked states are shown below if needed.
   return (
     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center">
-      {backdropUrl && (
-        <img src={backdropUrl} alt={title}
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ opacity: 0.4 }} />
-      )}
-      <div className="absolute inset-0 bg-black/50" />
-
-      {/* Exit button */}
+      {/* Exit button — visible while waiting */}
       <div className="absolute top-0 left-0 z-20 p-3">
         <button
           onTouchStart={(e) => { e.stopPropagation(); navigate("/"); }}
@@ -227,23 +228,6 @@ export function WatchPage() {
         >
           <X className="h-4 w-4" /> Exit
         </button>
-      </div>
-
-      {/* Play button */}
-      <div className="relative z-10 flex flex-col items-center gap-6">
-        {title && <p className="text-center text-lg font-bold text-white px-8 line-clamp-2">{title}</p>}
-        <button
-          onTouchStart={(e) => { e.stopPropagation(); openPlayer(); }}
-          onClick={(e) => { e.stopPropagation(); openPlayer(); }}
-          className="flex h-24 w-24 items-center justify-center rounded-full bg-primary shadow-2xl"
-          style={{ WebkitTapHighlightColor: "transparent" }}
-          aria-label="Play"
-        >
-          <Play className="h-10 w-10 text-white fill-white ml-1" />
-        </button>
-        {type === "tv" && (
-          <p className="text-sm text-white/60">Season {season} · Episode {episode}</p>
-        )}
       </div>
     </div>
   );
