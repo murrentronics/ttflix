@@ -44,6 +44,16 @@
             </intent-filter>
         </activity>
 
+        <!-- PlayerActivity — fullscreen native WebView for Videasy player -->
+        <activity
+            android:name=".PlayerActivity"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:screenOrientation="sensorLandscape"
+            android:keepScreenOn="true" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

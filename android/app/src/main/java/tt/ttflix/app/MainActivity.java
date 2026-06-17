@@ -1,5 +1,6 @@
 package tt.ttflix.app;
 
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.os.Build;
@@ -42,32 +43,29 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        pausedAt = System.currentTimeMillis();
-        // Notify JS that app is going to background
-        runOnUiThread(() -> {
-            if (getBridge() != null && getBridge().getWebView() != null) {
-                getBridge().getWebView().evaluateJavascript(
-                    "window.dispatchEvent(new CustomEvent('androidpause'));", null);
-            }
-        });
+    /** Exposed to JavaScript as window.AndroidPlayer — launches PlayerActivity */
+    public class PlayerBridge {
+        @JavascriptInterface
+        public void open(String url) {
+            runOnUiThread(() -> {
+                Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
+                intent.putExtra(PlayerActivity.EXTRA_URL, url);
+                startActivity(intent);
+            });
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        final long awayMs = System.currentTimeMillis() - pausedAt;
-        // Only notify if actually backgrounded for more than 3 seconds
-        if (pausedAt > 0 && awayMs > 3000) {
-            runOnUiThread(() -> {
-                if (getBridge() != null && getBridge().getWebView() != null) {
-                    getBridge().getWebView().evaluateJavascript(
-                        "window.dispatchEvent(new CustomEvent('androidresume', {detail:{awayMs:" + awayMs + "}}));", null);
-                }
-            });
-        }
+        // Fire androidresume into the WebView so WatchPage can save progress
+        // when PlayerActivity closes and we return here
+        runOnUiThread(() -> {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('androidresume'));", null);
+            }
+        });
     }
 
     @Override
@@ -76,37 +74,33 @@ public class MainActivity extends BridgeActivity {
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().clearCache(true);
 
-            // Disable the native Android scrollbar drawn by WebView
             getBridge().getWebView().setVerticalScrollBarEnabled(false);
             getBridge().getWebView().setHorizontalScrollBarEnabled(false);
 
-            // Allow cross-origin postMessages from Videasy iframe to reach the app
             getBridge().getWebView().getSettings().setJavaScriptEnabled(true);
             getBridge().getWebView().getSettings().setDomStorageEnabled(true);
             getBridge().getWebView().getSettings().setAllowUniversalAccessFromFileURLs(true);
             getBridge().getWebView().getSettings().setAllowFileAccessFromFileURLs(true);
 
-            // Register orientation bridge so JS can call window.AndroidOrientation.lockLandscape() etc.
+            // Register orientation bridge
             getBridge().getWebView().addJavascriptInterface(new OrientationBridge(), "AndroidOrientation");
 
-            // Override UA globally — removes the "wv" WebView marker so stream
-            // sites don't detect and block Capacitor's WebView
+            // Register player bridge so JS can call window.AndroidPlayer.open(url)
+            getBridge().getWebView().addJavascriptInterface(new PlayerBridge(), "AndroidPlayer");
+
             String cleanUA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) "
                 + "AppleWebKit/537.36 (KHTML, like Gecko) "
                 + "Chrome/124.0.0.0 Mobile Safari/537.36";
             getBridge().getWebView().getSettings().setUserAgentString(cleanUA);
 
-            // Block all new window / popup / ad redirect attempts from iframes
             getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
                 @Override
                 public boolean onCreateWindow(WebView view, boolean isDialog,
                                               boolean isUserGesture, android.os.Message resultMsg) {
-                    // Return false = deny all popup/new-tab requests from the player iframe
                     return false;
                 }
             });
 
-            // Block navigation away from the app origin
             getBridge().getWebView().setWebViewClient(new com.getcapacitor.BridgeWebViewClient(getBridge()) {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -142,8 +136,6 @@ public class MainActivity extends BridgeActivity {
 
         applyImmersiveFlags(decorView);
 
-        // Re-apply immersive flags whenever system UI becomes visible (status bar swipe)
-        // This hides it again quickly so the WebView doesn't think it lost focus
         decorView.setOnSystemUiVisibilityChangeListener(visibility -> {
             if ((visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0) {
                 decorView.postDelayed(() -> applyImmersiveFlags(decorView), 300);
