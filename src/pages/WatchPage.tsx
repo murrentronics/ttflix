@@ -307,19 +307,22 @@ export function WatchPage() {
     }, 150);
   }, [src, triggerExplosion]);
 
-  // When app returns from background — WebView suspends iframe → black screen.
-  // Reload so Videasy comes back with its play button.
+  // When app returns from background — Android fires 'androidresume' custom event
+  // via MainActivity.onResume → evaluateJavascript. Reload so Videasy comes back.
   useEffect(() => {
-    let hiddenAt = 0;
+    const onResume = () => reloadPlayer();
+    window.addEventListener("androidresume", onResume);
+    // Keep visibilitychange as a fallback for non-Android / browser testing
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        hiddenAt = Date.now();
-      } else if (document.visibilityState === "visible") {
-        if (hiddenAt > 0 && Date.now() - hiddenAt > 3000) reloadPlayer();
-      }
+      if (document.visibilityState === "visible") reloadPlayer();
     };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
+    // Only attach visibilitychange if not on Android (androidresume handles it there)
+    const isAndroid = !!(window as any).AndroidOrientation;
+    if (!isAndroid) document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("androidresume", onResume);
+      if (!isAndroid) document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [reloadPlayer]);
 
   // ── Crash/stall watchdog ─────────────────────────────────────────────────────

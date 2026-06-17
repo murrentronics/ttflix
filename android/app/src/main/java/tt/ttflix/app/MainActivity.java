@@ -19,6 +19,8 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
 
+    private long pausedAt = 0;
+
     /** Exposed to JavaScript as window.AndroidOrientation */
     public class OrientationBridge {
         @JavascriptInterface
@@ -37,6 +39,34 @@ public class MainActivity extends BridgeActivity {
         public void unlock() {
             runOnUiThread(() ->
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT));
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        pausedAt = System.currentTimeMillis();
+        // Notify JS that app is going to background
+        runOnUiThread(() -> {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('androidpause'));", null);
+            }
+        });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        final long awayMs = System.currentTimeMillis() - pausedAt;
+        // Only notify if actually backgrounded for more than 3 seconds
+        if (pausedAt > 0 && awayMs > 3000) {
+            runOnUiThread(() -> {
+                if (getBridge() != null && getBridge().getWebView() != null) {
+                    getBridge().getWebView().evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('androidresume', {detail:{awayMs:" + awayMs + "}}));", null);
+                }
+            });
         }
     }
 
@@ -77,19 +107,16 @@ public class MainActivity extends BridgeActivity {
             });
 
             // Block navigation away from the app origin
-            // Allow embed.st and streamed.pk so live sports iframes can load
             getBridge().getWebView().setWebViewClient(new com.getcapacitor.BridgeWebViewClient(getBridge()) {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                     String url = request.getUrl().toString();
-                    // Always allow internal app URLs
                     if (url.startsWith("capacitor://") || url.startsWith("http://localhost")) {
                         return false;
                     }
-                    // Allow live sports stream domains
                     if (url.contains("videasy.net")) {
                         return false;
-                    }                    // Block everything else (ad redirects, external links)
+                    }
                     return true;
                 }
             });
