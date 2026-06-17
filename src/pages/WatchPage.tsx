@@ -94,7 +94,7 @@ export function WatchPage() {
           return prev;
         });
       }
-    }, 35_000);
+    }, 15_000);
   }, [providers]);
 
   useEffect(() => {
@@ -203,11 +203,31 @@ export function WatchPage() {
     });
   }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop, season, episode]);
 
-  // Dismiss loader after 3s
+  // Dismiss loader after 3s — but wait for kids check first if on a kids profile
   useEffect(() => {
-    const t = setTimeout(() => triggerExplosion(), 3000);
+    if (!isKidsProfile) {
+      // No kids check needed — dismiss normally
+      const t = setTimeout(() => triggerExplosion(), 3000);
+      return () => clearTimeout(t);
+    }
+    // On kids profile: wait for check to complete then either block or dismiss
+    const t = setTimeout(() => {
+      // If check is done, fire immediately; otherwise poll until it is
+      if (kidsCheckDoneRef.current) {
+        triggerExplosion();
+        return;
+      }
+      const poll = setInterval(() => {
+        if (kidsCheckDoneRef.current) {
+          clearInterval(poll);
+          triggerExplosion();
+        }
+      }, 100);
+      // Hard cap at 6s total
+      setTimeout(() => { clearInterval(poll); triggerExplosion(); }, 6000);
+    }, 1000); // give the API 1s head start before we start polling
     return () => clearTimeout(t);
-  }, [triggerExplosion]);
+  }, [triggerExplosion, isKidsProfile]);
 
   const persist = useCallback(async (watched: number, duration: number) => {
     if (!user || !effectiveProfile || watched < 10) return;
@@ -270,10 +290,11 @@ export function WatchPage() {
     return () => window.removeEventListener("message", handler);
   }, [triggerExplosion, saveInitial, providerIndex, providers]);
 
-  // When src changes, force iframe reload
+  // When src changes, force iframe reload — skip if kids blocked
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
+    if (kidsBlockedRef.current) return; // never load blocked content
     progressRef.current.hasPostMessage = false;
     playerStartedRef.current = false;
     lastHeartbeatRef.current = 0;
@@ -331,33 +352,26 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // ── Open via native PlayerActivity on Android, iframe fallback elsewhere ──
-  const isAndroid = !!(window as any).AndroidPlayer;
-
-  // On Android: open PlayerActivity immediately when we know we can watch
+  // Launch PlayerActivity as soon as we're ready — no extra screen
+  const playerLaunchedRef = useRef(false);
   useEffect(() => {
-    if (!isAndroid) return;
-    if (stillLoading || !canWatch || kidsBlocked || screenError) return;
-    const url = providers[providerIndex].url;
+    if (stillLoading || !canWatch || kidsBlocked || !!screenError) return;
+    if (playerLaunchedRef.current) return;
+    playerLaunchedRef.current = true;
     saveInitial();
-    (window as any).AndroidPlayer.open(url);
+    // Small delay so the TTFlix loader has time to render first
+    setTimeout(() => {
+      (window as any).AndroidPlayer?.open(src);
+    }, 500);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAndroid, stillLoading, canWatch, kidsBlocked, screenError]);
+  }, [stillLoading, canWatch, kidsBlocked, screenError]);
 
-  // When PlayerActivity closes, navigate home
+  // When PlayerActivity closes (androidresume fires), go home
   useEffect(() => {
-    if (!isAndroid) return;
-    const onResume = () => { navigate("/"); };
+    const onResume = () => navigate("/");
     window.addEventListener("androidresume", onResume);
     return () => window.removeEventListener("androidresume", onResume);
-  }, [isAndroid, navigate]);
-
-  // Non-Android: redirect if not allowed
-  useEffect(() => {
-    if (isAndroid) return;
-    if (stillLoading) return;
-    if (!canWatch) navigate("/");
-  }, [isAndroid, stillLoading, canWatch, navigate]);
+  }, [navigate]);
 
   useEffect(() => {
     const android = (window as any).AndroidOrientation;
@@ -399,55 +413,13 @@ export function WatchPage() {
 
   return (
     <div className="fixed inset-0 bg-black">
-      {loaderVisible && (
-        <TTFlixLoader
-          key={loaderKey}
-          explode={explodeLoader}
-          backdrop={backdrop || poster}
-          onDone={onLoaderDone}
-        />
-      )}
-
-      {!isAndroid && (
-        <iframe
-          ref={iframeRef}
-          title="Player"
-          className="absolute inset-0 h-full w-full border-0"
-          referrerPolicy="no-referrer"
-          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-          allowFullScreen
-          onLoad={() => {
-            const iframe = iframeRef.current;
-            if (!iframe || !iframe.src || iframe.src === "about:blank") return;
-            triggerExplosion();
-            saveInitial();
-          }}
-        />
-      )}
-
-      {!loaderVisible && !exitVisible && (
-        <div
-          className="absolute inset-x-0 bottom-0 top-16 z-10"
-          onTouchStart={(e) => { e.stopPropagation(); showExit(); }}
-          onClick={(e) => { e.stopPropagation(); showExit(); }}
-        />
-      )}
-
-      {!loaderVisible && (
-        <div
-          className="absolute top-0 left-0 z-20 p-3 transition-opacity duration-300"
-          style={{ opacity: exitVisible ? 1 : 0, pointerEvents: exitVisible ? "auto" : "none" }}
-        >
-          <button
-            onTouchStart={(e) => { e.stopPropagation(); navigate("/"); }}
-            onClick={(e) => { e.stopPropagation(); navigate("/"); }}
-            className="flex items-center gap-2 rounded-full bg-black/80 px-4 py-2.5 text-sm font-bold text-white"
-            style={{ WebkitTapHighlightColor: "transparent" }}
-          >
-            <X className="h-4 w-4" /> Exit
-          </button>
-        </div>
-      )}
+      <TTFlixLoader
+        key={loaderKey}
+        explode={false}
+        persistent={true}
+        backdrop={backdrop || poster}
+        onDone={() => {}}
+      />
     </div>
   );
 }

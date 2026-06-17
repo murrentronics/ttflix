@@ -5,10 +5,12 @@ export function TTFlixLoader({
   explode,
   onDone,
   backdrop,
+  persistent = false,
 }: {
   explode: boolean;
   onDone: () => void;
   backdrop?: string;
+  persistent?: boolean; // if true, never auto-dismiss via hard timeout
 }) {
   const [phase, setPhase] = useState<"entering" | "idle" | "exploding" | "done">("entering");
   // How long we've been waiting — drives the "still loading" message
@@ -37,7 +39,9 @@ export function TTFlixLoader({
   }, [explode, phase]);
 
   // Hard timeout — runs ONCE on mount, never resets — always clears the loader
+  // Skipped when persistent=true (e.g. waiting for PlayerActivity to open)
   useEffect(() => {
+    if (persistent) return;
     const t = setTimeout(() => {
       setPhase("done");
       onDoneRef.current();
