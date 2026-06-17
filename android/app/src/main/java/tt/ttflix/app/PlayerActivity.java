@@ -2,7 +2,6 @@ package tt.ttflix.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.os.Build;
@@ -71,7 +70,13 @@ public class PlayerActivity extends Activity {
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setAllowFileAccess(true);
-        settings.setSupportMultipleWindows(false);
+        settings.setSupportMultipleWindows(true); // needed for onCreateWindow to fire
+        settings.setAllowContentAccess(true);
+        settings.setDatabaseEnabled(true);
+        // Allow mixed content so Videasy can load video from any protocol
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        }
         // Match the same UA as the main app so Videasy doesn't block it
         settings.setUserAgentString(
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) " +
@@ -79,29 +84,73 @@ public class PlayerActivity extends Activity {
             "Chrome/124.0.0.0 Mobile Safari/537.36"
         );
 
-        // Block popups and ad redirects
+        // Allow Videasy to open sub-frames (needed for some video sources)
         playerWebView.setWebChromeClient(new WebChromeClient() {
+            private WebView mCustomView;
+            private CustomViewCallback mCustomViewCallback;
+
+            @Override
+            public void onShowCustomView(View view, CustomViewCallback callback) {
+                // Videasy goes fullscreen — show the custom view over everything
+                mCustomView = (view instanceof WebView) ? (WebView) view : null;
+                mCustomViewCallback = callback;
+                root.addView(view, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ));
+                setupImmersiveMode();
+            }
+
+            @Override
+            public void onHideCustomView() {
+                if (mCustomView != null) {
+                    root.removeView(mCustomView);
+                    mCustomView = null;
+                }
+                if (mCustomViewCallback != null) mCustomViewCallback.onCustomViewHidden();
+                setupImmersiveMode();
+            }
+
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog,
                                           boolean isUserGesture, android.os.Message resultMsg) {
-                return false; // deny all popups
+                // Allow Videasy to create sub-windows for video playback
+                WebView newWebView = new WebView(PlayerActivity.this);
+                newWebView.getSettings().setJavaScriptEnabled(true);
+                newWebView.getSettings().setMediaPlaybackRequiresUserGesture(false);
+                newWebView.setWebViewClient(new WebViewClient());
+                root.addView(newWebView, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                ));
+                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
+                transport.setWebView(newWebView);
+                resultMsg.sendToTarget();
+                return true;
             }
         });
 
         playerWebView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                // Allow all navigation within the player — Videasy uses multiple domains
+                // for CDN, video sources, and subtitles. Only block obvious ad networks.
                 String url = request.getUrl().toString();
-                // Only allow Videasy domains
-                if (url.contains("videasy.net")) return false;
-                // Block everything else (ad redirects)
-                return true;
+                String host = request.getUrl().getHost() != null ? request.getUrl().getHost() : "";
+                // Block known ad/tracker domains
+                if (host.contains("doubleclick.net") || host.contains("googlesyndication.com")
+                        || host.contains("adservice.google") || host.contains("amazon-adsystem.com")
+                        || host.contains("moatads.com") || host.contains("outbrain.com")
+                        || host.contains("taboola.com")) {
+                    return true; // block
+                }
+                // Allow everything else — Videasy needs its CDN and video sources
+                return false;
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                // Re-apply immersive mode after each page load so status bar stays hidden
                 setupImmersiveMode();
             }
         });
@@ -154,9 +203,6 @@ public class PlayerActivity extends Activity {
             playerWebView.destroy();
             playerWebView = null;
         }
-        // Tell the main app the player closed
-        Intent result = new Intent();
-        setResult(Activity.RESULT_OK, result);
     }
 
     @Override
