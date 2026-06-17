@@ -244,8 +244,10 @@ export function WatchPage() {
           const newDuration = d.duration > 0 ? d.duration : progressRef.current.duration;
           progressRef.current = { watched: d.timestamp, duration: newDuration, hasPostMessage: true };
           providerSignalRef.current = true;
+          lastHeartbeatRef.current = Date.now(); // keep watchdog alive
           if (!playerStartedRef.current) {
             playerStartedRef.current = true;
+            lastHeartbeatRef.current = Date.now();
             triggerExplosion();
             saveInitial();
           }
@@ -260,6 +262,9 @@ export function WatchPage() {
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
+    progressRef.current.hasPostMessage = false;
+    playerStartedRef.current = false;
+    lastHeartbeatRef.current = 0;
     iframe.src = "about:blank";
     const t = setTimeout(() => { if (iframeRef.current) iframeRef.current.src = src; }, 50);
     return () => clearTimeout(t);
@@ -269,33 +274,24 @@ export function WatchPage() {
   useEffect(() => { persistRef.current = persist; }, [persist]);
 
   // ── Crash watchdog ───────────────────────────────────────────────────────────
-  // Once playing, checks every 5s if currentTime has advanced.
-  // If frozen for 10s (2 checks) → navigate to the same watch URL for a clean reload.
+  // Once Videasy fires its first postMessage (player started), track a heartbeat.
+  // Every time a postMessage comes in, update lastHeartbeatRef.
+  // If 10s pass with no heartbeat after the player started → reload.
+  const lastHeartbeatRef = useRef<number>(0);
+
   useEffect(() => {
-    let lastTime = -1;
-    let frozenCount = 0;
-
     const t = setInterval(() => {
-      // Only watch once player has actually started
-      if (!playerStartedRef.current) { lastTime = -1; frozenCount = 0; return; }
-      // Skip if page is backgrounded
-      if (document.visibilityState === "hidden") { lastTime = -1; frozenCount = 0; return; }
-
-      const ct = progressRef.current.watched;
-      if (ct > 0 && ct === lastTime) {
-        frozenCount++;
-        if (frozenCount >= 2) {
-          // Frozen 10s+ — hard reload the watch page (same as user re-clicking the movie)
-          window.location.reload();
-        }
-      } else {
-        frozenCount = 0;
-        lastTime = ct;
+      // Only watch after player has actually started sending messages
+      if (!playerStartedRef.current) return;
+      if (lastHeartbeatRef.current === 0) return;
+      if (document.visibilityState === "hidden") return;
+      const elapsed = Date.now() - lastHeartbeatRef.current;
+      if (elapsed > 10_000) {
+        window.location.reload();
       }
     }, 5_000);
-
     return () => clearInterval(t);
-  }, [navigate]);
+  }, []);
 
   useEffect(() => {
     if (!user) return;
