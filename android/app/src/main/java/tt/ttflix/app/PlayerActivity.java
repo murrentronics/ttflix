@@ -6,6 +6,9 @@ import android.content.pm.ActivityInfo;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -26,9 +29,31 @@ public class PlayerActivity extends Activity {
     private WebView playerWebView;
     private View mCustomView;
     private WebChromeClient.CustomViewCallback mCustomViewCallback;
-    private FrameLayout customViewContainer; // dedicated layer for fullscreen video
+    private FrameLayout customViewContainer;
+    private FrameLayout exitContainer;
     private ImageButton exitBtn;
+    private String fallbackUrl = null;
+    private boolean usingFallback = false;
+    private final Handler hideHandler = new Handler(Looper.getMainLooper());
+    private static final int HIDE_DELAY_MS = 3000;
     public static final String EXTRA_URL = "player_url";
+    public static final String EXTRA_FALLBACK_URL = "player_fallback_url";
+
+    private final Runnable hideExitRunnable = () -> {
+        if (exitContainer != null) {
+            exitContainer.animate().alpha(0f).setDuration(300).start();
+            exitContainer.postDelayed(() -> exitContainer.setVisibility(View.GONE), 300);
+        }
+    };
+
+    private void showExitButton() {
+        hideHandler.removeCallbacks(hideExitRunnable);
+        if (exitContainer != null) {
+            exitContainer.setVisibility(View.VISIBLE);
+            exitContainer.animate().alpha(1f).setDuration(200).start();
+            hideHandler.postDelayed(hideExitRunnable, HIDE_DELAY_MS);
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -46,7 +71,7 @@ public class PlayerActivity extends Activity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         setupImmersiveMode();
 
-        // ── Layer 0: root (black background) ──────────────────────────────
+        // Layer 0: root
         FrameLayout rootLayout = new FrameLayout(this);
         rootLayout.setBackgroundColor(Color.BLACK);
         rootLayout.setLayoutParams(new FrameLayout.LayoutParams(
@@ -54,7 +79,7 @@ public class PlayerActivity extends Activity {
             ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        // ── Layer 1: WebView (Videasy player page) ─────────────────────────
+        // Layer 1: WebView
         playerWebView = new WebView(this);
         playerWebView.setLayoutParams(new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -65,7 +90,7 @@ public class PlayerActivity extends Activity {
         WebSettings settings = playerWebView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setMediaPlaybackRequiresUserGesture(false); // allows autoplay
+        settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setAllowFileAccess(true);
@@ -80,8 +105,7 @@ public class PlayerActivity extends Activity {
             "Chrome/124.0.0.0 Mobile Safari/537.36"
         );
 
-        // ── Layer 2: custom view container — for Videasy fullscreen video ──
-        // Starts hidden, shown only when onShowCustomView fires
+        // Layer 2: custom view container for Videasy fullscreen
         customViewContainer = new FrameLayout(this);
         customViewContainer.setBackgroundColor(Color.BLACK);
         customViewContainer.setLayoutParams(new FrameLayout.LayoutParams(
@@ -90,12 +114,14 @@ public class PlayerActivity extends Activity {
         ));
         customViewContainer.setVisibility(View.GONE);
 
-        // ── Layer 3: exit button container — always on top ─────────────────
-        FrameLayout exitContainer = new FrameLayout(this);
+        // Layer 3: exit button — starts hidden, shows on tap, auto-hides
+        exitContainer = new FrameLayout(this);
         exitContainer.setLayoutParams(new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ));
+        exitContainer.setAlpha(0f);
+        exitContainer.setVisibility(View.GONE);
 
         exitBtn = new ImageButton(this);
         exitBtn.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
@@ -112,12 +138,18 @@ public class PlayerActivity extends Activity {
         exitBtn.setOnClickListener(v -> finish());
         exitContainer.addView(exitBtn);
 
-        // Stack layers: WebView → customViewContainer → exitContainer
+        // Tap anywhere on the WebView to show exit button
+        playerWebView.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                showExitButton();
+            }
+            return false; // don't consume — let WebView handle it
+        });
+
         rootLayout.addView(playerWebView);
         rootLayout.addView(customViewContainer);
         rootLayout.addView(exitContainer);
 
-        // ── WebChromeClient: handle Videasy fullscreen video ───────────────
         playerWebView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onShowCustomView(View view, CustomViewCallback callback) {
@@ -131,6 +163,7 @@ public class PlayerActivity extends Activity {
                 customViewContainer.setVisibility(View.VISIBLE);
                 playerWebView.setVisibility(View.GONE);
                 setupImmersiveMode();
+                showExitButton();
             }
 
             @Override
@@ -152,7 +185,6 @@ public class PlayerActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String host = request.getUrl().getHost() != null
                     ? request.getUrl().getHost() : "";
-                // Block known ad networks only — allow everything else Videasy needs
                 if (host.contains("doubleclick.net") || host.contains("googlesyndication.com")
                         || host.contains("adservice.google") || host.contains("amazon-adsystem.com")
                         || host.contains("moatads.com") || host.contains("outbrain.com")
@@ -166,13 +198,37 @@ public class PlayerActivity extends Activity {
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
                 setupImmersiveMode();
+                showExitButton();
+                // Detect Videasy "not found" by evaluating page content
+                if (!usingFallback && fallbackUrl != null) {
+                    view.evaluateJavascript(
+                        "(function(){ return document.title + '|' + document.body.innerText; })()",
+                        result -> {
+                            if (result != null) {
+                                String lower = result.toLowerCase();
+                                if (lower.contains("couldn") || lower.contains("not found")
+                                        || lower.contains("cannot find")) {
+                                    usingFallback = true;
+                                    runOnUiThread(() -> playerWebView.loadUrl(fallbackUrl));
+                                }
+                            }
+                        }
+                    );
+                }
             }
         });
 
         setContentView(rootLayout);
 
         String url = getIntent().getStringExtra(EXTRA_URL);
+        fallbackUrl = getIntent().getStringExtra(EXTRA_FALLBACK_URL);
         if (url != null) playerWebView.loadUrl(url);
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (event.getAction() == MotionEvent.ACTION_UP) showExitButton();
+        return super.onTouchEvent(event);
     }
 
     @Override
@@ -185,12 +241,14 @@ public class PlayerActivity extends Activity {
     @Override
     protected void onPause() {
         super.onPause();
+        hideHandler.removeCallbacks(hideExitRunnable);
         if (playerWebView != null) playerWebView.onPause();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        hideHandler.removeCallbacks(hideExitRunnable);
         if (playerWebView != null) {
             playerWebView.stopLoading();
             playerWebView.destroy();
@@ -200,7 +258,6 @@ public class PlayerActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // If fullscreen video is showing, exit fullscreen first
         if (mCustomView != null && mCustomViewCallback != null) {
             mCustomViewCallback.onCustomViewHidden();
             return;

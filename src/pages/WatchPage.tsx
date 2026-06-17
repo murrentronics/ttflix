@@ -361,7 +361,14 @@ export function WatchPage() {
     saveInitial();
     // Small delay so the TTFlix loader has time to render first
     setTimeout(() => {
-      (window as any).AndroidPlayer?.open(src);
+      const primaryUrl = providers[0].url;
+      const fallbackUrl = providers[1]?.url ?? null;
+      const androidPlayer = (window as any).AndroidPlayer;
+      if (fallbackUrl) {
+        androidPlayer?.openWithFallback(primaryUrl, fallbackUrl);
+      } else {
+        androidPlayer?.open(primaryUrl);
+      }
     }, 500);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stillLoading, canWatch, kidsBlocked, screenError]);
