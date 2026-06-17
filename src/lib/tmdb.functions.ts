@@ -51,6 +51,14 @@ function normalize(raw: any, fallbackType?: "movie" | "tv"): TmdbItem {
   };
 }
 
+// Filter out unreleased titles — Videasy won't have them and they lead to dead ends
+const today = new Date().toISOString().slice(0, 10);
+function isReleased(raw: any): boolean {
+  const date = raw.release_date ?? raw.first_air_date ?? null;
+  if (!date) return true; // no date = assume available (TV shows etc)
+  return date <= today;
+}
+
 /** Home page bundle: hero + multiple rows */
 export const getHomeFeed = createServerFn({ method: "GET" }).handler(async () => {
   const [trending, popularMovies, topRatedMovies, popularTV, cartoons, action] =
@@ -74,18 +82,18 @@ export const getHomeFeed = createServerFn({ method: "GET" }).handler(async () =>
     ]);
 
   const trendingItems = (trending.results ?? [])
-    .filter((r: any) => r.media_type !== "person")
+    .filter((r: any) => r.media_type !== "person" && isReleased(r))
     .map((r: any) => normalize(r));
 
   return {
     hero: trendingItems.slice(0, 6),
     rows: [
       { title: "Trending Now", items: trendingItems },
-      { title: "Popular Movies", items: (popularMovies.results ?? []).map((r: any) => normalize(r, "movie")) },
-      { title: "Top Rated", items: (topRatedMovies.results ?? []).map((r: any) => normalize(r, "movie")) },
-      { title: "Popular TV Shows", items: (popularTV.results ?? []).map((r: any) => normalize(r, "tv")) },
-      { title: "Cartoons & Animation", items: (cartoons.results ?? []).map((r: any) => normalize(r, "movie")) },
-      { title: "Action & Adventure", items: (action.results ?? []).map((r: any) => normalize(r, "movie")) },
+      { title: "Popular Movies", items: (popularMovies.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
+      { title: "Top Rated", items: (topRatedMovies.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
+      { title: "Popular TV Shows", items: (popularTV.results ?? []).filter(isReleased).map((r: any) => normalize(r, "tv")) },
+      { title: "Cartoons & Animation", items: (cartoons.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
+      { title: "Action & Adventure", items: (action.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
     ],
   };
 });
@@ -101,11 +109,11 @@ export const getCategory = createServerFn({ method: "GET" })
         tmdb("/trending/tv/week", {}),
       ]);
       return {
-        hero: (trending.results ?? []).map((r: any) => normalize(r, "tv")).slice(0, 6),
+        hero: (trending.results ?? []).filter(isReleased).map((r: any) => normalize(r, "tv")).slice(0, 6),
         rows: [
-          { title: "Trending TV", items: (trending.results ?? []).map((r: any) => normalize(r, "tv")) },
-          { title: "Popular Series", items: (popular.results ?? []).map((r: any) => normalize(r, "tv")) },
-          { title: "Top Rated Series", items: (top.results ?? []).map((r: any) => normalize(r, "tv")) },
+          { title: "Trending TV", items: (trending.results ?? []).filter(isReleased).map((r: any) => normalize(r, "tv")) },
+          { title: "Popular Series", items: (popular.results ?? []).filter(isReleased).map((r: any) => normalize(r, "tv")) },
+          { title: "Top Rated Series", items: (top.results ?? []).filter(isReleased).map((r: any) => normalize(r, "tv")) },
         ],
       };
     }
@@ -116,11 +124,11 @@ export const getCategory = createServerFn({ method: "GET" })
         tmdb("/discover/movie", { with_genres: "16", sort_by: "vote_count.desc", page: "1" }),
       ]);
       return {
-        hero: (trending.results ?? []).map((r: any) => normalize(r, "movie")).slice(0, 6),
+        hero: (trending.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")).slice(0, 6),
         rows: [
-          { title: "Animated Movies", items: (movies.results ?? []).map((r: any) => normalize(r, "movie")) },
-          { title: "Animated Series", items: (tv.results ?? []).map((r: any) => normalize(r, "tv")) },
-          { title: "Top Animation", items: (trending.results ?? []).map((r: any) => normalize(r, "movie")) },
+          { title: "Animated Movies", items: (movies.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
+          { title: "Animated Series", items: (tv.results ?? []).filter(isReleased).map((r: any) => normalize(r, "tv")) },
+          { title: "Top Animation", items: (trending.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
         ],
       };
     }
@@ -132,12 +140,12 @@ export const getCategory = createServerFn({ method: "GET" })
       tmdb("/movie/upcoming", { page: "1" }),
     ]);
     return {
-      hero: (trending.results ?? []).map((r: any) => normalize(r, "movie")).slice(0, 6),
+      hero: (trending.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")).slice(0, 6),
       rows: [
-        { title: "Trending Movies", items: (trending.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Popular", items: (popular.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Top Rated", items: (top.results ?? []).map((r: any) => normalize(r, "movie")) },
-        { title: "Coming Soon", items: (upcoming.results ?? []).map((r: any) => normalize(r, "movie")) },
+        { title: "Trending Movies", items: (trending.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
+        { title: "Popular", items: (popular.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
+        { title: "Top Rated", items: (top.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
+        { title: "Coming Soon", items: (upcoming.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
       ],
     };
   });
@@ -149,7 +157,7 @@ export const searchContent = createServerFn({ method: "GET" })
     const res = await tmdb("/search/multi", { query: data.query, page: "1" });
     return {
       results: (res.results ?? [])
-        .filter((r: any) => r.media_type !== "person" && (r.poster_path || r.backdrop_path))
+        .filter((r: any) => r.media_type !== "person" && (r.poster_path || r.backdrop_path) && isReleased(r))
         .map((r: any) => normalize(r)),
     };
   });
