@@ -29,7 +29,7 @@
             android:launchMode="singleTask"
             android:exported="true"
             android:hardwareAccelerated="true"
-            android:screenOrientation="userPortrait"
+            android:screenOrientation="unspecified"
             android:keepScreenOn="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

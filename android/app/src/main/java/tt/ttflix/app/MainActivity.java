@@ -21,20 +21,27 @@ public class MainActivity extends BridgeActivity {
 
     /** Exposed to JavaScript as window.AndroidOrientation */
     public class OrientationBridge {
+        private boolean isTV() {
+            return getPackageManager().hasSystemFeature("android.software.leanback");
+        }
+
         @JavascriptInterface
         public void lockLandscape() {
+            if (isTV()) return; // TV is always landscape, nothing to lock
             runOnUiThread(() ->
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE));
         }
 
         @JavascriptInterface
         public void lockPortrait() {
+            if (isTV()) return;
             runOnUiThread(() ->
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT));
         }
 
         @JavascriptInterface
         public void unlock() {
+            if (isTV()) return;
             runOnUiThread(() ->
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT));
         }
@@ -78,6 +85,12 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Lock portrait on phones, leave unspecified on TV (TV is always landscape)
+        if (!getPackageManager().hasSystemFeature("android.software.leanback")) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
+        }
+
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().clearCache(true);
 

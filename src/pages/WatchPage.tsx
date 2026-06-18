@@ -352,26 +352,42 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Launch PlayerActivity as soon as we're ready — no extra screen
+  // Launch PlayerActivity — wait for kids check to complete first
   const playerLaunchedRef = useRef(false);
   useEffect(() => {
-    if (stillLoading || !canWatch || kidsBlocked || !!screenError) return;
+    if (stillLoading || !canWatch || !!screenError) return;
     if (playerLaunchedRef.current) return;
-    playerLaunchedRef.current = true;
-    saveInitial();
-    // Small delay so the TTFlix loader has time to render first
-    setTimeout(() => {
-      const primaryUrl = providers[0].url;
-      const fallbackUrl = providers[1]?.url ?? null;
-      const androidPlayer = (window as any).AndroidPlayer;
-      if (fallbackUrl) {
-        androidPlayer?.openWithFallback(primaryUrl, fallbackUrl);
-      } else {
-        androidPlayer?.open(primaryUrl);
+
+    // Wait for kids check before launching — prevents bypassing child lock
+    async function launch() {
+      if (!kidsCheckDoneRef.current) {
+        await new Promise<void>((resolve) => {
+          const poll = setInterval(() => {
+            if (kidsCheckDoneRef.current) { clearInterval(poll); resolve(); }
+          }, 50);
+          setTimeout(() => { clearInterval(poll); resolve(); }, 5000);
+        });
       }
-    }, 500);
+      // Re-check after waiting — may have become blocked
+      if (kidsBlockedRef.current) return;
+      if (playerLaunchedRef.current) return;
+      playerLaunchedRef.current = true;
+      saveInitial();
+      setTimeout(() => {
+        const primaryUrl = providers[0].url;
+        const fallbackUrl = providers[1]?.url ?? null;
+        const androidPlayer = (window as any).AndroidPlayer;
+        if (fallbackUrl) {
+          androidPlayer?.openWithFallback(primaryUrl, fallbackUrl);
+        } else {
+          androidPlayer?.open(primaryUrl);
+        }
+      }, 500);
+    }
+
+    launch();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stillLoading, canWatch, kidsBlocked, screenError]);
+  }, [stillLoading, canWatch, screenError]);
 
   // When PlayerActivity closes (androidresume fires), go home
   useEffect(() => {
@@ -394,18 +410,6 @@ export function WatchPage() {
     <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>
   );
   if (!canWatch) return null;
-
-  if (kidsBlocked) return (
-    <div className="fixed inset-0 bg-black flex flex-col items-center justify-center px-6 text-center gap-6">
-      <div className="text-6xl">🔒</div>
-      <h2 className="text-xl font-bold text-white">Not Available for Kids</h2>
-      <p className="text-sm text-white/70 max-w-xs">
-        This title is rated <span className="font-bold text-primary">{kidsBlockedRating}</span> and cannot be played on a Kids profile.
-      </p>
-      <button onClick={() => navigate("/")} className="rounded-full bg-primary px-8 py-3 text-sm font-bold text-white">Go Back</button>
-    </div>
-  );
-
   if (screenError) return (
     <div className="fixed inset-0 bg-black flex flex-col items-center justify-center px-6 text-center gap-6">
       <div className="text-6xl">📺</div>
@@ -427,6 +431,18 @@ export function WatchPage() {
         backdrop={backdrop || poster}
         onDone={() => {}}
       />
+
+      {/* Kids blocked — shown on top of loader after check completes */}
+      {kidsBlocked && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center px-6 text-center gap-6">
+          <div className="text-6xl">🔒</div>
+          <h2 className="text-xl font-bold text-white">Not Available for Kids</h2>
+          <p className="text-sm text-white/70 max-w-xs">
+            This title is rated <span className="font-bold text-primary">{kidsBlockedRating}</span> and cannot be played on a Kids profile.
+          </p>
+          <button onClick={() => navigate("/")} className="rounded-full bg-primary px-8 py-3 text-sm font-bold text-white">Go Back</button>
+        </div>
+      )}
     </div>
   );
 }

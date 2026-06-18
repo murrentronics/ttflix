@@ -69,6 +69,10 @@ public class PlayerActivity extends Activity {
         );
 
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        // On TV, orientation is always landscape — no need to force it
+        if (getPackageManager().hasSystemFeature("android.software.leanback")) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+        }
         setupImmersiveMode();
 
         // Layer 0: root
