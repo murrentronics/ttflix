@@ -396,7 +396,7 @@ export function AdminPage() {
                         <p className="text-xs text-muted-foreground">{u.email}</p>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{(u as any).phone ?? "—"}</td>
-                      <td className="px-4 py-3">{PLANS[u.plan]?.name ?? u.plan} · TT${PLANS[u.plan]?.price ?? "?"}/mo</td>
+                      <td className="px-4 py-3">{PLANS[u.plan]?.name ?? u.plan} · TT${PLANS[u.plan]?.price ?? "?"}/{PLANS[u.plan]?.annual ? "yr" : "mo"}</td>
                       <td className="px-4 py-3">
                         {dueDate ? (
                           <div>

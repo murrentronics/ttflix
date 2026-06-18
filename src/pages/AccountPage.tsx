@@ -274,7 +274,7 @@ export function AccountPage() {
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Plan</span>
-                  <span className="font-medium">{current.name} — TT${current.price}/mo</span>
+                  <span className="font-medium">{current.name} — TT${current.price}/{current.annual ? "yr" : "mo"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Status</span>
@@ -358,7 +358,7 @@ export function AccountPage() {
                         )}
                       </div>
                       <p className="mt-1 text-2xl font-extrabold text-primary">
-                        TT${p.price}<span className="text-sm font-normal text-muted-foreground">/mo</span>
+                        TT${p.price}<span className="text-sm font-normal text-muted-foreground">/{p.annual ? "yr" : "mo"}</span>
                       </p>
                       <p className="mt-1 text-sm text-muted-foreground">{p.screens} screens · {p.quality}</p>
                       {!active && !isPending && (
@@ -385,7 +385,7 @@ export function AccountPage() {
                   <p className="mb-5 text-sm text-muted-foreground">
                     You're requesting to switch to{" "}
                     <span className="font-semibold text-foreground">
-                      {PLANS[confirmPlan].name} (TT${PLANS[confirmPlan].price}/mo)
+                      {PLANS[confirmPlan].name} (TT${PLANS[confirmPlan].price}/{PLANS[confirmPlan].annual ? "yr" : "mo"})
                     </span>. You'll stay on your current plan until admin approves.
                   </p>
                   <div className="flex gap-3">

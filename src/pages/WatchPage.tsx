@@ -118,7 +118,9 @@ export function WatchPage() {
         .select("*", { count: "exact", head: true }).eq("user_id", user!.id);
       if ((count ?? 0) >= max) {
         const planName = PLANS[profile!.plan]?.name ?? profile!.plan;
-        const upgradeMsg = profile!.plan === "basic" ? " Upgrade to Premium for up to 5 screens." : "";
+        const upgradeMsg = (profile!.plan === "basic" || profile!.plan === "basic_annual")
+          ? " Upgrade to Premium for up to 5 screens."
+          : "";
         setScreenError(`Too many screens watching. Your ${planName} plan allows ${max} screen${max === 1 ? "" : "s"}.${upgradeMsg}`);
         return;
       }

@@ -25,12 +25,14 @@ export const STATUS_LABELS: Record<UserStatus, string> = {
   expelled: "Expelled",
 };
 
-export type PlanId = "basic" | "premium";
+export type PlanId = "basic" | "premium" | "basic_annual" | "premium_annual";
 
 export const PLANS: Record<
   PlanId,
-  { id: PlanId; name: string; price: number; screens: number; quality: string }
+  { id: PlanId; name: string; price: number; screens: number; quality: string; annual?: boolean }
 > = {
-  basic: { id: "basic", name: "Standard", price: 50, screens: 2, quality: "Full HD (1080p)" },
-  premium: { id: "premium", name: "Premium", price: 100, screens: 5, quality: "Ultra HD (4K)" },
+  basic:           { id: "basic",           name: "Standard",         price: 50,  screens: 2, quality: "Up to Ultra HD (4K) + HDR", annual: false },
+  premium:         { id: "premium",         name: "Premium",          price: 100, screens: 5, quality: "Up to Ultra HD (4K) + HDR", annual: false },
+  basic_annual:    { id: "basic_annual",    name: "Standard Annual",  price: 450, screens: 2, quality: "Up to Ultra HD (4K) + HDR", annual: true  },
+  premium_annual:  { id: "premium_annual",  name: "Premium Annual",   price: 650, screens: 5, quality: "Up to Ultra HD (4K) + HDR", annual: true  },
 };

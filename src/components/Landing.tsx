@@ -43,7 +43,7 @@ export function Landing() {
           {Object.values(PLANS).map((plan) => (
             <div key={plan.id} className="flex flex-col rounded-xl border border-border bg-card p-7 transition hover:border-primary">
               <h3 className="text-xl font-bold">{plan.name}</h3>
-              <p className="mt-2 text-3xl font-extrabold text-primary">TT${plan.price}<span className="text-base font-normal text-muted-foreground">/month</span></p>
+              <p className="mt-2 text-3xl font-extrabold text-primary">TT${plan.price}<span className="text-base font-normal text-muted-foreground">/{plan.annual ? "year" : "month"}</span></p>
               <ul className="mt-5 space-y-2 text-sm">
                 <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> {plan.screens} screens at the same time</li>
                 <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> {plan.quality}</li>

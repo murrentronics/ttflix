@@ -166,7 +166,7 @@ export function AuthPage() {
                           <span className="font-semibold">{p.name}</span>
                           {plan === p.id && <Check className="h-4 w-4 text-primary" />}
                         </div>
-                        <p className="text-sm text-primary">TT${p.price}/mo</p>
+                        <p className="text-sm text-primary">TT${p.price}/{p.annual ? "yr" : "mo"}</p>
                         <p className="text-xs text-muted-foreground">{p.screens} screens</p>
                       </button>
                     ))}
