@@ -29,6 +29,7 @@ public class PlayerActivity extends Activity {
     private WebView playerWebView;
     private View mCustomView;
     private WebChromeClient.CustomViewCallback mCustomViewCallback;
+    private FrameLayout rootLayout;
     private FrameLayout customViewContainer;
     private FrameLayout exitContainer;
     private ImageButton exitBtn;
@@ -76,7 +77,7 @@ public class PlayerActivity extends Activity {
         setupImmersiveMode();
 
         // Layer 0: root
-        FrameLayout rootLayout = new FrameLayout(this);
+        rootLayout = new FrameLayout(this);
         rootLayout.setBackgroundColor(Color.BLACK);
         rootLayout.setLayoutParams(new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -139,7 +140,22 @@ public class PlayerActivity extends Activity {
         btnParams.topMargin = margin;
         exitBtn.setLayoutParams(btnParams);
         exitBtn.setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10));
-        exitBtn.setOnClickListener(v -> finish());
+        exitBtn.setOnClickListener(v -> {
+            // Show black overlay immediately to hide the rotation/transition glitch
+            View blackOut = new View(PlayerActivity.this);
+            blackOut.setBackgroundColor(Color.BLACK);
+            blackOut.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+            rootLayout.addView(blackOut);
+            // Small delay so black screen renders before activity finishes
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                finish();
+                // Override transition — no slide animation, just black
+                overridePendingTransition(0, 0);
+            }, 150);
+        });
         exitContainer.addView(exitBtn);
 
         // Tap anywhere on the WebView to show exit button
@@ -266,7 +282,20 @@ public class PlayerActivity extends Activity {
             mCustomViewCallback.onCustomViewHidden();
             return;
         }
-        finish();
+        // Black out before finishing to hide rotation glitch
+        if (rootLayout != null) {
+            View blackOut = new View(this);
+            blackOut.setBackgroundColor(Color.BLACK);
+            blackOut.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ));
+            rootLayout.addView(blackOut);
+        }
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            finish();
+            overridePendingTransition(0, 0);
+        }, 150);
     }
 
     private void setupImmersiveMode() {
