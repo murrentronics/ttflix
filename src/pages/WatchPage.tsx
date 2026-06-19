@@ -395,9 +395,25 @@ export function WatchPage() {
   // unless Videasy signalled an episode change, in which case navigate
   // directly to the next episode so it launches automatically.
   useEffect(() => {
-    const onResume = (e: Event) => {
+    const onResume = async (e: Event) => {
       const detail = (e as CustomEvent).detail as { season: number; episode: number } | null;
       if (detail && detail.season > 0 && detail.episode > 0) {
+        // Save progress for the last watched episode before navigating away
+        if (user && effectiveProfile) {
+          await saveProgress({
+            user_id: user.id,
+            profile_id: effectiveProfile.id,
+            tmdb_id: tmdbId,
+            media_type: type,
+            title: title || `Title ${tmdbId}`,
+            poster_path: poster || null,
+            backdrop_path: backdrop || null,
+            watched_seconds: 10,
+            duration_seconds: progressRef.current.duration > 0 ? Math.floor(progressRef.current.duration) : 0,
+            season: detail.season,
+            episode: detail.episode,
+          });
+        }
         // Navigate to the next episode — WatchPage mounts fresh and auto-launches
         navigate(
           `/watch/${type}/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${detail.season}&episode=${detail.episode}`
@@ -408,7 +424,7 @@ export function WatchPage() {
     };
     window.addEventListener("androidresume", onResume);
     return () => window.removeEventListener("androidresume", onResume);
-  }, [navigate, type, tmdbId, title, poster, backdrop]);
+  }, [navigate, type, tmdbId, title, poster, backdrop, user, effectiveProfile]);
 
   useEffect(() => {
     const android = (window as any).AndroidOrientation;

@@ -52,6 +52,7 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void open(String url) {
             runOnUiThread(() -> {
+                playerWasActive = true;
                 Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
                 intent.putExtra(PlayerActivity.EXTRA_URL, url);
                 startActivity(intent);
@@ -61,6 +62,7 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void openWithFallback(String url, String fallbackUrl) {
             runOnUiThread(() -> {
+                playerWasActive = true;
                 Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
                 intent.putExtra(PlayerActivity.EXTRA_URL, url);
                 intent.putExtra(PlayerActivity.EXTRA_FALLBACK_URL, fallbackUrl);
@@ -80,9 +82,14 @@ public class MainActivity extends BridgeActivity {
             if (getBridge() != null && getBridge().getWebView() != null) {
                 int s = PlayerActivity.pendingEpisodeSeason;
                 int ep = PlayerActivity.pendingEpisodeNumber;
-                // Reset after reading
+                // Reset BEFORE dispatching so a second onResume never re-fires
                 PlayerActivity.pendingEpisodeSeason = -1;
                 PlayerActivity.pendingEpisodeNumber = -1;
+                // Only dispatch if we are actually returning from PlayerActivity
+                // (i.e. there was a pending episode or the player was open).
+                // We track this with a flag set when PlayerActivity starts.
+                if (!playerWasActive) return;
+                playerWasActive = false;
                 String payload = (s > 0 && ep > 0)
                     ? "{\"season\":" + s + ",\"episode\":" + ep + "}"
                     : "null";
@@ -91,6 +98,9 @@ public class MainActivity extends BridgeActivity {
             }
         });
     }
+
+    // Set to true when we start PlayerActivity, cleared on next onResume
+    private boolean playerWasActive = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
