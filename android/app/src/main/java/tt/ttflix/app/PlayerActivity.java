@@ -248,6 +248,13 @@ public class PlayerActivity extends Activity {
 
         String url = getIntent().getStringExtra(EXTRA_URL);
         fallbackUrl = getIntent().getStringExtra(EXTRA_FALLBACK_URL);
+        boolean clearStorage = getIntent().getBooleanExtra("clear_storage", false);
+        if (clearStorage) {
+            playerWebView.clearCache(true);
+            playerWebView.clearHistory();
+            android.webkit.WebStorage.getInstance().deleteAllData();
+            android.webkit.CookieManager.getInstance().removeAllCookies(null);
+        }
         if (url != null) playerWebView.loadUrl(url);
     }
 

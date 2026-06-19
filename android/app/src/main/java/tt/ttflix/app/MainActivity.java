@@ -67,6 +67,22 @@ public class MainActivity extends BridgeActivity {
                 startActivity(intent);
             });
         }
+
+        // Called by Start Over — clears Videasy's internal resume state
+        // (stored in WebView localStorage/cookies) before launching
+        @JavascriptInterface
+        public void openFresh(String url, String fallbackUrl) {
+            runOnUiThread(() -> {
+                android.webkit.WebStorage.getInstance().deleteAllData();
+                android.webkit.CookieManager.getInstance().removeAllCookies(null);
+                Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
+                intent.putExtra(PlayerActivity.EXTRA_URL, url);
+                if (fallbackUrl != null && !fallbackUrl.isEmpty())
+                    intent.putExtra(PlayerActivity.EXTRA_FALLBACK_URL, fallbackUrl);
+                intent.putExtra("clear_storage", true);
+                startActivity(intent);
+            });
+        }
     }
 
     @Override

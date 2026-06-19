@@ -44,6 +44,7 @@ export function WatchPage() {
   const backdrop = searchParams.get("backdrop") ?? "";
   const season = Number(searchParams.get("season") ?? 1);
   const episode = Number(searchParams.get("episode") ?? 1);
+  const startOver = searchParams.get("startOver") === "1";
 
   const type = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
@@ -379,7 +380,10 @@ export function WatchPage() {
         const primaryUrl = providers[0].url;
         const fallbackUrl = providers[1]?.url ?? null;
         const androidPlayer = (window as any).AndroidPlayer;
-        if (fallbackUrl) {
+        if (startOver) {
+          // Clear Videasy's internal WebView storage so it doesn't resume from end
+          androidPlayer?.openFresh(primaryUrl, fallbackUrl ?? "");
+        } else if (fallbackUrl) {
           androidPlayer?.openWithFallback(primaryUrl, fallbackUrl);
         } else {
           androidPlayer?.open(primaryUrl);
@@ -391,9 +395,16 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stillLoading, canWatch, screenError]);
 
-  // When PlayerActivity closes (androidresume fires), go home
+  // When PlayerActivity closes (androidresume fires), go home.
+  // Guard: only act on androidresume if the player was actually launched
+  // this session, otherwise the event fires on app startup and immediately
+  // sends the user home before they've even watched anything.
   useEffect(() => {
-    const onResume = () => navigate("/");
+    const onResume = () => {
+      if (playerLaunchedRef.current) {
+        navigate("/");
+      }
+    };
     window.addEventListener("androidresume", onResume);
     return () => window.removeEventListener("androidresume", onResume);
   }, [navigate]);

@@ -57,8 +57,8 @@ export function ContinueWatchingRow() {
     if (prompt?.tmdb_id === item.tmdb_id) setPrompt(null);
   };
 
-  const playUrl = (item: WatchProgress, s: number, ep: number) =>
-    `/watch/${item.media_type}/${item.tmdb_id}?title=${encodeURIComponent(item.title)}&poster=${encodeURIComponent(item.poster_path ?? "")}&backdrop=${encodeURIComponent(item.backdrop_path ?? "")}&season=${s}&episode=${ep}`;
+  const playUrl = (item: WatchProgress, s: number, ep: number, startOver = false) =>
+    `/watch/${item.media_type}/${item.tmdb_id}?title=${encodeURIComponent(item.title)}&poster=${encodeURIComponent(item.poster_path ?? "")}&backdrop=${encodeURIComponent(item.backdrop_path ?? "")}&season=${s}&episode=${ep}${startOver ? "&startOver=1" : ""}`;
 
   const handleContinue = (item: WatchProgress) => {
     setPrompt(null);
@@ -68,10 +68,9 @@ export function ContinueWatchingRow() {
   const handleStartOver = async (item: WatchProgress) => {
     setPrompt(null);
     if (!user || !effectiveProfile) return;
-    // Wipe all saved progress so the player starts fresh with no resume position
     await removeProgress(user.id, effectiveProfile.id, item.tmdb_id, item.media_type);
     setItems((prev) => prev.filter((i) => i.tmdb_id !== item.tmdb_id || i.media_type !== item.media_type));
-    navigate(playUrl(item, 1, 1));
+    navigate(playUrl(item, 1, 1, true));
   };
 
   return (
