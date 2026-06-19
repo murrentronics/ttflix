@@ -210,68 +210,7 @@ public class PlayerActivity extends Activity {
             }
         });
 
-        playerWebView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                String host = request.getUrl().getHost() != null
-                    ? request.getUrl().getHost() : "";
-                if (host.contains("doubleclick.net") || host.contains("googlesyndication.com")
-                        || host.contains("adservice.google") || host.contains("amazon-adsystem.com")
-                        || host.contains("moatads.com") || host.contains("outbrain.com")
-                        || host.contains("taboola.com")) {
-                    return true;
-                }
-                return false;
-            }
-
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                super.onPageFinished(view, url);
-                setupImmersiveMode();
-                showExitButton();
-
-                // On start-over: wipe only the localStorage keys for this show
-                // so Videasy doesn't resume from a previously watched position.
-                // Only runs once on the first page load.
-                if (startOverEnabled && !startOverDone && startOverTmdbId != null) {
-                    startOverDone = true;
-                    final String id = startOverTmdbId;
-                    // Small delay so Videasy's scripts finish initialising before we wipe,
-                    // ensuring we catch all keys it may have just written.
-                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                        view.evaluateJavascript(
-                            "(function(){" +
-                            "  try{" +
-                            "    [localStorage, sessionStorage].forEach(function(s){" +
-                            "      var keys=Object.keys(s);" +
-                            "      keys.forEach(function(k){" +
-                            "        if(k.indexOf('" + id + "')>=0){s.removeItem(k);}" +
-                            "      });" +
-                            "    });" +
-                            "  }catch(e){}" +
-                            // Reload so Videasy re-initialises without the stale resume data
-                            "  window.location.reload();" +
-                            "})()", null);
-                    }, 800);
-                }
-                // Detect Videasy "not found" by evaluating page content
-                if (!usingFallback && fallbackUrl != null) {
-                    view.evaluateJavascript(
-                        "(function(){ return document.title + '|' + document.body.innerText; })()",
-                        result -> {
-                            if (result != null) {
-                                String lower = result.toLowerCase();
-                                if (lower.contains("couldn") || lower.contains("not found")
-                                        || lower.contains("cannot find")) {
-                                    usingFallback = true;
-                                    runOnUiThread(() -> playerWebView.loadUrl(fallbackUrl));
-                                }
-                            }
-                        }
-                    );
-                }
-            }
-        });
+        playerWebView.setWebViewClient(buildRealWebViewClient());
 
         setContentView(rootLayout);
 
@@ -279,7 +218,46 @@ public class PlayerActivity extends Activity {
         fallbackUrl = getIntent().getStringExtra(EXTRA_FALLBACK_URL);
         startOverTmdbId = getIntent().getStringExtra("tmdb_id");
         startOverEnabled = getIntent().getBooleanExtra("start_over", false);
-        if (url != null) playerWebView.loadUrl(url);
+
+        if (startOverEnabled && startOverTmdbId != null) {
+            // Load about:blank first — this gives us a clean same-origin context
+            // where we can wipe localStorage/sessionStorage for this title
+            // BEFORE Videasy ever loads and reads its resume data.
+            final String targetUrl = url;
+            final String id = startOverTmdbId;
+            playerWebView.setWebViewClient(new WebViewClient() {
+                private boolean wiped = false;
+                @Override
+                public void onPageFinished(WebView view, String pageUrl) {
+                    if (!wiped && pageUrl.equals("about:blank")) {
+                        wiped = true;
+                        // Wipe all storage keys containing this tmdbId
+                        view.evaluateJavascript(
+                            "(function(){" +
+                            "  try{" +
+                            "    [localStorage,sessionStorage].forEach(function(s){" +
+                            "      Object.keys(s).forEach(function(k){" +
+                            "        if(k.indexOf('" + id + "')>=0)s.removeItem(k);" +
+                            "      });" +
+                            "    });" +
+                            "  }catch(e){}" +
+                            "})()",
+                            result -> {
+                                // Storage wiped — now load the real player URL
+                                runOnUiThread(() -> {
+                                    // Restore the real WebViewClient then load
+                                    playerWebView.setWebViewClient(buildRealWebViewClient());
+                                    playerWebView.loadUrl(targetUrl);
+                                });
+                            });
+                    }
+                }
+            });
+            playerWebView.loadUrl("about:blank");
+        } else {
+            playerWebView.setWebViewClient(buildRealWebViewClient());
+            if (url != null) playerWebView.loadUrl(url);
+        }
     }
 
     @Override
@@ -333,6 +311,46 @@ public class PlayerActivity extends Activity {
             finish();
             overridePendingTransition(0, 0);
         }, 150);
+    }
+
+    private WebViewClient buildRealWebViewClient() {
+        return new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String host = request.getUrl().getHost() != null
+                    ? request.getUrl().getHost() : "";
+                if (host.contains("doubleclick.net") || host.contains("googlesyndication.com")
+                        || host.contains("adservice.google") || host.contains("amazon-adsystem.com")
+                        || host.contains("moatads.com") || host.contains("outbrain.com")
+                        || host.contains("taboola.com")) {
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                setupImmersiveMode();
+                showExitButton();
+                // Detect Videasy "not found" by evaluating page content
+                if (!usingFallback && fallbackUrl != null) {
+                    view.evaluateJavascript(
+                        "(function(){ return document.title + '|' + document.body.innerText; })()",
+                        result -> {
+                            if (result != null) {
+                                String lower = result.toLowerCase();
+                                if (lower.contains("couldn") || lower.contains("not found")
+                                        || lower.contains("cannot find")) {
+                                    usingFallback = true;
+                                    runOnUiThread(() -> playerWebView.loadUrl(fallbackUrl));
+                                }
+                            }
+                        }
+                    );
+                }
+            }
+        };
     }
 
     private void setupImmersiveMode() {

@@ -68,8 +68,8 @@ public class MainActivity extends BridgeActivity {
             });
         }
 
-        // Start Over — same as openWithFallback but clears this show's
-        // Videasy localStorage so it plays from the beginning, not where it left off
+        // Start Over — loads about:blank first, wipes this show's storage keys,
+        // then loads the real URL so Videasy never sees the old resume data.
         @JavascriptInterface
         public void openStartOver(String url, String fallbackUrl, String tmdbId) {
             runOnUiThread(() -> {

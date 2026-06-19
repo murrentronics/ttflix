@@ -21,7 +21,6 @@ import android.view.animation.DecelerateInterpolator;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.splashscreen.SplashScreen;
 
 public class SplashActivity extends AppCompatActivity {
 
@@ -29,10 +28,6 @@ public class SplashActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Suppress the Android 12+ system splash screen immediately so only
-        // our custom SplashActivity animation shows — no round icon flash.
-        SplashScreen.installSplashScreen(this);
-
         super.onCreate(savedInstanceState);
 
         // Full screen — extend under status bar and navigation bar
