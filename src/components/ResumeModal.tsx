@@ -59,7 +59,7 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-4 py-10 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/80 p-4 py-10 backdrop-blur-sm"
       onClick={onClose}
     >
       <div

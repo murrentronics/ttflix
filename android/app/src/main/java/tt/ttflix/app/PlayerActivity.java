@@ -236,15 +236,23 @@ public class PlayerActivity extends Activity {
                 if (startOverEnabled && !startOverDone && startOverTmdbId != null) {
                     startOverDone = true;
                     final String id = startOverTmdbId;
-                    view.evaluateJavascript(
-                        "(function(){" +
-                        "  try{" +
-                        "    var keys=Object.keys(localStorage);" +
-                        "    keys.forEach(function(k){" +
-                        "      if(k.indexOf('" + id + "')>=0){localStorage.removeItem(k);}" +
-                        "    });" +
-                        "  }catch(e){}" +
-                        "})()", null);
+                    // Small delay so Videasy's scripts finish initialising before we wipe,
+                    // ensuring we catch all keys it may have just written.
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        view.evaluateJavascript(
+                            "(function(){" +
+                            "  try{" +
+                            "    [localStorage, sessionStorage].forEach(function(s){" +
+                            "      var keys=Object.keys(s);" +
+                            "      keys.forEach(function(k){" +
+                            "        if(k.indexOf('" + id + "')>=0){s.removeItem(k);}" +
+                            "      });" +
+                            "    });" +
+                            "  }catch(e){}" +
+                            // Reload so Videasy re-initialises without the stale resume data
+                            "  window.location.reload();" +
+                            "})()", null);
+                    }, 800);
                 }
                 // Detect Videasy "not found" by evaluating page content
                 if (!usingFallback && fallbackUrl != null) {
