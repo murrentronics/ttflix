@@ -76,24 +76,19 @@ public class MainActivity extends BridgeActivity {
         super.onResume();
         runOnUiThread(() -> {
             if (getBridge() != null && getBridge().getWebView() != null) {
-                if (!playerWasActive) return;
-                playerWasActive = false;
-
-                int s = PlayerActivity.pendingEpisodeSeason;
-                int ep = PlayerActivity.pendingEpisodeNumber;
-                // Reset after reading
-                PlayerActivity.pendingEpisodeSeason = -1;
-                PlayerActivity.pendingEpisodeNumber = -1;
-
-                // Always pass the last known episode (if any) so WatchPage can
-                // save progress correctly even on a plain exit mid-episode.
-                // WatchPage distinguishes "advance" vs "exit" by whether it should
-                // navigate or just save — we always send the detail so it has it.
-                String payload = (s > 0 && ep > 0)
-                    ? "{\"season\":" + s + ",\"episode\":" + ep + ",\"autoAdvance\":" + PlayerActivity.pendingAutoAdvance + "}"
-                    : "null";
-                // Reset autoAdvance after reading
-                PlayerActivity.pendingAutoAdvance = false;
+                String payload = "null";
+                if (playerWasActive) {
+                    playerWasActive = false;
+                    int s = PlayerActivity.pendingEpisodeSeason;
+                    int ep = PlayerActivity.pendingEpisodeNumber;
+                    boolean adv = PlayerActivity.pendingAutoAdvance;
+                    PlayerActivity.pendingEpisodeSeason = -1;
+                    PlayerActivity.pendingEpisodeNumber = -1;
+                    PlayerActivity.pendingAutoAdvance = false;
+                    if (s > 0 && ep > 0) {
+                        payload = "{\"season\":" + s + ",\"episode\":" + ep + ",\"autoAdvance\":" + adv + "}";
+                    }
+                }
                 getBridge().getWebView().evaluateJavascript(
                     "window.dispatchEvent(new CustomEvent('androidresume', {detail:" + payload + "}));", null);
             }
