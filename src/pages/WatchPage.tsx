@@ -331,6 +331,9 @@ export function WatchPage() {
 
   useEffect(() => {
     if (!user) return;
+    // On Android the player is a native activity — wall-clock time is meaningless
+    // and would inflate watched_seconds past the 92% filter, hiding the row.
+    if ((window as any).AndroidPlayer) return;
     const t = setInterval(() => {
       const wallClockWatched = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
       const duration = progressRef.current.duration;
@@ -344,6 +347,8 @@ export function WatchPage() {
 
   useEffect(() => {
     const save = () => {
+      // On Android skip — saving is handled via androidresume
+      if ((window as any).AndroidPlayer) return;
       const wallClockWatched = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
       const duration = progressRef.current.duration;
       const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClockWatched;

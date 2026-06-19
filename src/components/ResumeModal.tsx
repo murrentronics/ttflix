@@ -28,15 +28,9 @@ export function ResumeModal({ item, onContinue, onStartOver, onClose }: Props) {
       ? Math.min(Math.round((item.watched_seconds / item.duration_seconds) * 100), 99)
       : null;
 
-  const watched = formatTime(item.watched_seconds);
-  const remaining =
-    item.duration_seconds > 0
-      ? formatTime(item.duration_seconds - item.watched_seconds)
-      : null;
-
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-4 py-10 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
@@ -78,11 +72,6 @@ export function ResumeModal({ item, onContinue, onStartOver, onClose }: Props) {
                 Season {item.season} · Episode {item.episode}
               </p>
             )}
-            {remaining && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {watched} watched · {remaining} remaining
-              </p>
-            )}
           </div>
 
           {/* Buttons */}
@@ -109,10 +98,3 @@ export function ResumeModal({ item, onContinue, onStartOver, onClose }: Props) {
   );
 }
 
-function formatTime(totalSeconds: number): string {
-  const s = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
