@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { X, Play, RotateCcw, ChevronDown } from "lucide-react";
+import { X, Play, ChevronDown } from "lucide-react";
 import { img } from "@/lib/tmdb";
 import { getSeasonEpisodes, getDetails } from "@/lib/tmdb.functions.app";
 import type { WatchProgress } from "@/lib/continue-watching";
@@ -13,11 +13,10 @@ type Props = {
   onClose: () => void;
 };
 
-export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onClose }: Props) {
+export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props) {
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
 
-  // Reset selected season to the one saved in continue watching when modal opens
   useEffect(() => {
     if (item) setSelectedSeason(item.season ?? 1);
   }, [item?.tmdb_id]);
@@ -31,14 +30,12 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
 
   const isTv = item?.media_type === "tv";
 
-  // Fetch show details to get total season count
   const { data: details } = useQuery({
     queryKey: ["details", "tv", item?.tmdb_id],
     queryFn: () => getDetails({ data: { id: item!.tmdb_id, mediaType: "tv" } }),
     enabled: !!item && isTv,
   });
 
-  // Fetch episodes for selected season
   const { data: episodes, isLoading: episodesLoading } = useQuery({
     queryKey: ["episodes", item?.tmdb_id, selectedSeason],
     queryFn: () => getSeasonEpisodes({ data: { id: item!.tmdb_id, season: selectedSeason } }),
@@ -59,7 +56,8 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/80 p-4 py-10 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-sm"
+      style={{ paddingTop: "72px" }}
       onClick={onClose}
     >
       <div
@@ -92,26 +90,18 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
         </div>
 
         <div className="space-y-4 p-5">
-          {/* Title */}
           <h2 className="text-xl font-extrabold">{item.title}</h2>
 
-          {/* Continue / Start Over buttons */}
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={() => onContinue(item)}
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-6 py-3 font-semibold text-primary-foreground transition hover:bg-primary/85"
-            >
-              <Play className="h-5 w-5 fill-current" />
-              Continue — S{item.season} E{item.episode}
-            </button>
-            <button
-              onClick={() => onStartOver(item)}
-              className="flex w-full items-center justify-center gap-2 rounded-md bg-secondary px-6 py-3 font-semibold transition hover:bg-accent"
-            >
-              <RotateCcw className="h-5 w-5" />
-              Start Over
-            </button>
-          </div>
+          {/* Continue button only */}
+          <button
+            onClick={() => onContinue(item)}
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-6 py-3 font-semibold text-primary-foreground transition hover:bg-primary/85"
+          >
+            <Play className="h-5 w-5 fill-current" />
+            {item.media_type === "tv" && item.season != null
+              ? `Continue — S${item.season} E${item.episode}`
+              : "Continue Watching"}
+          </button>
 
           {/* Episode picker — TV only */}
           {isTv && (
@@ -119,7 +109,6 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
               <div className="flex items-center justify-between">
                 <h3 className="text-base font-bold">Episodes</h3>
 
-                {/* Season dropdown */}
                 {totalSeasons > 1 && (
                   <div className="relative">
                     <button
@@ -146,7 +135,6 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
                 )}
               </div>
 
-              {/* Episode list */}
               {episodesLoading ? (
                 <div className="py-4 text-center text-sm text-muted-foreground">Loading episodes…</div>
               ) : (
@@ -157,16 +145,10 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
                       onClick={() => onPlayEpisode(item, selectedSeason, ep.episode_number)}
                       className="flex w-full items-start gap-3 rounded-lg p-2 text-left transition hover:bg-accent active:bg-accent/80"
                     >
-                      {/* Thumbnail */}
                       <div className="relative w-24 shrink-0 overflow-hidden rounded-md bg-muted">
                         <div className="aspect-video w-full">
                           {ep.still_path ? (
-                            <img
-                              src={img(ep.still_path, "w300")}
-                              alt={ep.name}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
+                            <img src={img(ep.still_path, "w300")} alt={ep.name} className="h-full w-full object-cover" loading="lazy" />
                           ) : (
                             <div className="flex h-full items-center justify-center bg-muted">
                               <Play className="h-5 w-5 text-muted-foreground" />
@@ -174,8 +156,6 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
                           )}
                         </div>
                       </div>
-
-                      {/* Episode info */}
                       <div className="flex-1 min-w-0 pt-0.5">
                         <p className="text-xs font-bold text-primary">E{ep.episode_number}</p>
                         <p className="line-clamp-1 text-sm font-semibold">{ep.name}</p>
