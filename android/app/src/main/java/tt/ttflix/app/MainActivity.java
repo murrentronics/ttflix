@@ -52,7 +52,6 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void open(String url) {
             runOnUiThread(() -> {
-                playerWasActive = true;
                 Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
                 intent.putExtra(PlayerActivity.EXTRA_URL, url);
                 startActivity(intent);
@@ -62,7 +61,6 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public void openWithFallback(String url, String fallbackUrl) {
             runOnUiThread(() -> {
-                playerWasActive = true;
                 Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
                 intent.putExtra(PlayerActivity.EXTRA_URL, url);
                 intent.putExtra(PlayerActivity.EXTRA_FALLBACK_URL, fallbackUrl);
@@ -74,29 +72,15 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        // Fire androidresume into the WebView so WatchPage can save progress
+        // when PlayerActivity closes and we return here
         runOnUiThread(() -> {
             if (getBridge() != null && getBridge().getWebView() != null) {
-                String payload = "null";
-                if (playerWasActive) {
-                    playerWasActive = false;
-                    int s = PlayerActivity.pendingEpisodeSeason;
-                    int ep = PlayerActivity.pendingEpisodeNumber;
-                    boolean adv = PlayerActivity.pendingAutoAdvance;
-                    PlayerActivity.pendingEpisodeSeason = -1;
-                    PlayerActivity.pendingEpisodeNumber = -1;
-                    PlayerActivity.pendingAutoAdvance = false;
-                    if (s > 0 && ep > 0) {
-                        payload = "{\"season\":" + s + ",\"episode\":" + ep + ",\"autoAdvance\":" + adv + "}";
-                    }
-                }
                 getBridge().getWebView().evaluateJavascript(
-                    "window.dispatchEvent(new CustomEvent('androidresume', {detail:" + payload + "}));", null);
+                    "window.dispatchEvent(new CustomEvent('androidresume'));", null);
             }
         });
     }
-
-    // Set to true when we start PlayerActivity, cleared on next onResume
-    private boolean playerWasActive = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

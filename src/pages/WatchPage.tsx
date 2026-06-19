@@ -391,70 +391,12 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stillLoading, canWatch, screenError]);
 
-  // When PlayerActivity closes (androidresume fires), save progress then go home —
-  // unless Videasy auto-advanced to a new episode, in which case navigate to it.
+  // When PlayerActivity closes (androidresume fires), go home
   useEffect(() => {
-    const onResume = async (e: Event) => {
-      const detail = (e as CustomEvent).detail as { season: number; episode: number; autoAdvance: boolean } | null;
-
-      if (detail && detail.season > 0 && detail.episode > 0) {
-        if (detail.autoAdvance) {
-          // Videasy moved to the next episode on its own — save that position and navigate to it
-          if (user && effectiveProfile) {
-            await saveProgress({
-              user_id: user.id, profile_id: effectiveProfile.id,
-              tmdb_id: tmdbId, media_type: type,
-              title: title || `Title ${tmdbId}`,
-              poster_path: poster || null, backdrop_path: backdrop || null,
-              watched_seconds: 10,
-              duration_seconds: progressRef.current.duration > 0 ? Math.floor(progressRef.current.duration) : 0,
-              season: detail.season, episode: detail.episode,
-            });
-          }
-          navigate(`/watch/${type}/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${detail.season}&episode=${detail.episode}`);
-        } else {
-          // User exited — save the episode they were on and go home
-          if (user && effectiveProfile) {
-            const wallClock = watchStartRef.current > 0
-              ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
-            const watched = Math.max(wallClock, 10);
-            const duration = progressRef.current.duration > 0 ? Math.floor(progressRef.current.duration) : 0;
-            await saveProgress({
-              user_id: user.id, profile_id: effectiveProfile.id,
-              tmdb_id: tmdbId, media_type: type,
-              title: title || `Title ${tmdbId}`,
-              poster_path: poster || null, backdrop_path: backdrop || null,
-              watched_seconds: duration > 0 ? Math.min(watched, duration) : watched,
-              duration_seconds: duration,
-              season: detail.season, episode: detail.episode,
-            });
-          }
-          navigate("/");
-        }
-      } else {
-        // No episode info at all — save using the URL episode and go home
-        if (user && effectiveProfile) {
-          const wallClock = watchStartRef.current > 0
-            ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
-          const watched = Math.max(wallClock, 10);
-          const duration = progressRef.current.duration > 0 ? Math.floor(progressRef.current.duration) : 0;
-          await saveProgress({
-            user_id: user.id, profile_id: effectiveProfile.id,
-            tmdb_id: tmdbId, media_type: type,
-            title: title || `Title ${tmdbId}`,
-            poster_path: poster || null, backdrop_path: backdrop || null,
-            watched_seconds: duration > 0 ? Math.min(watched, duration) : watched,
-            duration_seconds: duration,
-            season: type === "tv" ? currentEpisodeRef.current.season : null,
-            episode: type === "tv" ? currentEpisodeRef.current.episode : null,
-          });
-        }
-        navigate("/");
-      }
-    };
+    const onResume = () => navigate("/");
     window.addEventListener("androidresume", onResume);
     return () => window.removeEventListener("androidresume", onResume);
-  }, [navigate, type, tmdbId, title, poster, backdrop, user, effectiveProfile]);
+  }, [navigate]);
 
   useEffect(() => {
     const android = (window as any).AndroidOrientation;
