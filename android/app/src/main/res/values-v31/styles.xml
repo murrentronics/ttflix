@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ only: override the system-generated splash screen for
+         MainActivity so no round launcher icon flashes before our custom
+         SplashActivity animation plays. Pure black, no icon. -->
+    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
+        <item name="android:windowBackground">#000000</item>
+        <item name="windowSplashScreenBackground">#000000</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>

@@ -12,6 +12,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
+import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -99,7 +100,16 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Suppress the Android 12+ round-icon system splash immediately
+        SplashScreen.installSplashScreen(this);
+
         super.onCreate(savedInstanceState);
+
+        // Launch our branded SplashActivity — it animates, then returns here
+        // Only on first create, not on config changes / restores
+        if (savedInstanceState == null) {
+            startActivity(new Intent(this, SplashActivity.class));
+        }
 
         // Lock portrait on phones, leave unspecified on TV (TV is always landscape)
         if (!getPackageManager().hasSystemFeature("android.software.leanback")) {
