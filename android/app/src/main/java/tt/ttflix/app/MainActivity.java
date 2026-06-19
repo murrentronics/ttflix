@@ -73,11 +73,21 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         // Fire androidresume into the WebView so WatchPage can save progress
-        // when PlayerActivity closes and we return here
+        // when PlayerActivity closes and we return here.
+        // If Videasy signalled an episode change, include it so WatchPage can
+        // navigate directly to the next episode instead of going home.
         runOnUiThread(() -> {
             if (getBridge() != null && getBridge().getWebView() != null) {
+                int s = PlayerActivity.pendingEpisodeSeason;
+                int ep = PlayerActivity.pendingEpisodeNumber;
+                // Reset after reading
+                PlayerActivity.pendingEpisodeSeason = -1;
+                PlayerActivity.pendingEpisodeNumber = -1;
+                String payload = (s > 0 && ep > 0)
+                    ? "{\"season\":" + s + ",\"episode\":" + ep + "}"
+                    : "null";
                 getBridge().getWebView().evaluateJavascript(
-                    "window.dispatchEvent(new CustomEvent('androidresume'));", null);
+                    "window.dispatchEvent(new CustomEvent('androidresume', {detail:" + payload + "}));", null);
             }
         });
     }

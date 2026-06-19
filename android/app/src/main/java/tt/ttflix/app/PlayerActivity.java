@@ -13,6 +13,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -39,6 +40,20 @@ public class PlayerActivity extends Activity {
     private static final int HIDE_DELAY_MS = 4000;
     public static final String EXTRA_URL = "player_url";
     public static final String EXTRA_FALLBACK_URL = "player_fallback_url";
+
+    // Stores the last episode change signalled by Videasy so MainActivity
+    // can fire it into WatchPage when PlayerActivity finishes.
+    public static int pendingEpisodeSeason = -1;
+    public static int pendingEpisodeNumber = -1;
+
+    /** Receives episodeChange callbacks from the injected JS bridge */
+    public class EpisodeBridge {
+        @JavascriptInterface
+        public void onEpisodeChange(int season, int episode) {
+            pendingEpisodeSeason = season;
+            pendingEpisodeNumber = episode;
+        }
+    }
 
     // Single shared hide delay for the X button.
     private final Runnable hideExitRunnable = () -> {
@@ -110,6 +125,9 @@ public class PlayerActivity extends Activity {
             "AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Chrome/124.0.0.0 Mobile Safari/537.36"
         );
+
+        // Register the episode-change bridge so injected JS can call back to Java
+        playerWebView.addJavascriptInterface(new EpisodeBridge(), "AndroidEpisode");
 
         // Layer 2: custom view container for Videasy fullscreen
         customViewContainer = new FrameLayout(this);
@@ -225,6 +243,23 @@ public class PlayerActivity extends Activity {
                 super.onPageFinished(view, url);
                 setupImmersiveMode();
                 showExitButton();
+
+                // Inject a postMessage listener that forwards Videasy's episodeChange
+                // event to the Java EpisodeBridge so MainActivity can pass it to WatchPage.
+                view.evaluateJavascript(
+                    "(function(){" +
+                    "  if(window.__ttflixEpBridge) return;" +
+                    "  window.__ttflixEpBridge = true;" +
+                    "  window.addEventListener('message', function(e){" +
+                    "    try{" +
+                    "      var d = typeof e.data==='string' ? JSON.parse(e.data) : e.data;" +
+                    "      if((d.type==='episodeChange'||d.event==='episodeChange') && d.season && d.episode){" +
+                    "        window.AndroidEpisode.onEpisodeChange(parseInt(d.season), parseInt(d.episode));" +
+                    "      }" +
+                    "    }catch(ex){}" +
+                    "  });" +
+                    "})()", null);
+
                 // Detect Videasy "not found" by evaluating page content
                 if (!usingFallback && fallbackUrl != null) {
                     view.evaluateJavascript(
