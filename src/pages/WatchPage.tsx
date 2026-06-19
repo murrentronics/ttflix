@@ -354,11 +354,21 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Launch PlayerActivity — wait for kids check to complete first
+  // Launch PlayerActivity — wait for kids check to complete first.
+  // Reset the launched guard whenever the episode/season changes so that
+  // navigating to a different episode of the same series re-launches the player
+  // with the correct URL instead of staying on the original content.
   const playerLaunchedRef = useRef(false);
+  useEffect(() => {
+    playerLaunchedRef.current = false;
+  }, [tmdbId, season, episode]);
+
   useEffect(() => {
     if (stillLoading || !canWatch || !!screenError) return;
     if (playerLaunchedRef.current) return;
+
+    // Capture the providers for this specific episode at the time the effect runs
+    const episodeProviders = getProviders(type, tmdbId, season, episode);
 
     // Wait for kids check before launching — prevents bypassing child lock
     async function launch() {
@@ -376,8 +386,8 @@ export function WatchPage() {
       playerLaunchedRef.current = true;
       saveInitial();
       setTimeout(() => {
-        const primaryUrl = providers[0].url;
-        const fallbackUrl = providers[1]?.url ?? null;
+        const primaryUrl = episodeProviders[0].url;
+        const fallbackUrl = episodeProviders[1]?.url ?? null;
         const androidPlayer = (window as any).AndroidPlayer;
         if (fallbackUrl) {
           androidPlayer?.openWithFallback(primaryUrl, fallbackUrl);
@@ -389,7 +399,7 @@ export function WatchPage() {
 
     launch();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stillLoading, canWatch, screenError]);
+  }, [stillLoading, canWatch, screenError, tmdbId, season, episode]);
 
   // When PlayerActivity closes (androidresume fires), go home
   useEffect(() => {

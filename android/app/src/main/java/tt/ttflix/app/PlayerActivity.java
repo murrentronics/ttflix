@@ -36,10 +36,12 @@ public class PlayerActivity extends Activity {
     private String fallbackUrl = null;
     private boolean usingFallback = false;
     private final Handler hideHandler = new Handler(Looper.getMainLooper());
-    private static final int HIDE_DELAY_MS = 3000;
+    private static final int HIDE_DELAY_MS = 3500;
     public static final String EXTRA_URL = "player_url";
     public static final String EXTRA_FALLBACK_URL = "player_fallback_url";
 
+    // Single shared hide delay used for both the X button and the touch-intercept
+    // overlay. Keeping them on the same timer means they always hide together.
     private final Runnable hideExitRunnable = () -> {
         if (exitContainer != null) {
             exitContainer.animate().alpha(0f).setDuration(300).start();
@@ -52,6 +54,9 @@ public class PlayerActivity extends Activity {
         if (exitContainer != null) {
             exitContainer.setVisibility(View.VISIBLE);
             exitContainer.animate().alpha(1f).setDuration(200).start();
+            // Restart the countdown every time this is called — including after
+            // the user taps a player control button — so the X always hides at
+            // the same time as Videasy's own controls.
             hideHandler.postDelayed(hideExitRunnable, HIDE_DELAY_MS);
         }
     }
@@ -158,12 +163,17 @@ public class PlayerActivity extends Activity {
         });
         exitContainer.addView(exitBtn);
 
-        // Tap anywhere on the WebView to show exit button
+        // Use the WebView's own touch listener to catch every tap — including taps
+        // on Videasy's player control buttons (skip 10s, play/pause, etc.).
+        // We restart the X-button hide timer on ACTION_UP so that after any tap,
+        // both the X and Videasy's controls count down and hide together.
+        // Returning false passes the event through to the WebView so all buttons
+        // still work normally.
         playerWebView.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_UP) {
                 showExitButton();
             }
-            return false; // don't consume — let WebView handle it
+            return false;
         });
 
         rootLayout.addView(playerWebView);
