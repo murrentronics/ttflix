@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { X, Play, Plus, Check, Star, Lock, ChevronDown } from "lucide-react";
 import { useDetail } from "./DetailContext";
 import { useAuth } from "@/lib/auth";
@@ -15,6 +15,7 @@ export function DetailModal() {
   const { user, profile, isAdmin } = useAuth();
   const { activeProfile } = useProfile();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [inList, setInList] = useState(false);
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
@@ -40,9 +41,16 @@ export function DetailModal() {
 
   useEffect(() => {
     if (!current || !user || !activeProfile) { setInList(false); return; }
-    fetchMyList(user.id, activeProfile.id).then((list) =>
-      setInList(list.some((l) => l.tmdb_id === current.id && l.media_type === current.mediaType)),
-    );
+    // Use cached my-list data if available, otherwise fetch
+    const cached = queryClient.getQueryData<import("@/lib/mylist").ListItem[]>(["my-list", user.id, activeProfile.id]);
+    if (cached) {
+      setInList(cached.some((l) => l.tmdb_id === current.id && l.media_type === current.mediaType));
+    } else {
+      fetchMyList(user.id, activeProfile.id).then((list) => {
+        queryClient.setQueryData(["my-list", user.id, activeProfile.id], list);
+        setInList(list.some((l) => l.tmdb_id === current.id && l.media_type === current.mediaType));
+      });
+    }
   }, [current, user, activeProfile]);
 
   useEffect(() => {
@@ -63,6 +71,7 @@ export function DetailModal() {
       await addToList({ user_id: user.id, profile_id: activeProfile.id, tmdb_id: current.id, media_type: current.mediaType, title: data.title, poster_path: data.poster_path, vote_average: data.vote_average ?? null });
       setInList(true);
     }
+    queryClient.invalidateQueries({ queryKey: ["my-list", user.id, activeProfile.id] });
   };
 
   // Ratings that are NOT allowed for kids profiles

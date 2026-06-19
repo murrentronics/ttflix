@@ -100,7 +100,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Suppress the Android 12+ round-icon system splash immediately
+        // Dismiss the Android 12+ system splash immediately (theme sets it to
+        // pure black + transparent icon so nothing visible flashes)
         SplashScreen.installSplashScreen(this);
 
         super.onCreate(savedInstanceState);
