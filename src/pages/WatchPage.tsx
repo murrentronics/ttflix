@@ -331,9 +331,6 @@ export function WatchPage() {
 
   useEffect(() => {
     if (!user) return;
-    // On Android the player is a native activity — wall-clock time is meaningless
-    // and would inflate watched_seconds past the 92% filter, hiding the row.
-    if ((window as any).AndroidPlayer) return;
     const t = setInterval(() => {
       const wallClockWatched = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
       const duration = progressRef.current.duration;
@@ -347,8 +344,6 @@ export function WatchPage() {
 
   useEffect(() => {
     const save = () => {
-      // On Android skip — saving is handled via androidresume
-      if ((window as any).AndroidPlayer) return;
       const wallClockWatched = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
       const duration = progressRef.current.duration;
       const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClockWatched;
@@ -362,6 +357,10 @@ export function WatchPage() {
 
   // Launch PlayerActivity — wait for kids check to complete first
   const playerLaunchedRef = useRef(false);
+  useEffect(() => {
+    playerLaunchedRef.current = false;
+  }, [tmdbId, season, episode]);
+
   useEffect(() => {
     if (stillLoading || !canWatch || !!screenError) return;
     if (playerLaunchedRef.current) return;
@@ -386,8 +385,7 @@ export function WatchPage() {
         const fallbackUrl = providers[1]?.url ?? null;
         const androidPlayer = (window as any).AndroidPlayer;
         if (startOver) {
-          // Clear Videasy's internal WebView storage so it doesn't resume from end
-          androidPlayer?.openFresh(primaryUrl, fallbackUrl ?? "");
+          androidPlayer?.openStartOver(primaryUrl, fallbackUrl ?? "", String(tmdbId));
         } else if (fallbackUrl) {
           androidPlayer?.openWithFallback(primaryUrl, fallbackUrl);
         } else {
@@ -400,16 +398,9 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stillLoading, canWatch, screenError]);
 
-  // When PlayerActivity closes (androidresume fires), go home.
-  // Guard: only act on androidresume if the player was actually launched
-  // this session, otherwise the event fires on app startup and immediately
-  // sends the user home before they've even watched anything.
+  // When PlayerActivity closes (androidresume fires), go home
   useEffect(() => {
-    const onResume = () => {
-      if (playerLaunchedRef.current) {
-        navigate("/");
-      }
-    };
+    const onResume = () => navigate("/");
     window.addEventListener("androidresume", onResume);
     return () => window.removeEventListener("androidresume", onResume);
   }, [navigate]);

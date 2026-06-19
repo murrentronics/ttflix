@@ -13,6 +13,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -35,6 +36,9 @@ public class PlayerActivity extends Activity {
     private ImageButton exitBtn;
     private String fallbackUrl = null;
     private boolean usingFallback = false;
+    private String startOverTmdbId = null;
+    private boolean startOverEnabled = false;
+    private boolean startOverDone = false;
     private final Handler hideHandler = new Handler(Looper.getMainLooper());
     private static final int HIDE_DELAY_MS = 4000;
     public static final String EXTRA_URL = "player_url";
@@ -225,6 +229,23 @@ public class PlayerActivity extends Activity {
                 super.onPageFinished(view, url);
                 setupImmersiveMode();
                 showExitButton();
+
+                // On start-over: wipe only the localStorage keys for this show
+                // so Videasy doesn't resume from a previously watched position.
+                // Only runs once on the first page load.
+                if (startOverEnabled && !startOverDone && startOverTmdbId != null) {
+                    startOverDone = true;
+                    final String id = startOverTmdbId;
+                    view.evaluateJavascript(
+                        "(function(){" +
+                        "  try{" +
+                        "    var keys=Object.keys(localStorage);" +
+                        "    keys.forEach(function(k){" +
+                        "      if(k.indexOf('" + id + "')>=0){localStorage.removeItem(k);}" +
+                        "    });" +
+                        "  }catch(e){}" +
+                        "})()", null);
+                }
                 // Detect Videasy "not found" by evaluating page content
                 if (!usingFallback && fallbackUrl != null) {
                     view.evaluateJavascript(
@@ -248,13 +269,8 @@ public class PlayerActivity extends Activity {
 
         String url = getIntent().getStringExtra(EXTRA_URL);
         fallbackUrl = getIntent().getStringExtra(EXTRA_FALLBACK_URL);
-        boolean clearStorage = getIntent().getBooleanExtra("clear_storage", false);
-        if (clearStorage) {
-            playerWebView.clearCache(true);
-            playerWebView.clearHistory();
-            android.webkit.WebStorage.getInstance().deleteAllData();
-            android.webkit.CookieManager.getInstance().removeAllCookies(null);
-        }
+        startOverTmdbId = getIntent().getStringExtra("tmdb_id");
+        startOverEnabled = getIntent().getBooleanExtra("start_over", false);
         if (url != null) playerWebView.loadUrl(url);
     }
 

@@ -68,18 +68,17 @@ public class MainActivity extends BridgeActivity {
             });
         }
 
-        // Called by Start Over — clears Videasy's internal resume state
-        // (stored in WebView localStorage/cookies) before launching
+        // Start Over — same as openWithFallback but clears this show's
+        // Videasy localStorage so it plays from the beginning, not where it left off
         @JavascriptInterface
-        public void openFresh(String url, String fallbackUrl) {
+        public void openStartOver(String url, String fallbackUrl, String tmdbId) {
             runOnUiThread(() -> {
-                android.webkit.WebStorage.getInstance().deleteAllData();
-                android.webkit.CookieManager.getInstance().removeAllCookies(null);
                 Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
                 intent.putExtra(PlayerActivity.EXTRA_URL, url);
                 if (fallbackUrl != null && !fallbackUrl.isEmpty())
                     intent.putExtra(PlayerActivity.EXTRA_FALLBACK_URL, fallbackUrl);
-                intent.putExtra("clear_storage", true);
+                intent.putExtra("start_over", true);
+                intent.putExtra("tmdb_id", tmdbId);
                 startActivity(intent);
             });
         }

@@ -13,25 +13,15 @@ import { WatchPage } from "./pages/WatchPage";
 import { ProfilePickerPage } from "./pages/ProfilePickerPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
-import { TTFlixLoader } from "./components/TTFlixLoader";
 import { useAuth } from "./lib/auth";
-import { useState } from "react";
 
 export function AppRoutes() {
   const { loading, profileLoading } = useAuth();
-  const [loaderDone, setLoaderDone] = useState(false);
 
-  // Show the splash loader while auth + profile are resolving
-  // explode as soon as both are ready, then hide
-  const isReady = !loading && !profileLoading;
-
-  if (!loaderDone) {
-    return (
-      <TTFlixLoader
-        explode={isReady}
-        onDone={() => setLoaderDone(true)}
-      />
-    );
+  // While auth is still resolving show a plain black screen — the native
+  // SplashActivity already played the branded intro so no second loader needed.
+  if (loading || profileLoading) {
+    return <div className="fixed inset-0 bg-black" />;
   }
 
   return (
