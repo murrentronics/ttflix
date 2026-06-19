@@ -74,25 +74,26 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
-        // Fire androidresume into the WebView so WatchPage can save progress
-        // when PlayerActivity closes and we return here.
-        // If Videasy signalled an episode change, include it so WatchPage can
-        // navigate directly to the next episode instead of going home.
         runOnUiThread(() -> {
             if (getBridge() != null && getBridge().getWebView() != null) {
-                int s = PlayerActivity.pendingEpisodeSeason;
-                int ep = PlayerActivity.pendingEpisodeNumber;
-                // Reset BEFORE dispatching so a second onResume never re-fires
-                PlayerActivity.pendingEpisodeSeason = -1;
-                PlayerActivity.pendingEpisodeNumber = -1;
-                // Only dispatch if we are actually returning from PlayerActivity
-                // (i.e. there was a pending episode or the player was open).
-                // We track this with a flag set when PlayerActivity starts.
                 if (!playerWasActive) return;
                 playerWasActive = false;
+
+                int s = PlayerActivity.pendingEpisodeSeason;
+                int ep = PlayerActivity.pendingEpisodeNumber;
+                // Reset after reading
+                PlayerActivity.pendingEpisodeSeason = -1;
+                PlayerActivity.pendingEpisodeNumber = -1;
+
+                // Always pass the last known episode (if any) so WatchPage can
+                // save progress correctly even on a plain exit mid-episode.
+                // WatchPage distinguishes "advance" vs "exit" by whether it should
+                // navigate or just save — we always send the detail so it has it.
                 String payload = (s > 0 && ep > 0)
-                    ? "{\"season\":" + s + ",\"episode\":" + ep + "}"
+                    ? "{\"season\":" + s + ",\"episode\":" + ep + ",\"autoAdvance\":" + PlayerActivity.pendingAutoAdvance + "}"
                     : "null";
+                // Reset autoAdvance after reading
+                PlayerActivity.pendingAutoAdvance = false;
                 getBridge().getWebView().evaluateJavascript(
                     "window.dispatchEvent(new CustomEvent('androidresume', {detail:" + payload + "}));", null);
             }

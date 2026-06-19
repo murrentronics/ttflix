@@ -43,15 +43,19 @@ public class PlayerActivity extends Activity {
 
     // Stores the last episode change signalled by Videasy so MainActivity
     // can fire it into WatchPage when PlayerActivity finishes.
+    // autoAdvance = true means Videasy moved to a new episode on its own.
+    // autoAdvance = false means user was on this episode and just exited.
     public static int pendingEpisodeSeason = -1;
     public static int pendingEpisodeNumber = -1;
+    public static boolean pendingAutoAdvance = false;
 
     /** Receives episodeChange callbacks from the injected JS bridge */
     public class EpisodeBridge {
         @JavascriptInterface
-        public void onEpisodeChange(int season, int episode) {
+        public void onEpisodeChange(int season, int episode, boolean autoAdvance) {
             pendingEpisodeSeason = season;
             pendingEpisodeNumber = episode;
+            pendingAutoAdvance = autoAdvance;
         }
     }
 
@@ -254,7 +258,7 @@ public class PlayerActivity extends Activity {
                     "    try{" +
                     "      var d = typeof e.data==='string' ? JSON.parse(e.data) : e.data;" +
                     "      if((d.type==='episodeChange'||d.event==='episodeChange') && d.season && d.episode){" +
-                    "        window.AndroidEpisode.onEpisodeChange(parseInt(d.season), parseInt(d.episode));" +
+                    "        window.AndroidEpisode.onEpisodeChange(parseInt(d.season), parseInt(d.episode), true);" +
                     "      }" +
                     "    }catch(ex){}" +
                     "  });" +

@@ -391,34 +391,64 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stillLoading, canWatch, screenError]);
 
-  // When PlayerActivity closes (androidresume fires), go home —
-  // unless Videasy signalled an episode change, in which case navigate
-  // directly to the next episode so it launches automatically.
+  // When PlayerActivity closes (androidresume fires), save progress then go home —
+  // unless Videasy auto-advanced to a new episode, in which case navigate to it.
   useEffect(() => {
     const onResume = async (e: Event) => {
-      const detail = (e as CustomEvent).detail as { season: number; episode: number } | null;
+      const detail = (e as CustomEvent).detail as { season: number; episode: number; autoAdvance: boolean } | null;
+
       if (detail && detail.season > 0 && detail.episode > 0) {
-        // Save progress for the last watched episode before navigating away
+        if (detail.autoAdvance) {
+          // Videasy moved to the next episode on its own — save that position and navigate to it
+          if (user && effectiveProfile) {
+            await saveProgress({
+              user_id: user.id, profile_id: effectiveProfile.id,
+              tmdb_id: tmdbId, media_type: type,
+              title: title || `Title ${tmdbId}`,
+              poster_path: poster || null, backdrop_path: backdrop || null,
+              watched_seconds: 10,
+              duration_seconds: progressRef.current.duration > 0 ? Math.floor(progressRef.current.duration) : 0,
+              season: detail.season, episode: detail.episode,
+            });
+          }
+          navigate(`/watch/${type}/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${detail.season}&episode=${detail.episode}`);
+        } else {
+          // User exited — save the episode they were on and go home
+          if (user && effectiveProfile) {
+            const wallClock = watchStartRef.current > 0
+              ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+            const watched = Math.max(wallClock, 10);
+            const duration = progressRef.current.duration > 0 ? Math.floor(progressRef.current.duration) : 0;
+            await saveProgress({
+              user_id: user.id, profile_id: effectiveProfile.id,
+              tmdb_id: tmdbId, media_type: type,
+              title: title || `Title ${tmdbId}`,
+              poster_path: poster || null, backdrop_path: backdrop || null,
+              watched_seconds: duration > 0 ? Math.min(watched, duration) : watched,
+              duration_seconds: duration,
+              season: detail.season, episode: detail.episode,
+            });
+          }
+          navigate("/");
+        }
+      } else {
+        // No episode info at all — save using the URL episode and go home
         if (user && effectiveProfile) {
+          const wallClock = watchStartRef.current > 0
+            ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+          const watched = Math.max(wallClock, 10);
+          const duration = progressRef.current.duration > 0 ? Math.floor(progressRef.current.duration) : 0;
           await saveProgress({
-            user_id: user.id,
-            profile_id: effectiveProfile.id,
-            tmdb_id: tmdbId,
-            media_type: type,
+            user_id: user.id, profile_id: effectiveProfile.id,
+            tmdb_id: tmdbId, media_type: type,
             title: title || `Title ${tmdbId}`,
-            poster_path: poster || null,
-            backdrop_path: backdrop || null,
-            watched_seconds: 10,
-            duration_seconds: progressRef.current.duration > 0 ? Math.floor(progressRef.current.duration) : 0,
-            season: detail.season,
-            episode: detail.episode,
+            poster_path: poster || null, backdrop_path: backdrop || null,
+            watched_seconds: duration > 0 ? Math.min(watched, duration) : watched,
+            duration_seconds: duration,
+            season: type === "tv" ? currentEpisodeRef.current.season : null,
+            episode: type === "tv" ? currentEpisodeRef.current.episode : null,
           });
         }
-        // Navigate to the next episode — WatchPage mounts fresh and auto-launches
-        navigate(
-          `/watch/${type}/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${detail.season}&episode=${detail.episode}`
-        );
-      } else {
         navigate("/");
       }
     };
