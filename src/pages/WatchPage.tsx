@@ -384,9 +384,7 @@ export function WatchPage() {
         const primaryUrl = providers[0].url;
         const fallbackUrl = providers[1]?.url ?? null;
         const androidPlayer = (window as any).AndroidPlayer;
-        if (startOver) {
-          androidPlayer?.openStartOver(primaryUrl, fallbackUrl ?? "", String(tmdbId));
-        } else if (fallbackUrl) {
+        if (fallbackUrl) {
           androidPlayer?.openWithFallback(primaryUrl, fallbackUrl);
         } else {
           androidPlayer?.open(primaryUrl);
@@ -398,12 +396,20 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stillLoading, canWatch, screenError]);
 
-  // When PlayerActivity closes (androidresume fires), go home
+  // When PlayerActivity closes (androidresume fires), save progress then go home
   useEffect(() => {
-    const onResume = () => navigate("/");
+    const onResume = () => {
+      // Save current progress before navigating away
+      const wallClockWatched = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+      const duration = progressRef.current.duration;
+      const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClockWatched;
+      const watched = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
+      if (user && watched > 10) persistRef.current(watched, duration);
+      navigate("/");
+    };
     window.addEventListener("androidresume", onResume);
     return () => window.removeEventListener("androidresume", onResume);
-  }, [navigate]);
+  }, [navigate, user]);
 
   useEffect(() => {
     const android = (window as any).AndroidOrientation;

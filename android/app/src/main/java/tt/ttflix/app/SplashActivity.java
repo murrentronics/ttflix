@@ -97,13 +97,11 @@ public class SplashActivity extends AppCompatActivity {
             window.setDecorFitsSystemWindows(false);
             WindowInsetsController controller = window.getInsetsController();
             if (controller != null) {
-                // Hide both status bar and nav bar — immersive
                 controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
                 controller.setSystemBarsBehavior(
                     WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 );
             }
-            // Transparent bars
             window.setStatusBarColor(Color.TRANSPARENT);
             window.setNavigationBarColor(Color.TRANSPARENT);
         } else {
