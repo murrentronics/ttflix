@@ -22,7 +22,8 @@ export async function fetchMyList(userId: string, profileId: string) {
 }
 
 export async function addToList(item: ListItem) {
-  await supabase.from("my_list").upsert(item, { onConflict: "user_id,profile_id,tmdb_id,media_type" });
+  const { error } = await supabase.from("my_list").upsert(item, { onConflict: "user_id,profile_id,tmdb_id,media_type" });
+  if (error) console.error("[addToList]", error.message, error.details);
 }
 
 export async function removeFromList(userId: string, profileId: string, tmdbId: number, mediaType: string) {

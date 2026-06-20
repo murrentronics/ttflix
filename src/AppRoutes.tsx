@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { HomePage } from "./pages/HomePage";
 import { AuthPage } from "./pages/AuthPage";
@@ -13,15 +14,29 @@ import { WatchPage } from "./pages/WatchPage";
 import { ProfilePickerPage } from "./pages/ProfilePickerPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { TTFlixLoader } from "./components/TTFlixLoader";
 import { useAuth } from "./lib/auth";
 
 export function AppRoutes() {
   const { loading, profileLoading } = useAuth();
+  const [loaderDone, setLoaderDone] = useState(false);
+  const [explode, setExplode] = useState(false);
 
-  // While auth is still resolving show a plain black screen — the native
-  // SplashActivity already played the branded intro so no second loader needed.
-  if (loading || profileLoading) {
-    return <div className="fixed inset-0 bg-black" />;
+  // When auth finishes, trigger explosion then show routes
+  useEffect(() => {
+    if (!loading && !profileLoading && !loaderDone) {
+      setExplode(true);
+    }
+  }, [loading, profileLoading, loaderDone]);
+
+  if (!loaderDone) {
+    return (
+      <TTFlixLoader
+        explode={explode}
+        onDone={() => setLoaderDone(true)}
+        persistent={true}
+      />
+    );
   }
 
   return (
