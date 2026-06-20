@@ -44,15 +44,6 @@
             </intent-filter>
         </activity>
 
-        <!-- SplashActivity — branded intro, launched by MainActivity on startup -->
-        <activity
-            android:name=".SplashActivity"
-            android:theme="@style/SplashTheme"
-            android:exported="false"
-            android:screenOrientation="portrait"
-            android:hardwareAccelerated="true"
-            android:windowSoftInputMode="stateAlwaysHidden" />
-
         <!-- PlayerActivity — fullscreen native WebView for Videasy player -->
         <activity
             android:name=".PlayerActivity"
