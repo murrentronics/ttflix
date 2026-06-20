@@ -19,42 +19,36 @@ import { useAuth } from "./lib/auth";
 
 export function AppRoutes() {
   const { loading, profileLoading } = useAuth();
-  const [loaderDone, setLoaderDone] = useState(false);
-  const [explode, setExplode] = useState(false);
-
-  // When auth finishes, trigger explosion then show routes
-  useEffect(() => {
-    if (!loading && !profileLoading && !loaderDone) {
-      setExplode(true);
-    }
-  }, [loading, profileLoading, loaderDone]);
-
-  if (!loaderDone) {
-    return (
-      <TTFlixLoader
-        explode={explode}
-        onDone={() => setLoaderDone(true)}
-        persistent={true}
-      />
-    );
-  }
+  const authReady = !loading && !profileLoading;
 
   return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/profiles" element={<ProfilePickerPage />} />
-      <Route path="/auth" element={<AuthPage />} />
-      <Route path="/movies" element={<MoviesPage />} />
-      <Route path="/tv" element={<TvPage />} />
-      <Route path="/cartoons" element={<CartoonsPage />} />
-      <Route path="/search" element={<SearchPage />} />
-      <Route path="/my-list" element={<MyListPage />} />
-      <Route path="/account" element={<AccountPage />} />
-      <Route path="/admin" element={<AdminPage />} />
-      <Route path="/billing" element={<BillingPage />} />
-      <Route path="/watch/:mediaType/:id" element={<WatchPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-    </Routes>
+    <>
+      {/* TTFLIX splash — auto-dismisses after 2.5s, explodes when auth is ready */}
+      <TTFlixLoader
+        explode={authReady}
+        onDone={() => {}}
+        persistent={false}
+      />
+
+      {/* Routes render underneath — only visible after loader dismisses */}
+      {authReady && (
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/profiles" element={<ProfilePickerPage />} />
+          <Route path="/auth" element={<AuthPage />} />
+          <Route path="/movies" element={<MoviesPage />} />
+          <Route path="/tv" element={<TvPage />} />
+          <Route path="/cartoons" element={<CartoonsPage />} />
+          <Route path="/search" element={<SearchPage />} />
+          <Route path="/my-list" element={<MyListPage />} />
+          <Route path="/account" element={<AccountPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/billing" element={<BillingPage />} />
+          <Route path="/watch/:mediaType/:id" element={<WatchPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+        </Routes>
+      )}
+    </>
   );
 }
