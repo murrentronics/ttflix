@@ -27,7 +27,7 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public void lockLandscape() {
-            if (isTV()) return;
+            if (isTV()) return; // TV is always landscape, nothing to lock
             runOnUiThread(() ->
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE));
         }
@@ -68,6 +68,8 @@ public class MainActivity extends BridgeActivity {
             });
         }
 
+        // Start Over — loads about:blank first, wipes this show's storage keys,
+        // then loads the real URL so Videasy never sees the old resume data.
         @JavascriptInterface
         public void openStartOver(String url, String fallbackUrl, String tmdbId) {
             runOnUiThread(() -> {
@@ -85,6 +87,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        // Fire androidresume into the WebView so WatchPage can save progress
+        // when PlayerActivity closes and we return here
         runOnUiThread(() -> {
             if (getBridge() != null && getBridge().getWebView() != null) {
                 getBridge().getWebView().evaluateJavascript(
@@ -97,26 +101,26 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Launch the branded TTFLIX splash — animates then returns here.
-        // Only on first create, not on config changes.
-        if (savedInstanceState == null) {
-            startActivity(new Intent(this, SplashActivity.class));
-        }
-
-        // Lock portrait on phones; TV stays unspecified (always landscape).
+        // Lock portrait on phones, leave unspecified on TV (TV is always landscape)
         if (!getPackageManager().hasSystemFeature("android.software.leanback")) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
         }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
             getBridge().getWebView().clearCache(true);
+
             getBridge().getWebView().setVerticalScrollBarEnabled(false);
             getBridge().getWebView().setHorizontalScrollBarEnabled(false);
+
             getBridge().getWebView().getSettings().setJavaScriptEnabled(true);
             getBridge().getWebView().getSettings().setDomStorageEnabled(true);
             getBridge().getWebView().getSettings().setAllowUniversalAccessFromFileURLs(true);
             getBridge().getWebView().getSettings().setAllowFileAccessFromFileURLs(true);
+
+            // Register orientation bridge
             getBridge().getWebView().addJavascriptInterface(new OrientationBridge(), "AndroidOrientation");
+
+            // Register player bridge so JS can call window.AndroidPlayer.open(url)
             getBridge().getWebView().addJavascriptInterface(new PlayerBridge(), "AndroidPlayer");
 
             String cleanUA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) "
@@ -146,7 +150,6 @@ public class MainActivity extends BridgeActivity {
                 }
             });
         }
-
         setupImmersiveMode();
     }
 
