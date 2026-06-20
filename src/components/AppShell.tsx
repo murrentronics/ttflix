@@ -20,7 +20,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link to="/movies" className="hover:text-foreground">Movies</Link>
             <Link to="/tv" className="hover:text-foreground">TV Shows</Link>
             <Link to="/cartoons" className="hover:text-foreground">Cartoons</Link>
-            <Link to="/my-list" className="hover:text-foreground">My List</Link>
             <Link to="/account" className="hover:text-foreground">Account</Link>
             {!isKids && (
               <Link to="/search" className="hover:text-foreground">Search</Link>

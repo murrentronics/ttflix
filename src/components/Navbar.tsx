@@ -9,7 +9,6 @@ const LINKS = [
   { to: "/movies", label: "Movies" },
   { to: "/tv", label: "TV Shows" },
   { to: "/cartoons", label: "Cartoons" },
-  { to: "/my-list", label: "My List" },
 ] as const;
 
 export function Navbar() {
@@ -147,13 +146,6 @@ export function Navbar() {
                       className="block px-4 py-2 text-sm hover:bg-accent"
                     >
                       Account
-                    </Link>
-                    <Link
-                      to="/my-list"
-                      onClick={() => setProfileOpen(false)}
-                      className="block px-4 py-2 text-sm hover:bg-accent"
-                    >
-                      My List
                     </Link>
                     {isAdmin && (
                       <Link

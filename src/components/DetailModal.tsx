@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { X, Play, Plus, Check, Star, Lock, ChevronDown } from "lucide-react";
 import { useDetail } from "./DetailContext";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { getDetails, getSeasonEpisodes, type TmdbItem } from "@/lib/tmdb.functions.app";
-import { addToList, removeFromList, fetchMyList } from "@/lib/mylist";
 import { img, year } from "@/lib/tmdb";
 import { MovieCard } from "./MovieCard";
 
@@ -15,8 +14,6 @@ export function DetailModal() {
   const { user, profile, isAdmin } = useAuth();
   const { activeProfile } = useProfile();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [inList, setInList] = useState(false);
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
 
@@ -40,20 +37,6 @@ export function DetailModal() {
   });
 
   useEffect(() => {
-    if (!current || !user || !activeProfile) { setInList(false); return; }
-    // Use cached my-list data if available, otherwise fetch
-    const cached = queryClient.getQueryData<import("@/lib/mylist").ListItem[]>(["my-list", user.id, activeProfile.id]);
-    if (cached) {
-      setInList(cached.some((l) => l.tmdb_id === current.id && l.media_type === current.mediaType));
-    } else {
-      fetchMyList(user.id, activeProfile.id).then((list) => {
-        queryClient.setQueryData(["my-list", user.id, activeProfile.id], list);
-        setInList(list.some((l) => l.tmdb_id === current.id && l.media_type === current.mediaType));
-      });
-    }
-  }, [current, user, activeProfile]);
-
-  useEffect(() => {
     if (current) {
       document.body.style.overflow = "hidden";
       return () => { document.body.style.overflow = ""; };
@@ -61,18 +44,6 @@ export function DetailModal() {
   }, [current]);
 
   if (!current) return null;
-
-  const toggleList = async () => {
-    if (!user || !data || !activeProfile) { navigate("/auth"); return; }
-    if (inList) {
-      await removeFromList(user.id, activeProfile.id, current.id, current.mediaType);
-      setInList(false);
-    } else {
-      await addToList({ user_id: user.id, profile_id: activeProfile.id, tmdb_id: current.id, media_type: current.mediaType, title: data.title, poster_path: data.poster_path, vote_average: data.vote_average ?? null });
-      setInList(true);
-    }
-    queryClient.invalidateQueries({ queryKey: ["my-list", user.id, activeProfile.id] });
-  };
 
   // Ratings that are NOT allowed for kids profiles
   const KIDS_BLOCKED_RATINGS = new Set(["R", "NC-17", "TV-MA", "TV-14", "18+", "18", "X"]);
@@ -167,15 +138,6 @@ export function DetailModal() {
                 >
                   {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
                   {canWatch ? "Play" : "Unlock"}
-                </button>
-              )}
-              {!isBlockedForKids && (
-                <button
-                  onClick={toggleList}
-                  className="flex items-center gap-2 rounded-md bg-secondary px-5 py-2.5 font-semibold transition hover:bg-accent"
-                >
-                  {inList ? <Check className="h-5 w-5 text-primary" /> : <Plus className="h-5 w-5" />}
-                  {inList ? "In My List" : "My List"}
                 </button>
               )}
             </div>
