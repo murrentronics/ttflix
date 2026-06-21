@@ -6,7 +6,7 @@ import { Capacitor } from "@capacitor/core";
 const VERSION_URL = "https://ttflix.pages.dev/version.json";
 
 // Current version — patched automatically by the CI version bump script
-const CURRENT_VERSION = "1.1.120";
+const CURRENT_VERSION = "1.1.121";
 
 type VersionInfo = {
   versionName: string;
@@ -31,6 +31,7 @@ export function UpdateChecker() {
   const [update, setUpdate] = useState<VersionInfo | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState(false);
 
   useEffect(() => {
     // Only run inside Capacitor (Android), not in a browser
@@ -48,23 +49,42 @@ export function UpdateChecker() {
       });
   }, []);
 
-  const handleDownload = async () => {
-    if (!update) return;
-    setDownloading(true);
-    try {
-      if (Capacitor.isNativePlatform()) {
-        // Open in system browser — Android handles APK download + install natively
-        const { Browser } = await import("@capacitor/browser");
-        await Browser.open({
-          url: update.apkUrl,
-          presentationStyle: "fullscreen",
-          toolbarColor: "#141414",
-        });
-      } else {
-        window.open(update.apkUrl, "_blank");
-      }
-    } finally {
+  // Listen for native download events from AndroidDownloader bridge
+  useEffect(() => {
+    const onQueued = () => {
+      // Download is in the system queue — show "Downloading…" until done
+      setDownloading(true);
+      setDownloadError(false);
+    };
+    const onDone = (e: Event) => {
+      const success = (e as CustomEvent<{ success: boolean }>).detail?.success ?? false;
       setDownloading(false);
+      if (success) {
+        // Install prompt has launched — dismiss the update card
+        setDismissed(true);
+      } else {
+        setDownloadError(true);
+      }
+    };
+    window.addEventListener("apkDownloadQueued", onQueued);
+    window.addEventListener("apkDownloadDone", onDone);
+    return () => {
+      window.removeEventListener("apkDownloadQueued", onQueued);
+      window.removeEventListener("apkDownloadDone", onDone);
+    };
+  }, []);
+
+  const handleDownload = () => {
+    if (!update) return;
+    setDownloadError(false);
+
+    const androidDownloader = (window as any).AndroidDownloader;
+    if (Capacitor.isNativePlatform() && androidDownloader?.downloadApk) {
+      // Use native DownloadManager — shows progress notification, prompts install when done
+      androidDownloader.downloadApk(update.apkUrl, `ttflix-${update.versionName}.apk`);
+    } else {
+      // Fallback for browser / web preview
+      window.open(update.apkUrl, "_blank");
     }
   };
 
@@ -98,6 +118,12 @@ export function UpdateChecker() {
             {update.releaseNotes}
           </p>
 
+          {downloadError && (
+            <p className="mb-3 text-center text-xs text-red-400">
+              Download failed. Please try again.
+            </p>
+          )}
+
           <button
             onClick={handleDownload}
             disabled={downloading}
@@ -105,8 +131,14 @@ export function UpdateChecker() {
             style={{ WebkitTapHighlightColor: "transparent" }}
           >
             <Download className="h-5 w-5" />
-            {downloading ? "Opening…" : `Download v${update.versionName}`}
+            {downloading ? "Downloading…" : `Download v${update.versionName}`}
           </button>
+
+          {downloading && (
+            <p className="mt-2 text-center text-xs text-[#666]">
+              Check your notification bar for progress
+            </p>
+          )}
 
           <button
             onClick={() => setDismissed(true)}
