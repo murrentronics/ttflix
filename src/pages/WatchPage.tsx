@@ -1,9 +1,8 @@
 ﻿import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
-import { getProviders, type Provider } from "@/lib/stream";
+import { getProviders } from "@/lib/stream";
 import { saveProgress } from "@/lib/continue-watching";
 import { TTFlixLoader } from "@/components/TTFlixLoader";
 import { getDetails, getSeasonEpisodes } from "@/lib/tmdb.functions.app";
@@ -18,7 +17,6 @@ export function WatchPage() {
   const navigate = useNavigate();
   const progressRef = useRef({ watched: 0, duration: 0, hasPostMessage: false });
   const watchStartRef = useRef<number>(Date.now());
-  const iframeRef = useRef<HTMLIFrameElement>(null);
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [explodeLoader, setExplodeLoader] = useState(false);
   const [loaderKey, setLoaderKey] = useState(0);
@@ -252,19 +250,6 @@ export function WatchPage() {
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, [triggerExplosion, saveInitial]);
-
-  // When src changes, force iframe reload — skip if kids blocked
-  useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    if (kidsBlockedRef.current) return; // never load blocked content
-    progressRef.current.hasPostMessage = false;
-    playerStartedRef.current = false;
-    lastHeartbeatRef.current = 0;
-    iframe.src = "about:blank";
-    const t = setTimeout(() => { if (iframeRef.current) iframeRef.current.src = src; }, 50);
-    return () => clearTimeout(t);
-  }, [src]);
 
   const persistRef = useRef(persist);
   useEffect(() => { persistRef.current = persist; }, [persist]);
