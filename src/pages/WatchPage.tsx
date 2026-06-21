@@ -381,13 +381,8 @@ export function WatchPage() {
       saveInitial();
       setTimeout(() => {
         const primaryUrl = providers[0].url;
-        const fallbackUrl = providers[1]?.url ?? null;
         const androidPlayer = (window as any).AndroidPlayer;
-        if (fallbackUrl) {
-          androidPlayer?.openWithFallback(primaryUrl, fallbackUrl);
-        } else {
-          androidPlayer?.open(primaryUrl);
-        }
+        androidPlayer?.open(primaryUrl);
       }, 500);
     }
 
