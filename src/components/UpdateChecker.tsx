@@ -6,7 +6,7 @@ import { Capacitor } from "@capacitor/core";
 const VERSION_URL = "https://ttflix.pages.dev/version.json";
 
 // Current version — patched automatically by the CI version bump script
-const CURRENT_VERSION = "1.1.124";
+const CURRENT_VERSION = "1.1.120";
 
 type VersionInfo = {
   versionName: string;
@@ -48,41 +48,21 @@ export function UpdateChecker() {
       });
   }, []);
 
-  // Listen for native download events from AndroidDownloader bridge
-  useEffect(() => {
-    const onQueued = () => {
-      // Download is in the system queue — show "Downloading…" until done
-      setDownloading(true);
-    };
-    const onDone = (e: Event) => {
-      const success = (e as CustomEvent<{ success: boolean }>).detail?.success ?? false;
-      setDownloading(false);
-      if (success) {
-        setDismissed(true);
-      }
-    };
-    window.addEventListener("apkDownloadQueued", onQueued);
-    window.addEventListener("apkDownloadDone", onDone);
-    return () => {
-      window.removeEventListener("apkDownloadQueued", onQueued);
-      window.removeEventListener("apkDownloadDone", onDone);
-    };
-  }, []);
-
   const handleDownload = async () => {
     if (!update) return;
     setDownloading(true);
     try {
-      // Open ttflix.pages.dev in the system browser — user taps the download
-      // button there and Android handles the APK download + install natively.
-      const { Browser } = await import("@capacitor/browser");
-      await Browser.open({
-        url: "https://ttflix.pages.dev",
-        presentationStyle: "fullscreen",
-        toolbarColor: "#141414",
-      });
-    } catch {
-      window.open("https://ttflix.pages.dev", "_blank");
+      if (Capacitor.isNativePlatform()) {
+        // Open in system browser — Android handles APK download + install natively
+        const { Browser } = await import("@capacitor/browser");
+        await Browser.open({
+          url: update.apkUrl,
+          presentationStyle: "fullscreen",
+          toolbarColor: "#141414",
+        });
+      } else {
+        window.open(update.apkUrl, "_blank");
+      }
     } finally {
       setDownloading(false);
     }
