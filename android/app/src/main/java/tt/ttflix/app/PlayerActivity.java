@@ -36,10 +36,21 @@ public class PlayerActivity extends Activity {
     private ImageButton exitBtn;
     private String fallbackUrl = null;
     private boolean usingFallback = false;
+    private boolean playerSignalReceived = false;
     private String startOverTmdbId = null;
     private boolean startOverEnabled = false;
     private boolean startOverDone = false;
     private final Handler hideHandler = new Handler(Looper.getMainLooper());
+    private final Handler fallbackHandler = new Handler(Looper.getMainLooper());
+    // How long to wait for the primary source to start playing before switching to fallback
+    private static final int FALLBACK_TIMEOUT_MS = 20_000;
+
+    private final Runnable fallbackRunnable = () -> {
+        if (!playerSignalReceived && !usingFallback && fallbackUrl != null && playerWebView != null) {
+            usingFallback = true;
+            playerWebView.loadUrl(fallbackUrl);
+        }
+    };
     private static final int HIDE_DELAY_MS = 4000;
     public static final String EXTRA_URL = "player_url";
     public static final String EXTRA_FALLBACK_URL = "player_fallback_url";
@@ -114,6 +125,18 @@ public class PlayerActivity extends Activity {
             "AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Chrome/124.0.0.0 Mobile Safari/537.36"
         );
+
+        // JS bridge — lets the page signal that video is actually playing
+        playerWebView.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void onPlayerReady() {
+                // Called from the postMessage relay script when video starts
+                runOnUiThread(() -> {
+                    playerSignalReceived = true;
+                    fallbackHandler.removeCallbacks(fallbackRunnable);
+                });
+            }
+        }, "TTFlixNative");
 
         // Layer 2: custom view container for Videasy fullscreen
         customViewContainer = new FrameLayout(this);
@@ -247,6 +270,7 @@ public class PlayerActivity extends Activity {
                                 runOnUiThread(() -> {
                                     // Restore the real WebViewClient then load
                                     playerWebView.setWebViewClient(buildRealWebViewClient());
+                                    startFallbackTimer();
                                     playerWebView.loadUrl(targetUrl);
                                 });
                             });
@@ -256,6 +280,7 @@ public class PlayerActivity extends Activity {
             playerWebView.loadUrl("about:blank");
         } else {
             playerWebView.setWebViewClient(buildRealWebViewClient());
+            startFallbackTimer();
             if (url != null) playerWebView.loadUrl(url);
         }
     }
@@ -284,6 +309,7 @@ public class PlayerActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         hideHandler.removeCallbacks(hideExitRunnable);
+        fallbackHandler.removeCallbacks(fallbackRunnable);
         if (playerWebView != null) {
             playerWebView.stopLoading();
             playerWebView.destroy();
@@ -313,6 +339,13 @@ public class PlayerActivity extends Activity {
         }, 150);
     }
 
+    private void startFallbackTimer() {
+        if (fallbackUrl == null) return;
+        fallbackHandler.removeCallbacks(fallbackRunnable);
+        playerSignalReceived = false;
+        fallbackHandler.postDelayed(fallbackRunnable, FALLBACK_TIMEOUT_MS);
+    }
+
     private WebViewClient buildRealWebViewClient() {
         return new WebViewClient() {
             @Override
@@ -333,6 +366,28 @@ public class PlayerActivity extends Activity {
                 super.onPageFinished(view, url);
                 setupImmersiveMode();
                 showExitButton();
+
+                // Inject a postMessage listener that bridges player events to the
+                // native JS interface so we can cancel the fallback timer once
+                // video is actually playing.
+                view.evaluateJavascript(
+                    "(function(){" +
+                    "  if(window.__ttflixBridged) return;" +
+                    "  window.__ttflixBridged = true;" +
+                    "  window.addEventListener('message', function(e){" +
+                    "    try{" +
+                    "      var d = typeof e.data==='string' ? JSON.parse(e.data) : e.data;" +
+                    "      var t = d && (d.type || d.event);" +
+                    "      if(t==='ready' || t==='play' || d && d.timestamp!==undefined){" +
+                    "        if(window.TTFlixNative && window.TTFlixNative.onPlayerReady)" +
+                    "          window.TTFlixNative.onPlayerReady();" +
+                    "      }" +
+                    "    }catch(ex){}" +
+                    "  });" +
+                    "})()",
+                    null
+                );
+
                 // Detect Videasy "not found" by evaluating page content
                 if (!usingFallback && fallbackUrl != null) {
                     view.evaluateJavascript(
@@ -342,6 +397,8 @@ public class PlayerActivity extends Activity {
                                 String lower = result.toLowerCase();
                                 if (lower.contains("couldn") || lower.contains("not found")
                                         || lower.contains("cannot find")) {
+                                    playerSignalReceived = true; // stop fallback timer
+                                    fallbackHandler.removeCallbacks(fallbackRunnable);
                                     usingFallback = true;
                                     runOnUiThread(() -> playerWebView.loadUrl(fallbackUrl));
                                 }

@@ -206,11 +206,10 @@ export function WatchPage() {
     });
   }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop, season, episode]);
 
-  // Dismiss loader after 3s — but wait for kids check first if on a kids profile
+  // Dismiss loader after 1s — but wait for kids check first if on a kids profile
   useEffect(() => {
     if (!isKidsProfile) {
-      // No kids check needed — dismiss normally
-      const t = setTimeout(() => triggerExplosion(), 3000);
+      const t = setTimeout(() => triggerExplosion(), 1000);
       return () => clearTimeout(t);
     }
     // On kids profile: wait for check to complete then either block or dismiss
