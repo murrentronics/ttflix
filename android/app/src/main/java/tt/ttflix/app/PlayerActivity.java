@@ -13,7 +13,6 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
-import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -35,28 +34,13 @@ public class PlayerActivity extends Activity {
     private FrameLayout customViewContainer;
     private FrameLayout exitContainer;
     private ImageButton exitBtn;
-    private String fallbackUrl = null;
-    private boolean usingFallback = false;
-    private boolean playerSignalReceived = false;
     private String startOverTmdbId = null;
     private boolean startOverEnabled = false;
-    private boolean startOverDone = false;
     private final Handler hideHandler = new Handler(Looper.getMainLooper());
-    private final Handler fallbackHandler = new Handler(Looper.getMainLooper());
-    // How long to wait for the primary source to start playing before switching to fallback
-    private static final int FALLBACK_TIMEOUT_MS = 20_000;
 
-    private final Runnable fallbackRunnable = () -> {
-        if (!playerSignalReceived && !usingFallback && fallbackUrl != null && playerWebView != null) {
-            usingFallback = true;
-            playerWebView.loadUrl(fallbackUrl);
-        }
-    };
     private static final int HIDE_DELAY_MS = 4000;
     public static final String EXTRA_URL = "player_url";
-    public static final String EXTRA_FALLBACK_URL = "player_fallback_url";
 
-    // Single shared hide delay for the X button.
     private final Runnable hideExitRunnable = () -> {
         if (exitContainer != null) {
             exitContainer.animate().alpha(0f).setDuration(300).start();
@@ -87,7 +71,6 @@ public class PlayerActivity extends Activity {
         );
 
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-        // On TV, orientation is always landscape — no need to force it
         if (getPackageManager().hasSystemFeature("android.software.leanback")) {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
         }
@@ -127,18 +110,6 @@ public class PlayerActivity extends Activity {
             "Chrome/124.0.0.0 Mobile Safari/537.36"
         );
 
-        // JS bridge — lets the page signal that video is actually playing
-        playerWebView.addJavascriptInterface(new Object() {
-            @JavascriptInterface
-            public void onPlayerReady() {
-                // Called from the postMessage relay script when video starts
-                runOnUiThread(() -> {
-                    playerSignalReceived = true;
-                    fallbackHandler.removeCallbacks(fallbackRunnable);
-                });
-            }
-        }, "TTFlixNative");
-
         // Layer 2: custom view container for Videasy fullscreen
         customViewContainer = new FrameLayout(this);
         customViewContainer.setBackgroundColor(Color.BLACK);
@@ -148,7 +119,7 @@ public class PlayerActivity extends Activity {
         ));
         customViewContainer.setVisibility(View.GONE);
 
-        // Layer 3: exit button — starts hidden, shows on tap, auto-hides
+        // Layer 3: exit button
         exitContainer = new FrameLayout(this);
         exitContainer.setLayoutParams(new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -170,7 +141,6 @@ public class PlayerActivity extends Activity {
         exitBtn.setLayoutParams(btnParams);
         exitBtn.setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10));
         exitBtn.setOnClickListener(v -> {
-            // Show black overlay immediately to hide the rotation/transition glitch
             View blackOut = new View(PlayerActivity.this);
             blackOut.setBackgroundColor(Color.BLACK);
             blackOut.setLayoutParams(new FrameLayout.LayoutParams(
@@ -178,25 +148,15 @@ public class PlayerActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT
             ));
             rootLayout.addView(blackOut);
-            // Small delay so black screen renders before activity finishes
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 finish();
-                // Override transition — no slide animation, just black
                 overridePendingTransition(0, 0);
             }, 150);
         });
         exitContainer.addView(exitBtn);
 
-        // Use the WebView's own touch listener to catch every tap — including taps
-        // on Videasy's player control buttons (skip 10s, play/pause, etc.).
-        // We restart the X-button hide timer on ACTION_UP so that after any tap,
-        // both the X and Videasy's controls count down and hide together.
-        // Returning false passes the event through to the WebView so all buttons
-        // still work normally.
         playerWebView.setOnTouchListener((v, event) -> {
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                showExitButton();
-            }
+            if (event.getAction() == MotionEvent.ACTION_UP) showExitButton();
             return false;
         });
 
@@ -208,7 +168,7 @@ public class PlayerActivity extends Activity {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog,
                                           boolean isUserGesture, android.os.Message resultMsg) {
-                // Block all pop-up windows — ads use this to open new tabs/windows
+                // Block all pop-up windows — ads use this to open new tabs
                 return false;
             }
 
@@ -241,19 +201,15 @@ public class PlayerActivity extends Activity {
             }
         });
 
-        playerWebView.setWebViewClient(buildRealWebViewClient());
+        playerWebView.setWebViewClient(buildWebViewClient());
 
         setContentView(rootLayout);
 
         String url = getIntent().getStringExtra(EXTRA_URL);
-        fallbackUrl = getIntent().getStringExtra(EXTRA_FALLBACK_URL);
         startOverTmdbId = getIntent().getStringExtra("tmdb_id");
         startOverEnabled = getIntent().getBooleanExtra("start_over", false);
 
         if (startOverEnabled && startOverTmdbId != null) {
-            // Load about:blank first — this gives us a clean same-origin context
-            // where we can wipe localStorage/sessionStorage for this title
-            // BEFORE Videasy ever loads and reads its resume data.
             final String targetUrl = url;
             final String id = startOverTmdbId;
             playerWebView.setWebViewClient(new WebViewClient() {
@@ -262,7 +218,6 @@ public class PlayerActivity extends Activity {
                 public void onPageFinished(WebView view, String pageUrl) {
                     if (!wiped && pageUrl.equals("about:blank")) {
                         wiped = true;
-                        // Wipe all storage keys containing this tmdbId
                         view.evaluateJavascript(
                             "(function(){" +
                             "  try{" +
@@ -273,22 +228,15 @@ public class PlayerActivity extends Activity {
                             "    });" +
                             "  }catch(e){}" +
                             "})()",
-                            result -> {
-                                // Storage wiped — now load the real player URL
-                                runOnUiThread(() -> {
-                                    // Restore the real WebViewClient then load
-                                    playerWebView.setWebViewClient(buildRealWebViewClient());
-                                    startFallbackTimer();
-                                    playerWebView.loadUrl(targetUrl);
-                                });
-                            });
+                            result -> runOnUiThread(() -> {
+                                playerWebView.setWebViewClient(buildWebViewClient());
+                                playerWebView.loadUrl(targetUrl);
+                            }));
                     }
                 }
             });
             playerWebView.loadUrl("about:blank");
         } else {
-            playerWebView.setWebViewClient(buildRealWebViewClient());
-            startFallbackTimer();
             if (url != null) playerWebView.loadUrl(url);
         }
     }
@@ -317,7 +265,6 @@ public class PlayerActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
         hideHandler.removeCallbacks(hideExitRunnable);
-        fallbackHandler.removeCallbacks(fallbackRunnable);
         if (playerWebView != null) {
             playerWebView.stopLoading();
             playerWebView.destroy();
@@ -331,7 +278,6 @@ public class PlayerActivity extends Activity {
             mCustomViewCallback.onCustomViewHidden();
             return;
         }
-        // Black out before finishing to hide rotation glitch
         if (rootLayout != null) {
             View blackOut = new View(this);
             blackOut.setBackgroundColor(Color.BLACK);
@@ -346,6 +292,8 @@ public class PlayerActivity extends Activity {
             overridePendingTransition(0, 0);
         }, 150);
     }
+
+    // ── Ad blocking ─────────────────────────────────────────────────────────
 
     private static final java.util.Set<String> AD_HOSTS = new java.util.HashSet<>(java.util.Arrays.asList(
         "doubleclick.net", "googlesyndication.com", "adservice.google.com",
@@ -371,31 +319,43 @@ public class PlayerActivity extends Activity {
         new WebResourceResponse("text/plain", "utf-8",
             new java.io.ByteArrayInputStream(new byte[0]));
 
-    private void startFallbackTimer() {
-        if (fallbackUrl == null) return;
-        fallbackHandler.removeCallbacks(fallbackRunnable);
-        playerSignalReceived = false;
-        fallbackHandler.postDelayed(fallbackRunnable, FALLBACK_TIMEOUT_MS);
-    }
+    // ── WebViewClient ────────────────────────────────────────────────────────
 
-    private WebViewClient buildRealWebViewClient() {
+    private WebViewClient buildWebViewClient() {
+        // Injected on every page load to block ads and pop-ups from JS
+        final String AD_BLOCK_SCRIPT =
+            "(function(){" +
+            "  if(window.__ttflixAdsBlocked) return;" +
+            "  window.__ttflixAdsBlocked = true;" +
+            "  window.open = function(){ return null; };" +
+            "  var _href = Object.getOwnPropertyDescriptor(window.location,'href');" +
+            "  if(_href && _href.set){" +
+            "    Object.defineProperty(window.location,'href',{" +
+            "      set: function(v){" +
+            "        if(typeof v==='string' && (" +
+            "          v.indexOf('aliexpress')>=0 || v.indexOf('lazada')>=0 ||" +
+            "          v.indexOf('shopee')>=0 || v.indexOf('temu')>=0 ||" +
+            "          v.indexOf('taboola')>=0 || v.indexOf('outbrain')>=0 ||" +
+            "          v.indexOf('doubleclick')>=0)) return;" +
+            "        _href.set.call(window.location,v);" +
+            "      }," +
+            "      get: function(){ return _href.get.call(window.location); }" +
+            "    });" +
+            "  }" +
+            "})()";
+
         return new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String host = request.getUrl().getHost() != null
                     ? request.getUrl().getHost() : "";
-                // Block known ad/tracker navigations
                 if (isAdHost(host)) return true;
-                // Block any navigation that leaves the player domain
-                String urlStr = request.getUrl().toString();
-                if (!urlStr.startsWith("about:") &&
-                    !urlStr.contains("videasy.net") &&
-                    !urlStr.contains("vidsrc.to") &&
-                    !urlStr.contains("vidsrc.me") &&
-                    !urlStr.contains("vidsrc.xyz") &&
-                    !urlStr.contains("vidsrc.pm")) {
-                    // Allow sub-resource loads (images, scripts) but block top-level navigation
-                    if (request.isForMainFrame()) return true;
+                // Block top-level navigation away from videasy.net
+                if (request.isForMainFrame()) {
+                    String urlStr = request.getUrl().toString();
+                    if (!urlStr.startsWith("about:") && !urlStr.contains("videasy.net")) {
+                        return true;
+                    }
                 }
                 return false;
             }
@@ -405,7 +365,7 @@ public class PlayerActivity extends Activity {
                 String host = request.getUrl().getHost() != null
                     ? request.getUrl().getHost() : "";
                 if (isAdHost(host)) return EMPTY_RESPONSE;
-                return null; // let everything else through
+                return null;
             }
 
             @Override
@@ -413,72 +373,7 @@ public class PlayerActivity extends Activity {
                 super.onPageFinished(view, url);
                 setupImmersiveMode();
                 showExitButton();
-
-                // Block window.open pop-ups and redirect attempts from ad scripts
-                view.evaluateJavascript(
-                    "(function(){" +
-                    "  if(window.__ttflixAdsBlocked) return;" +
-                    "  window.__ttflixAdsBlocked = true;" +
-                    // Kill window.open entirely — ads use it to open pop-under tabs
-                    "  window.open = function(){ return null; };" +
-                    // Prevent top-level redirects via location changes
-                    "  var _href = Object.getOwnPropertyDescriptor(window.location,'href');" +
-                    "  if(_href && _href.set){" +
-                    "    Object.defineProperty(window.location,'href',{" +
-                    "      set: function(v){" +
-                    "        if(typeof v==='string' && (" +
-                    "          v.indexOf('aliexpress')>=0 || v.indexOf('lazada')>=0 ||" +
-                    "          v.indexOf('shopee')>=0 || v.indexOf('temu')>=0 ||" +
-                    "          v.indexOf('taboola')>=0 || v.indexOf('outbrain')>=0 ||" +
-                    "          v.indexOf('doubleclick')>=0)) return;" +
-                    "        _href.set.call(window.location,v);" +
-                    "      }," +
-                    "      get: function(){ return _href.get.call(window.location); }" +
-                    "    });" +
-                    "  }" +
-                    "})()",
-                    null
-                );
-
-                // Inject a postMessage listener that bridges player events to the
-                // native JS interface so we can cancel the fallback timer once
-                // video is actually playing.
-                view.evaluateJavascript(
-                    "(function(){" +
-                    "  if(window.__ttflixBridged) return;" +
-                    "  window.__ttflixBridged = true;" +
-                    "  window.addEventListener('message', function(e){" +
-                    "    try{" +
-                    "      var d = typeof e.data==='string' ? JSON.parse(e.data) : e.data;" +
-                    "      var t = d && (d.type || d.event);" +
-                    "      if(t==='ready' || t==='play' || d && d.timestamp!==undefined){" +
-                    "        if(window.TTFlixNative && window.TTFlixNative.onPlayerReady)" +
-                    "          window.TTFlixNative.onPlayerReady();" +
-                    "      }" +
-                    "    }catch(ex){}" +
-                    "  });" +
-                    "})()",
-                    null
-                );
-
-                // Detect Videasy "not found" by evaluating page content
-                if (!usingFallback && fallbackUrl != null) {
-                    view.evaluateJavascript(
-                        "(function(){ return document.title + '|' + document.body.innerText; })()",
-                        result -> {
-                            if (result != null) {
-                                String lower = result.toLowerCase();
-                                if (lower.contains("couldn") || lower.contains("not found")
-                                        || lower.contains("cannot find")) {
-                                    playerSignalReceived = true; // stop fallback timer
-                                    fallbackHandler.removeCallbacks(fallbackRunnable);
-                                    usingFallback = true;
-                                    runOnUiThread(() -> playerWebView.loadUrl(fallbackUrl));
-                                }
-                            }
-                        }
-                    );
-                }
+                view.evaluateJavascript(AD_BLOCK_SCRIPT, null);
             }
         };
     }

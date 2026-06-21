@@ -74,34 +74,7 @@ export function WatchPage() {
 
   const currentEpisodeRef = useRef({ season, episode });
 
-  const providers = getProviders(type, tmdbId, season, episode);
-  const [providerIndex, setProviderIndex] = useState(0);
-  const [src, setSrc] = useState(() => providers[0].url);
-  const providerSignalRef = useRef(false);
-
-  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const startFallbackTimer = useCallback(() => {
-    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
-    providerSignalRef.current = false;
-    fallbackTimerRef.current = setTimeout(() => {
-      if (!providerSignalRef.current) {
-        setProviderIndex((prev) => {
-          const next = prev + 1;
-          if (next < providers.length) {
-            setSrc(providers[next].url);
-            return next;
-          }
-          return prev;
-        });
-      }
-    }, 15_000);
-  }, [providers]);
-
-  useEffect(() => {
-    startFallbackTimer();
-    return () => { if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current); };
-  }, [src, startFallbackTimer]);
+  const src = getProviders(type, tmdbId, season, episode)[0].url;
 
   // ── Screen limit check ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -256,18 +229,7 @@ export function WatchPage() {
       try {
         const d = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
 
-        // Videasy "not found" — immediately switch to VidSrc fallback
-        if (d?.type === "notFound" || d?.event === "notFound" ||
-            d?.type === "error" || d?.event === "error") {
-          const next = providerIndex + 1;
-          if (next < providers.length) {
-            setProviderIndex(next);
-            setSrc(providers[next].url);
-          }
-          return;
-        }
-
-        if (d?.type === "ready" || d?.event === "ready") { providerSignalRef.current = true; triggerExplosion(); saveInitial(); }
+        if (d?.type === "ready" || d?.event === "ready") { triggerExplosion(); saveInitial(); }
         if (d?.type === "episodeChange" || d?.event === "episodeChange") {
           if (d?.season) currentEpisodeRef.current.season = Number(d.season);
           if (d?.episode) currentEpisodeRef.current.episode = Number(d.episode);
@@ -277,8 +239,7 @@ export function WatchPage() {
         if (d?.timestamp !== undefined && d?.duration !== undefined) {
           const newDuration = d.duration > 0 ? d.duration : progressRef.current.duration;
           progressRef.current = { watched: d.timestamp, duration: newDuration, hasPostMessage: true };
-          providerSignalRef.current = true;
-          lastHeartbeatRef.current = Date.now(); // keep watchdog alive
+          lastHeartbeatRef.current = Date.now();
           if (!playerStartedRef.current) {
             playerStartedRef.current = true;
             lastHeartbeatRef.current = Date.now();
@@ -290,7 +251,7 @@ export function WatchPage() {
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [triggerExplosion, saveInitial, providerIndex, providers]);
+  }, [triggerExplosion, saveInitial]);
 
   // When src changes, force iframe reload — skip if kids blocked
   useEffect(() => {
@@ -380,14 +341,8 @@ export function WatchPage() {
       playerLaunchedRef.current = true;
       saveInitial();
       setTimeout(() => {
-        const primaryUrl = providers[0].url;
-        const fallbackUrl = providers[1]?.url ?? null;
         const androidPlayer = (window as any).AndroidPlayer;
-        if (fallbackUrl) {
-          androidPlayer?.openWithFallback(primaryUrl, fallbackUrl);
-        } else {
-          androidPlayer?.open(primaryUrl);
-        }
+        androidPlayer?.open(src);
       }, 500);
     }
 

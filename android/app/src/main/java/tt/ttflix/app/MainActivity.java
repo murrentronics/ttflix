@@ -66,16 +66,6 @@ public class MainActivity extends BridgeActivity {
                 startActivity(intent);
             });
         }
-
-        @JavascriptInterface
-        public void openWithFallback(String url, String fallbackUrl) {
-            runOnUiThread(() -> {
-                Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
-                intent.putExtra(PlayerActivity.EXTRA_URL, url);
-                intent.putExtra(PlayerActivity.EXTRA_FALLBACK_URL, fallbackUrl);
-                startActivity(intent);
-            });
-        }
     }
 
     /**
