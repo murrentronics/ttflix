@@ -16,6 +16,7 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -205,6 +206,13 @@ public class PlayerActivity extends Activity {
 
         playerWebView.setWebChromeClient(new WebChromeClient() {
             @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog,
+                                          boolean isUserGesture, android.os.Message resultMsg) {
+                // Block all pop-up windows — ads use this to spawn new tabs
+                return false;
+            }
+
+            @Override
             public void onShowCustomView(View view, CustomViewCallback callback) {
                 mCustomView = view;
                 mCustomViewCallback = callback;
@@ -346,19 +354,48 @@ public class PlayerActivity extends Activity {
         fallbackHandler.postDelayed(fallbackRunnable, FALLBACK_TIMEOUT_MS);
     }
 
+    // ── Ad blocking ──────────────────────────────────────────────────────────
+
+    private static final java.util.Set<String> AD_HOSTS = new java.util.HashSet<>(java.util.Arrays.asList(
+        "doubleclick.net", "googlesyndication.com", "adservice.google.com",
+        "amazon-adsystem.com", "moatads.com", "outbrain.com", "taboola.com",
+        "ads.yahoo.com", "adnxs.com", "adsrvr.org", "advertising.com",
+        "casalemedia.com", "pubmatic.com", "rubiconproject.com", "openx.net",
+        "criteo.com", "bidswitch.net", "smartadserver.com", "3lift.com",
+        "sharethrough.com", "media.net", "indexexchange.com",
+        "lijit.com", "rhythmone.com", "sovrn.com", "triplelift.com",
+        "aliexpress.com", "ae01.alicdn.com", "lazada.com", "shopee.com",
+        "temu.com", "wish.com", "banggood.com"
+    ));
+
+    private boolean isAdHost(String host) {
+        if (host == null) return false;
+        for (String blocked : AD_HOSTS) {
+            if (host.equals(blocked) || host.endsWith("." + blocked)) return true;
+        }
+        return false;
+    }
+
+    private static final WebResourceResponse EMPTY_RESPONSE =
+        new WebResourceResponse("text/plain", "utf-8",
+            new java.io.ByteArrayInputStream(new byte[0]));
+
     private WebViewClient buildRealWebViewClient() {
         return new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String host = request.getUrl().getHost() != null
                     ? request.getUrl().getHost() : "";
-                if (host.contains("doubleclick.net") || host.contains("googlesyndication.com")
-                        || host.contains("adservice.google") || host.contains("amazon-adsystem.com")
-                        || host.contains("moatads.com") || host.contains("outbrain.com")
-                        || host.contains("taboola.com")) {
-                    return true;
-                }
+                if (isAdHost(host)) return true;
                 return false;
+            }
+
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                String host = request.getUrl().getHost() != null
+                    ? request.getUrl().getHost() : "";
+                if (isAdHost(host)) return EMPTY_RESPONSE;
+                return null;
             }
 
             @Override
@@ -388,9 +425,18 @@ public class PlayerActivity extends Activity {
                     null
                 );
 
+                // Block window.open pop-ups from ad scripts
+                view.evaluateJavascript(
+                    "(function(){" +
+                    "  if(window.__ttflixAdsBlocked) return;" +
+                    "  window.__ttflixAdsBlocked = true;" +
+                    "  window.open = function(){ return null; };" +
+                    "})()",
+                    null
+                );
+
                 // Detect Videasy "not found" by evaluating page content
-                if (!usingFallback && fallbackUrl != null) {
-                    view.evaluateJavascript(
+                if (!usingFallback && fallbackUrl != null) {                    view.evaluateJavascript(
                         "(function(){ return document.title + '|' + document.body.innerText; })()",
                         result -> {
                             if (result != null) {
