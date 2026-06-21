@@ -101,6 +101,9 @@ public class MainActivity extends BridgeActivity {
             getBridge().getWebView().getSettings().setDomStorageEnabled(true);
             getBridge().getWebView().getSettings().setAllowUniversalAccessFromFileURLs(true);
             getBridge().getWebView().getSettings().setAllowFileAccessFromFileURLs(true);
+            // Disable long-press context menu (image save, copy link etc.)
+            getBridge().getWebView().setLongClickable(false);
+            getBridge().getWebView().setOnLongClickListener(v -> true);
 
             // Register orientation bridge
             getBridge().getWebView().addJavascriptInterface(new OrientationBridge(), "AndroidOrientation");

@@ -61,24 +61,16 @@ function isReleased(raw: any): boolean {
 
 /** Home page bundle: hero + multiple rows */
 export const getHomeFeed = createServerFn({ method: "GET" }).handler(async () => {
-  const [trending, popularMovies, topRatedMovies, popularTV, cartoons, action] =
+  const [trending, popularMovies, topRatedMovies, popularTV, horror, comedyMovies, comedyTV, action] =
     await Promise.all([
       tmdb("/trending/all/week", { language: "en-US" }),
       tmdb("/movie/popular", { language: "en-US", page: "1" }),
       tmdb("/movie/top_rated", { language: "en-US", page: "1" }),
       tmdb("/tv/popular", { language: "en-US", page: "1" }),
-      tmdb("/discover/movie", {
-        with_genres: "16",
-        sort_by: "popularity.desc",
-        language: "en-US",
-        page: "1",
-      }),
-      tmdb("/discover/movie", {
-        with_genres: "28",
-        sort_by: "popularity.desc",
-        language: "en-US",
-        page: "1",
-      }),
+      tmdb("/discover/movie", { with_genres: "27", sort_by: "popularity.desc", language: "en-US", page: "1" }),
+      tmdb("/discover/movie", { with_genres: "35", sort_by: "popularity.desc", language: "en-US", page: "1" }),
+      tmdb("/discover/tv",    { with_genres: "35", sort_by: "popularity.desc", language: "en-US", page: "1" }),
+      tmdb("/discover/movie", { with_genres: "28", sort_by: "popularity.desc", language: "en-US", page: "1" }),
     ]);
 
   const trendingItems = (trending.results ?? [])
@@ -92,7 +84,9 @@ export const getHomeFeed = createServerFn({ method: "GET" }).handler(async () =>
       { title: "Popular Movies", items: (popularMovies.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
       { title: "Top Rated", items: (topRatedMovies.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
       { title: "Popular TV Shows", items: (popularTV.results ?? []).filter(isReleased).map((r: any) => normalize(r, "tv")) },
-      { title: "Cartoons & Animation", items: (cartoons.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
+      { title: "Horror Movies", items: (horror.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
+      { title: "Comedy Movies", items: (comedyMovies.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
+      { title: "Comedy TV Shows", items: (comedyTV.results ?? []).filter(isReleased).map((r: any) => normalize(r, "tv")) },
       { title: "Action & Adventure", items: (action.results ?? []).filter(isReleased).map((r: any) => normalize(r, "movie")) },
     ],
   };

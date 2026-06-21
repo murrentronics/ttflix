@@ -19,7 +19,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 justify-items-center">
             <Link to="/movies" className="hover:text-foreground">Movies</Link>
             <Link to="/tv" className="hover:text-foreground">TV Shows</Link>
-            <Link to="/cartoons" className="hover:text-foreground">Cartoons</Link>
+            {isKids && <Link to="/cartoons" className="hover:text-foreground">Cartoons</Link>}
             <Link to="/account" className="hover:text-foreground">Account</Link>
             {!isKids && (
               <Link to="/search" className="hover:text-foreground">Search</Link>

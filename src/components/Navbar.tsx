@@ -4,7 +4,13 @@ import { Search, Menu, X, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 
-const LINKS = [
+const ADULT_LINKS = [
+  { to: "/", label: "Home" },
+  { to: "/movies", label: "Movies" },
+  { to: "/tv", label: "TV Shows" },
+] as const;
+
+const KIDS_LINKS = [
   { to: "/", label: "Home" },
   { to: "/movies", label: "Movies" },
   { to: "/tv", label: "TV Shows" },
@@ -19,6 +25,8 @@ export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const isKids = activeProfile?.is_kids ?? false;
+  const LINKS = isKids ? KIDS_LINKS : ADULT_LINKS;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
