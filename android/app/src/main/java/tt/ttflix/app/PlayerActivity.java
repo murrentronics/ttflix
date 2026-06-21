@@ -16,6 +16,7 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -205,6 +206,13 @@ public class PlayerActivity extends Activity {
 
         playerWebView.setWebChromeClient(new WebChromeClient() {
             @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog,
+                                          boolean isUserGesture, android.os.Message resultMsg) {
+                // Block all pop-up windows — ads use this to open new tabs/windows
+                return false;
+            }
+
+            @Override
             public void onShowCustomView(View view, CustomViewCallback callback) {
                 mCustomView = view;
                 mCustomViewCallback = callback;
@@ -339,6 +347,30 @@ public class PlayerActivity extends Activity {
         }, 150);
     }
 
+    private static final java.util.Set<String> AD_HOSTS = new java.util.HashSet<>(java.util.Arrays.asList(
+        "doubleclick.net", "googlesyndication.com", "adservice.google.com",
+        "amazon-adsystem.com", "moatads.com", "outbrain.com", "taboola.com",
+        "ads.yahoo.com", "adnxs.com", "adsrvr.org", "advertising.com",
+        "casalemedia.com", "pubmatic.com", "rubiconproject.com", "openx.net",
+        "criteo.com", "bidswitch.net", "smartadserver.com", "3lift.com",
+        "sharethrough.com", "adsymptotic.com", "media.net", "indexexchange.com",
+        "lijit.com", "rhythmone.com", "sovrn.com", "triplelift.com",
+        "aliexpress.com", "ae01.alicdn.com", "lazada.com", "shopee.com",
+        "temu.com", "wish.com", "banggood.com"
+    ));
+
+    private boolean isAdHost(String host) {
+        if (host == null) return false;
+        for (String blocked : AD_HOSTS) {
+            if (host.equals(blocked) || host.endsWith("." + blocked)) return true;
+        }
+        return false;
+    }
+
+    private static final WebResourceResponse EMPTY_RESPONSE =
+        new WebResourceResponse("text/plain", "utf-8",
+            new java.io.ByteArrayInputStream(new byte[0]));
+
     private void startFallbackTimer() {
         if (fallbackUrl == null) return;
         fallbackHandler.removeCallbacks(fallbackRunnable);
@@ -352,13 +384,28 @@ public class PlayerActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String host = request.getUrl().getHost() != null
                     ? request.getUrl().getHost() : "";
-                if (host.contains("doubleclick.net") || host.contains("googlesyndication.com")
-                        || host.contains("adservice.google") || host.contains("amazon-adsystem.com")
-                        || host.contains("moatads.com") || host.contains("outbrain.com")
-                        || host.contains("taboola.com")) {
-                    return true;
+                // Block known ad/tracker navigations
+                if (isAdHost(host)) return true;
+                // Block any navigation that leaves the player domain
+                String urlStr = request.getUrl().toString();
+                if (!urlStr.startsWith("about:") &&
+                    !urlStr.contains("videasy.net") &&
+                    !urlStr.contains("vidsrc.to") &&
+                    !urlStr.contains("vidsrc.me") &&
+                    !urlStr.contains("vidsrc.xyz") &&
+                    !urlStr.contains("vidsrc.pm")) {
+                    // Allow sub-resource loads (images, scripts) but block top-level navigation
+                    if (request.isForMainFrame()) return true;
                 }
                 return false;
+            }
+
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                String host = request.getUrl().getHost() != null
+                    ? request.getUrl().getHost() : "";
+                if (isAdHost(host)) return EMPTY_RESPONSE;
+                return null; // let everything else through
             }
 
             @Override
@@ -366,6 +413,32 @@ public class PlayerActivity extends Activity {
                 super.onPageFinished(view, url);
                 setupImmersiveMode();
                 showExitButton();
+
+                // Block window.open pop-ups and redirect attempts from ad scripts
+                view.evaluateJavascript(
+                    "(function(){" +
+                    "  if(window.__ttflixAdsBlocked) return;" +
+                    "  window.__ttflixAdsBlocked = true;" +
+                    // Kill window.open entirely — ads use it to open pop-under tabs
+                    "  window.open = function(){ return null; };" +
+                    // Prevent top-level redirects via location changes
+                    "  var _href = Object.getOwnPropertyDescriptor(window.location,'href');" +
+                    "  if(_href && _href.set){" +
+                    "    Object.defineProperty(window.location,'href',{" +
+                    "      set: function(v){" +
+                    "        if(typeof v==='string' && (" +
+                    "          v.indexOf('aliexpress')>=0 || v.indexOf('lazada')>=0 ||" +
+                    "          v.indexOf('shopee')>=0 || v.indexOf('temu')>=0 ||" +
+                    "          v.indexOf('taboola')>=0 || v.indexOf('outbrain')>=0 ||" +
+                    "          v.indexOf('doubleclick')>=0)) return;" +
+                    "        _href.set.call(window.location,v);" +
+                    "      }," +
+                    "      get: function(){ return _href.get.call(window.location); }" +
+                    "    });" +
+                    "  }" +
+                    "})()",
+                    null
+                );
 
                 // Inject a postMessage listener that bridges player events to the
                 // native JS interface so we can cancel the fallback timer once
