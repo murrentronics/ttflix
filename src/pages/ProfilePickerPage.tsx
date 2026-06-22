@@ -10,9 +10,11 @@ const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible
 /** Generic modal wrapper with focus trap + Escape close */
 function ModalShell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   useEffect(() => {
-    // Auto-focus first focusable element
+    // Auto-focus first focusable element — runs ONCE on mount only
     const t = setTimeout(() => {
       const first = ref.current?.querySelector<HTMLElement>(
         'button:not([disabled]), input, [tabindex]:not([tabindex="-1"])'
@@ -21,7 +23,7 @@ function ModalShell({ onClose, children }: { onClose: () => void; children: Reac
     }, 30);
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "GoBack") { e.preventDefault(); onClose(); return; }
+      if (e.key === "Escape" || e.key === "GoBack") { e.preventDefault(); onCloseRef.current(); return; }
       if (e.key !== "Tab" || !ref.current) return;
       const focusable = Array.from(
         ref.current.querySelectorAll<HTMLElement>(
@@ -36,7 +38,8 @@ function ModalShell({ onClose, children }: { onClose: () => void; children: Reac
     };
     document.addEventListener("keydown", onKey);
     return () => { clearTimeout(t); document.removeEventListener("keydown", onKey); };
-  }, [onClose]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — only run on mount
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>

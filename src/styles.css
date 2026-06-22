@@ -110,4 +110,33 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* ── TV remote / keyboard focus rings ─────────────────────────────────────
+   * Only show focus-visible styles on non-touch devices (TV remote, keyboard).
+   * On touchscreens (Android phone/tablet) suppress all focus rings so tapping
+   * cards and buttons doesn't leave a visible ring behind.
+   * pointer: coarse  = touchscreen (phone/tablet)
+   * pointer: fine    = mouse or TV remote (D-pad)
+   * no pointer media  = TV with no pointer device declared
+   * ────────────────────────────────────────────────────────────────────────── */
+  @media (pointer: coarse) {
+    *:focus-visible {
+      outline: none !important;
+      box-shadow: none !important;
+      ring: none !important;
+    }
+    /* Remove Tailwind ring utilities on touch devices */
+    .focus-visible\:ring-2:focus-visible,
+    .focus-visible\:ring-1:focus-visible,
+    .focus-visible\:ring:focus-visible {
+      --tw-ring-shadow: none !important;
+      box-shadow: none !important;
+    }
+    .focus-visible\:outline-none:focus-visible {
+      outline: none !important;
+    }
+    .focus-visible\:scale-105:focus-visible {
+      transform: none !important;
+    }
+  }
 }
