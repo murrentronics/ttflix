@@ -34,17 +34,10 @@ export async function fetchProfiles(userId: string): Promise<UserProfile[]> {
     .order("created_at", { ascending: true });
   const all = (data as UserProfile[]) ?? [];
 
-  // Auto-clean duplicate default and kids profiles from the DB.
-  // Keep the LAST one (most recently created = the renamed one),
-  // delete the older duplicates silently in the background.
+  // Auto-clean duplicate DEFAULT profiles only (there must only ever be one).
+  // Kids profiles are NOT deduplicated — users can have multiple kids profiles.
   const defaultProfiles = all.filter((p) => p.is_default);
-  const kidsProfiles = all.filter((p) => p.is_kids && !p.is_default);
-
-  // Keep the last (newest) of each protected type, delete the earlier ones
-  const toDelete: string[] = [
-    ...defaultProfiles.slice(0, -1).map((p) => p.id),  // delete all but last default
-    ...kidsProfiles.slice(0, -1).map((p) => p.id),      // delete all but last kids
-  ];
+  const toDelete: string[] = defaultProfiles.slice(0, -1).map((p) => p.id);
 
   if (toDelete.length > 0) {
     supabase.from("user_profiles").delete().in("id", toDelete).then(() => {});

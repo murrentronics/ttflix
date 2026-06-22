@@ -68,6 +68,13 @@ export function ProfilePickerPage() {
   const max = maxProfiles(plan);
   const canAdd = isAdmin ? true : profiles.length < max;
 
+  // The 2 protected profiles that can never be deleted:
+  // 1. The main profile (is_default)
+  // 2. The first/oldest kids profile (auto-created on account setup)
+  const firstKidsProfile = profiles.find((p) => p.is_kids);
+  const isProtected = (p: UserProfile) =>
+    p.is_default || p.id === firstKidsProfile?.id;
+
   // Auto-focus the first profile avatar on load so TV remote works immediately
   useEffect(() => {
     const t = setTimeout(() => firstProfileRef.current?.focus(), 200);
@@ -95,7 +102,7 @@ export function ProfilePickerPage() {
   };
 
   const handleDelete = async (p: UserProfile) => {
-    if (p.is_default) return;
+    if (isProtected(p)) return;
     setBusy(true);
     try {
       await deleteProfile(p.id);
@@ -162,7 +169,7 @@ export function ProfilePickerPage() {
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
-                {!p.is_default && !p.is_kids && (
+                {!isProtected(p) && (
                   <button
                     onClick={() => handleDelete(p)}
                     className={`rounded-full bg-destructive/20 p-1.5 hover:bg-destructive/40 ${focusRing}`}
