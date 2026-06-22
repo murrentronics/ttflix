@@ -163,6 +163,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const signedInSession = data.session;
     if (!signedIn || !signedInSession) throw new Error("Sign in failed");
 
+    // ── Geo-check — verify user is in Trinidad & Tobago by real IP ──────────
+    // Skip for admin so they can manage from anywhere
+    const isAdminEmail = (signedIn.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    if (!isAdminEmail) {
+      try {
+        const geoRes = await supabase.functions.invoke("geo-check", { method: "POST" });
+        const geoData = geoRes.data as { allowed: boolean; reason?: string } | null;
+        if (geoData && !geoData.allowed) {
+          await supabase.auth.signOut();
+          throw new Error(geoData.reason ?? "TTFlix is only available in Trinidad & Tobago.");
+        }
+      } catch (geoErr: any) {
+        // If geo-check itself throws (network error), don't block — fail open
+        if (geoErr?.message?.includes("Trinidad")) throw geoErr;
+        console.warn("[geo-check] skipped:", geoErr?.message);
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     let prof = await loadProfile(signedIn.id);
     if (!prof) {
       const meta = signedIn.user_metadata ?? {};
@@ -194,8 +213,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const isAdminEmail = signedIn.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-      if (!isAdminEmail) {
+      const isAdminEmailCheck = signedIn.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+      if (!isAdminEmailCheck) {
         // Screen limit is enforced in WatchPage via active_watches table
       }
     } catch (e: any) {

@@ -49,13 +49,32 @@ export function Navbar() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" || e.key === "GoBack") {
-        setMobileOpen(false);
-        setProfileOpen(false);
+        if (mobileOpen || profileOpen) {
+          e.preventDefault();
+          setMobileOpen(false);
+          setProfileOpen(false);
+        }
+      }
+      // Focus trap inside profile dropdown when open
+      if (e.key === "Tab" && profileOpen && dropdownRef.current) {
+        const focusable = Array.from(
+          dropdownRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
       }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, []);
+  }, [mobileOpen, profileOpen]);
 
   const anyMenuOpen = mobileOpen || profileOpen;
 
@@ -76,7 +95,7 @@ export function Navbar() {
     >
       <div className="flex items-center justify-between px-4 py-3 sm:px-8">
         <div className="flex items-center gap-8">
-          <Link to="/" className="text-2xl font-extrabold tracking-tight text-primary">
+          <Link to="/" className="rounded text-2xl font-extrabold tracking-tight text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             TT<span className="text-foreground">FLIX</span>
           </Link>
           <nav className="hidden gap-5 text-sm md:flex">
@@ -191,14 +210,14 @@ export function Navbar() {
           ) : (
             <Link
               to="/auth"
-              className="rounded bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85"
+              className="rounded bg-primary px-4 py-1.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               Sign In
             </Link>
           )}
 
           <div className="relative md:hidden">
-            <button onClick={() => { setProfileOpen(false); setMobileOpen((o) => !o); }} aria-label="Menu">
+            <button onClick={() => { setProfileOpen(false); setMobileOpen((o) => !o); }} aria-label="Menu" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded p-1">
               {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
 

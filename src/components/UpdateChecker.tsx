@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, X } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 
@@ -6,7 +6,7 @@ import { Capacitor } from "@capacitor/core";
 const VERSION_URL = "https://ttflix.pages.dev/version.json";
 
 // Current version — patched automatically by the CI version bump script
-const CURRENT_VERSION = "1.1.135";
+const CURRENT_VERSION = "1.1.136";
 
 type VersionInfo = {
   versionName: string;
@@ -27,14 +27,22 @@ function isNewer(latest: string, current: string): boolean {
   return false;
 }
 
+// Detect Android TV (leanback feature = TV)
+function isAndroidTV(): boolean {
+  return typeof (window as any).AndroidTV !== "undefined" ||
+    /Android.*TV|BRAVIA|FireTV|AFT/i.test(navigator.userAgent);
+}
+
 export function UpdateChecker() {
   const [update, setUpdate] = useState<VersionInfo | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const downloadBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    // Only run inside Capacitor (Android), not in a browser
+    // Only run inside Capacitor (Android phone/tablet), not TV or browser
     if (!Capacitor.isNativePlatform()) return;
+    if (isAndroidTV()) return; // TV can't sideload — suppress the popup
 
     fetch(`${VERSION_URL}?t=${Date.now()}`)
       .then((r) => r.json())
@@ -43,26 +51,37 @@ export function UpdateChecker() {
           setUpdate(v);
         }
       })
-      .catch(() => {
-        // Silently ignore — no popup on network failure
-      });
+      .catch(() => {});
   }, []);
+
+  // Auto-focus download button when shown, Back/Escape dismisses
+  useEffect(() => {
+    if (!update || dismissed) return;
+    const t = setTimeout(() => downloadBtnRef.current?.focus(), 50);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "GoBack") {
+        e.preventDefault();
+        e.stopPropagation();
+        setDismissed(true);
+      }
+    };
+    document.addEventListener("keydown", onKey, true); // capture so it fires before anything else
+    return () => {
+      clearTimeout(t);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [update, dismissed]);
 
   const handleDownload = async () => {
     if (!update) return;
     setDownloading(true);
     try {
-      if (Capacitor.isNativePlatform()) {
-        // Open in system browser — Android handles APK download + install natively
-        const { Browser } = await import("@capacitor/browser");
-        await Browser.open({
-          url: update.apkUrl,
-          presentationStyle: "fullscreen",
-          toolbarColor: "#141414",
-        });
-      } else {
-        window.open(update.apkUrl, "_blank");
-      }
+      const { Browser } = await import("@capacitor/browser");
+      await Browser.open({
+        url: "https://ttflix.pages.dev",
+        presentationStyle: "fullscreen",
+        toolbarColor: "#141414",
+      });
     } finally {
       setDownloading(false);
     }
@@ -85,7 +104,7 @@ export function UpdateChecker() {
           </div>
           <button
             onClick={() => setDismissed(true)}
-            className="rounded-full bg-black/20 p-1.5 text-white"
+            className="rounded-full bg-black/20 p-1.5 text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             aria-label="Dismiss"
           >
             <X className="h-4 w-4" />
@@ -99,9 +118,10 @@ export function UpdateChecker() {
           </p>
 
           <button
+            ref={downloadBtnRef}
             onClick={handleDownload}
             disabled={downloading}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#e50914] py-3.5 text-base font-bold text-white active:bg-[#a00610] disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#e50914] py-3.5 text-base font-bold text-white active:bg-[#a00610] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
             style={{ WebkitTapHighlightColor: "transparent" }}
           >
             <Download className="h-5 w-5" />
@@ -110,7 +130,7 @@ export function UpdateChecker() {
 
           <button
             onClick={() => setDismissed(true)}
-            className="mt-3 w-full rounded-xl py-2.5 text-sm text-[#666]"
+            className="mt-3 w-full rounded-xl py-2.5 text-sm text-[#666] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
           >
             Not now
           </button>

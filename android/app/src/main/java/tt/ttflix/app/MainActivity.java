@@ -80,6 +80,46 @@ public class MainActivity extends BridgeActivity {
                     "window.dispatchEvent(new CustomEvent('androidresume'));", null);
             }
         });
+        // Mark that we just resumed — suppress the next Back press so returning
+        // from PlayerActivity doesn't immediately exit the app
+        justResumed = true;
+        new android.os.Handler(android.os.Looper.getMainLooper())
+            .postDelayed(() -> justResumed = false, 1000);
+    }
+
+    private boolean justResumed = false;
+
+    /**
+     * Intercept the hardware Back key (TV remote Back button).
+     * Dispatch it into the WebView as a KeyboardEvent so JS modal handlers
+     * can catch it and close modals. If JS doesn't consume it (no modal open),
+     * move the app to background — never exit.
+     * Suppressed for 1s after resuming from PlayerActivity so Back doesn't
+     * chain-exit both the player and the app in one gesture.
+     */
+    @Override
+    public void onBackPressed() {
+        if (justResumed) {
+            // Just returned from PlayerActivity — eat this Back press
+            justResumed = false;
+            return;
+        }
+        // Dispatch GoBack keyboard event into the WebView
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            getBridge().getWebView().evaluateJavascript(
+                "(function(){" +
+                "  var e = new KeyboardEvent('keydown', {key:'GoBack',bubbles:true,cancelable:true});" +
+                "  var consumed = !document.dispatchEvent(e);" +
+                "  return consumed ? 'consumed' : 'default';" +
+                "})()",
+                result -> {
+                    if (result != null && result.contains("consumed")) return;
+                    runOnUiThread(() -> moveTaskToBack(true));
+                }
+            );
+        } else {
+            moveTaskToBack(true);
+        }
     }
 
     @Override

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X, Play, ChevronDown } from "lucide-react";
 import { img } from "@/lib/tmdb";
@@ -16,17 +16,40 @@ type Props = {
 export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props) {
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (item) setSelectedSeason(item.season ?? 1);
   }, [item?.tmdb_id]);
 
+  // Lock scroll, auto-focus, Escape/Back closes, focus trap
   useEffect(() => {
-    if (item) {
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
-    }
-  }, [item]);
+    if (!item) return;
+    document.body.style.overflow = "hidden";
+    const t = setTimeout(() => closeButtonRef.current?.focus(), 50);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "GoBack") { e.preventDefault(); onClose(); }
+      if (e.key !== "Tab" || !modalRef.current) return;
+      const focusable = Array.from(
+        modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
+      else { if (document.activeElement === last) { e.preventDefault(); first.focus(); } }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      clearTimeout(t);
+      document.body.style.overflow = "";
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [item, onClose]);
 
   const isTv = item?.media_type === "tv";
 
@@ -61,13 +84,15 @@ export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props)
       onClick={onClose}
     >
       <div
+        ref={modalRef}
         className="relative w-full max-w-sm overflow-hidden rounded-xl bg-card shadow-[var(--shadow-card)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close */}
         <button
+          ref={closeButtonRef}
           onClick={onClose}
-          className="absolute right-3 top-3 z-10 rounded-full bg-black/60 p-2 transition hover:bg-black/80"
+          className="absolute right-3 top-3 z-10 rounded-full bg-black/60 p-2 transition hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           aria-label="Close"
         >
           <X className="h-5 w-5" />
@@ -95,7 +120,7 @@ export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props)
           {/* Continue button only */}
           <button
             onClick={() => onContinue(item)}
-            className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-6 py-3 font-semibold text-primary-foreground transition hover:bg-primary/85"
+            className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-6 py-3 font-semibold text-primary-foreground transition hover:bg-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card"
           >
             <Play className="h-5 w-5 fill-current" />
             {item.media_type === "tv" && item.season != null
@@ -113,7 +138,7 @@ export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props)
                   <div className="relative">
                     <button
                       onClick={() => setShowSeasonPicker((v) => !v)}
-                      className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-semibold transition hover:bg-accent"
+                      className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-semibold transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       Season {selectedSeason}
                       <ChevronDown className="h-4 w-4" />
@@ -124,7 +149,7 @@ export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props)
                           <button
                             key={s}
                             onClick={() => { setSelectedSeason(s); setShowSeasonPicker(false); }}
-                            className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-accent ${s === selectedSeason ? "font-bold text-primary" : ""}`}
+                            className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-accent focus-visible:outline-none focus-visible:bg-accent ${s === selectedSeason ? "font-bold text-primary" : ""}`}
                           >
                             Season {s}
                           </button>
@@ -143,7 +168,8 @@ export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props)
                     <button
                       key={ep.episode_number}
                       onClick={() => onPlayEpisode(item, selectedSeason, ep.episode_number)}
-                      className="flex w-full items-start gap-3 rounded-lg p-2 text-left transition hover:bg-accent active:bg-accent/80"
+                      onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest" })}
+                      className="flex w-full items-start gap-3 rounded-lg p-2 text-left transition hover:bg-accent active:bg-accent/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card"
                     >
                       <div className="relative w-24 shrink-0 overflow-hidden rounded-md bg-muted">
                         <div className="aspect-video w-full">

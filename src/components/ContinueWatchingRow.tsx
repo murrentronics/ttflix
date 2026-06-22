@@ -6,6 +6,7 @@ import { useProfile } from "@/lib/ProfileContext";
 import { fetchContinueWatching, removeProgress, type WatchProgress } from "@/lib/continue-watching";
 import { img } from "@/lib/tmdb";
 import { ResumeModal } from "./ResumeModal";
+import { navigateVertical } from "@/lib/tv-navigation";
 
 // Ratings that should not appear in a kids profile's Continue Watching row
 const KIDS_BLOCKED_RATINGS = new Set(["PG-13", "R", "NC-17", "TV-14", "TV-MA", "18+", "18", "X"]);
@@ -96,6 +97,11 @@ export function ContinueWatchingRow() {
                 <button
                   onClick={() => setPrompt(item)}
                   onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
+                  onKeyDown={(e) => {
+                    if (e.key === "ArrowDown") { e.preventDefault(); navigateVertical(e.currentTarget, "down"); }
+                    if (e.key === "ArrowUp")   { e.preventDefault(); navigateVertical(e.currentTarget, "up"); }
+                  }}
+                  data-tv-card
                   className="block w-full cursor-pointer text-left overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:scale-105 transition-transform duration-200"
                   aria-label={`Play ${item.title}`}
                 >

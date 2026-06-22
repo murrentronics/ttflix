@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Hero } from "./Hero";
 import { MovieRow } from "./MovieRow";
 import { ContinueWatchingRow } from "./ContinueWatchingRow";
@@ -14,6 +15,16 @@ const NEW_RELEASES_TITLES = new Set(["New Releases", "New for Kids", "Trending N
 export function Browse({ feed }: { feed: Feed }) {
   const newReleasesRow = feed.rows.find((r) => NEW_RELEASES_TITLES.has(r.title));
   const otherRows = feed.rows.filter((r) => !NEW_RELEASES_TITLES.has(r.title));
+
+  // Auto-focus the first card when the page loads so TV remote users
+  // have an immediately highlighted element without pressing anything first
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const first = document.querySelector<HTMLElement>("[data-tv-card]");
+      first?.focus();
+    }, 300);
+    return () => clearTimeout(t);
+  }, []);
 
   return (
     <>

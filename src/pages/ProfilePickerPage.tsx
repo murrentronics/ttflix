@@ -1,9 +1,51 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Pencil, Trash2, X, User, Baby } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { createProfile, deleteProfile, updateProfile, maxProfiles, randomColor, type UserProfile } from "@/lib/profiles";
+
+const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
+
+/** Generic modal wrapper with focus trap + Escape close */
+function ModalShell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Auto-focus first focusable element
+    const t = setTimeout(() => {
+      const first = ref.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), input, [tabindex]:not([tabindex="-1"])'
+      );
+      first?.focus();
+    }, 30);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "GoBack") { e.preventDefault(); onClose(); return; }
+      if (e.key !== "Tab" || !ref.current) return;
+      const focusable = Array.from(
+        ref.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
+      else { if (document.activeElement === last) { e.preventDefault(); first.focus(); } }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { clearTimeout(t); document.removeEventListener("keydown", onKey); };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
+      <div ref={ref} className="w-full max-w-sm rounded-xl border border-border bg-card p-6" onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  );
+}
 
 export function ProfilePickerPage() {
   const { user, profile: authProfile, isAdmin } = useAuth();
@@ -17,12 +59,17 @@ export function ProfilePickerPage() {
   const [editTarget, setEditTarget] = useState<UserProfile | null>(null);
   const [editName, setEditName] = useState("");
   const [editError, setEditError] = useState("");
+  const firstProfileRef = useRef<HTMLButtonElement>(null);
 
   const plan = authProfile?.plan ?? "basic";
   const max = maxProfiles(plan);
-  // Protected profiles: the main (is_default) and kids (is_kids) profiles cannot be deleted
-  // Extra profiles (neither is_default nor is_kids) can be deleted
   const canAdd = isAdmin ? true : profiles.length < max;
+
+  // Auto-focus the first profile avatar on load so TV remote works immediately
+  useEffect(() => {
+    const t = setTimeout(() => firstProfileRef.current?.focus(), 200);
+    return () => clearTimeout(t);
+  }, []);
 
   const handleAdd = async () => {
     if (!user || !newName.trim()) return;
@@ -45,11 +92,10 @@ export function ProfilePickerPage() {
   };
 
   const handleDelete = async (p: UserProfile) => {
-    if (p.is_default) return; // can't delete the default profile
+    if (p.is_default) return;
     setBusy(true);
     try {
       await deleteProfile(p.id);
-      // If we just deleted the active profile, switch to the default
       if (activeProfile?.id === p.id) {
         const fallback = profiles.find((x) => x.is_default && x.id !== p.id);
         if (fallback) setActiveProfile(fallback);
@@ -66,7 +112,6 @@ export function ProfilePickerPage() {
     setEditError("");
     try {
       await updateProfile(editTarget.id, { name: editName.trim() });
-      // If this was the active profile, update it in context too
       if (activeProfile?.id === editTarget.id) {
         setActiveProfile({ ...editTarget, name: editName.trim() });
       }
@@ -85,17 +130,14 @@ export function ProfilePickerPage() {
       <h2 className="mb-10 text-xl font-semibold text-foreground">Who's watching?</h2>
 
       <div className="flex flex-wrap justify-center gap-6">
-        {profiles.map((p) => (
+        {profiles.map((p, i) => (
           <div key={p.id} className="relative flex flex-col items-center gap-2">
-            {/* Avatar */}
             <button
+              ref={i === 0 ? firstProfileRef : undefined}
               onClick={() => {
-                if (!editing) {
-                  setActiveProfile(p);
-                  navigate("/");
-                }
+                if (!editing) { setActiveProfile(p); navigate("/"); }
               }}
-              className="relative h-24 w-24 overflow-hidden rounded-lg transition-transform hover:scale-105 active:scale-95"
+              className={`relative h-24 w-24 overflow-hidden rounded-lg transition-transform hover:scale-105 active:scale-95 ${focusRing} focus-visible:scale-105`}
               style={{ backgroundColor: p.avatar_color }}
               disabled={editing}
             >
@@ -108,19 +150,19 @@ export function ProfilePickerPage() {
               {p.name}{p.is_kids ? " 👶" : ""}
             </span>
 
-            {/* Edit mode buttons */}
             {editing && (
               <div className="flex gap-1">
                 <button
                   onClick={() => { setEditTarget(p); setEditName(p.name); }}
-                  className="rounded-full bg-secondary p-1.5 hover:bg-accent"
+                  className={`rounded-full bg-secondary p-1.5 hover:bg-accent ${focusRing}`}
+                  aria-label="Edit profile"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 {!p.is_default && !p.is_kids && (
                   <button
                     onClick={() => handleDelete(p)}
-                    className="rounded-full bg-destructive/20 p-1.5 hover:bg-destructive/40"
+                    className={`rounded-full bg-destructive/20 p-1.5 hover:bg-destructive/40 ${focusRing}`}
                     aria-label="Delete profile"
                   >
                     <Trash2 className="h-3.5 w-3.5 text-destructive" />
@@ -135,7 +177,7 @@ export function ProfilePickerPage() {
           <div className="flex flex-col items-center gap-2">
             <button
               onClick={openAddPicker}
-              className="flex h-24 w-24 items-center justify-center rounded-lg border-2 border-dashed border-border transition hover:border-primary hover:bg-primary/10"
+              className={`flex h-24 w-24 items-center justify-center rounded-lg border-2 border-dashed border-border transition hover:border-primary hover:bg-primary/10 ${focusRing}`}
             >
               <Plus className="h-8 w-8 text-muted-foreground" />
             </button>
@@ -149,111 +191,103 @@ export function ProfilePickerPage() {
         )}
       </div>
 
-      {/* Manage/Done button */}
       <button
         onClick={() => setEditing((e) => !e)}
-        className="mt-10 rounded-md border border-border px-6 py-2 text-sm font-semibold text-foreground transition hover:bg-accent"
+        className={`mt-10 rounded-md border border-border px-6 py-2 text-sm font-semibold text-foreground transition hover:bg-accent ${focusRing}`}
       >
         {editing ? "Done" : "Manage Profiles"}
       </button>
 
       {/* Step 1 — pick profile type */}
       {addStep === "pick-type" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6">
-            <div className="mb-5 flex items-center justify-between">
-              <h3 className="text-lg font-bold">Add Profile</h3>
-              <button onClick={() => setAddStep("closed")}><X className="h-5 w-5" /></button>
-            </div>
-            <p className="mb-4 text-sm text-muted-foreground">Who is this profile for?</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => { setNewIsKids(false); setAddStep("enter-name"); }}
-                className="flex flex-col items-center gap-3 rounded-xl border-2 border-border bg-background p-5 transition hover:border-primary hover:bg-primary/10"
-              >
-                <User className="h-10 w-10 text-foreground/70" />
-                <span className="text-sm font-semibold">Adult</span>
-                <span className="text-xs text-muted-foreground text-center">All content</span>
-              </button>
-              <button
-                onClick={() => { setNewIsKids(true); setAddStep("enter-name"); }}
-                className="flex flex-col items-center gap-3 rounded-xl border-2 border-border bg-background p-5 transition hover:border-primary hover:bg-primary/10"
-              >
-                <Baby className="h-10 w-10 text-blue-400" />
-                <span className="text-sm font-semibold">Kids</span>
-                <span className="text-xs text-muted-foreground text-center">Family-friendly only</span>
-              </button>
-            </div>
+        <ModalShell onClose={() => setAddStep("closed")}>
+          <div className="mb-5 flex items-center justify-between">
+            <h3 className="text-lg font-bold">Add Profile</h3>
+            <button onClick={() => setAddStep("closed")} className={`rounded-full p-1 ${focusRing}`}><X className="h-5 w-5" /></button>
           </div>
-        </div>
+          <p className="mb-4 text-sm text-muted-foreground">Who is this profile for?</p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => { setNewIsKids(false); setAddStep("enter-name"); }}
+              className={`flex flex-col items-center gap-3 rounded-xl border-2 border-border bg-background p-5 transition hover:border-primary hover:bg-primary/10 ${focusRing}`}
+            >
+              <User className="h-10 w-10 text-foreground/70" />
+              <span className="text-sm font-semibold">Adult</span>
+              <span className="text-xs text-muted-foreground text-center">All content</span>
+            </button>
+            <button
+              onClick={() => { setNewIsKids(true); setAddStep("enter-name"); }}
+              className={`flex flex-col items-center gap-3 rounded-xl border-2 border-border bg-background p-5 transition hover:border-primary hover:bg-primary/10 ${focusRing}`}
+            >
+              <Baby className="h-10 w-10 text-blue-400" />
+              <span className="text-sm font-semibold">Kids</span>
+              <span className="text-xs text-muted-foreground text-center">Family-friendly only</span>
+            </button>
+          </div>
+        </ModalShell>
       )}
 
       {/* Step 2 — enter name */}
       {addStep === "enter-name" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold">
-                  {newIsKids ? "👶 Kids Profile" : "🧑 Adult Profile"}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {newIsKids ? "Family-friendly content only" : "Full access to all content"}
-                </p>
-              </div>
-              <button onClick={() => setAddStep("pick-type")}><X className="h-5 w-5" /></button>
+        <ModalShell onClose={() => setAddStep("pick-type")}>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-bold">{newIsKids ? "👶 Kids Profile" : "🧑 Adult Profile"}</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {newIsKids ? "Family-friendly content only" : "Full access to all content"}
+              </p>
             </div>
-            <input
-              autoFocus
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-              placeholder="Profile name"
-              className="w-full rounded-md border border-border bg-input px-3 py-2 outline-none focus:border-primary"
-            />
-            <div className="mt-4 flex gap-2">
-              <button
-                onClick={() => setAddStep("pick-type")}
-                className="flex-1 rounded-md border border-border py-2.5 text-sm font-semibold transition hover:bg-accent"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleAdd}
-                disabled={busy || !newName.trim()}
-                className="flex-1 rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-60"
-              >
-                {busy ? "Creating…" : "Create"}
-              </button>
-            </div>
+            <button onClick={() => setAddStep("pick-type")} className={`rounded-full p-1 ${focusRing}`}><X className="h-5 w-5" /></button>
           </div>
-        </div>
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            placeholder="Profile name"
+            className="w-full rounded-md border border-border bg-input px-3 py-2 outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
+          />
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => setAddStep("pick-type")}
+              className={`flex-1 rounded-md border border-border py-2.5 text-sm font-semibold transition hover:bg-accent ${focusRing}`}
+            >
+              Back
+            </button>
+            <button
+              onClick={handleAdd}
+              disabled={busy || !newName.trim()}
+              className={`flex-1 rounded-md bg-primary py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-60 ${focusRing}`}
+            >
+              {busy ? "Creating…" : "Create"}
+            </button>
+          </div>
+        </ModalShell>
       )}
 
       {/* Edit profile modal */}
       {editTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-bold">Edit Profile</h3>
-              <button onClick={() => setEditTarget(null)}><X className="h-5 w-5" /></button>
-            </div>
-            <input
-              autoFocus
-              value={editName}
-              onChange={(e) => { setEditName(e.target.value); setEditError(""); }}
-              className="w-full rounded-md border border-border bg-input px-3 py-2 outline-none focus:border-primary"
-            />
-            {editError && <p className="mt-2 text-xs text-destructive">{editError}</p>}
-            <button
-              onClick={handleEdit}
-              disabled={busy || !editName.trim()}
-              className="mt-4 w-full rounded-md bg-primary py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-60"
-            >
-              {busy ? "Saving…" : "Save"}
-            </button>
+        <ModalShell onClose={() => setEditTarget(null)}>
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-lg font-bold">Edit Profile</h3>
+            <button onClick={() => setEditTarget(null)} className={`rounded-full p-1 ${focusRing}`}><X className="h-5 w-5" /></button>
           </div>
-        </div>
+          <input
+            autoFocus
+            value={editName}
+            onChange={(e) => { setEditName(e.target.value); setEditError(""); }}
+            onKeyDown={(e) => e.key === "Enter" && handleEdit()}
+            className="w-full rounded-md border border-border bg-input px-3 py-2 outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
+          />
+          {editError && <p className="mt-2 text-xs text-destructive">{editError}</p>}
+          <button
+            onClick={handleEdit}
+            disabled={busy || !editName.trim()}
+            className={`mt-4 w-full rounded-md bg-primary py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-60 ${focusRing}`}
+          >
+            {busy ? "Saving…" : "Save"}
+          </button>
+        </ModalShell>
       )}
     </div>
   );

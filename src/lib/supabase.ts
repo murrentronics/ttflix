@@ -31,8 +31,8 @@ export const PLANS: Record<
   PlanId,
   { id: PlanId; name: string; price: number; screens: number; quality: string; annual?: boolean }
 > = {
-  basic:           { id: "basic",           name: "Standard",         price: 50,  screens: 2, quality: "Up to Ultra HD (4K) + HDR", annual: false },
-  premium:         { id: "premium",         name: "Premium",          price: 100, screens: 5, quality: "Up to Ultra HD (4K) + HDR", annual: false },
-  basic_annual:    { id: "basic_annual",    name: "Standard Annual",  price: 450, screens: 2, quality: "Up to Ultra HD (4K) + HDR", annual: true  },
-  premium_annual:  { id: "premium_annual",  name: "Premium Annual",   price: 650, screens: 5, quality: "Up to Ultra HD (4K) + HDR", annual: true  },
+  basic:           { id: "basic",           name: "Standard",         price: 75,  screens: 2, quality: "Up to Ultra HD (4K) + HDR", annual: false },
+  premium:         { id: "premium",         name: "Premium",          price: 125, screens: 5, quality: "Up to Ultra HD (4K) + HDR", annual: false },
+  basic_annual:    { id: "basic_annual",    name: "Standard Annual",  price: 550, screens: 2, quality: "Up to Ultra HD (4K) + HDR", annual: true  },
+  premium_annual:  { id: "premium_annual",  name: "Premium Annual",   price: 750, screens: 5, quality: "Up to Ultra HD (4K) + HDR", annual: true  },
 };

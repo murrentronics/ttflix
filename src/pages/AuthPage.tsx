@@ -76,7 +76,7 @@ export function AuthPage() {
       <img src={heroBg} alt="" className="absolute inset-0 h-full w-full object-cover opacity-30 pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/70 to-background pointer-events-none" />
       <div className="relative mx-auto max-w-md px-4 py-10">
-        <Link to="/" className="mb-8 block text-center text-3xl font-extrabold text-primary">TT<span className="text-foreground">FLIX</span></Link>
+        <Link to="/" className="mb-8 block text-center text-3xl font-extrabold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">TT<span className="text-foreground">FLIX</span></Link>
         <div className="rounded-xl border border-border bg-card/95 p-7 backdrop-blur">
           <h1 className="text-2xl font-extrabold">{isSignup ? "Create your account" : "Sign In"}</h1>
 
@@ -90,11 +90,11 @@ export function AuthPage() {
           <form onSubmit={handleSubmit} className="mt-5 space-y-4">
             {isSignup && (
               <Field label="Full name">
-                <input required value={fullName} onChange={(e) => setFullName(e.target.value)} className="input" />
+                <input required value={fullName} onChange={(e) => setFullName(e.target.value)} className="input focus-visible:ring-2 focus-visible:ring-primary" />
               </Field>
             )}
             <Field label="Email">
-              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input" />
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input focus-visible:ring-2 focus-visible:ring-primary" />
             </Field>
             <Field label="Password">
               <div className="relative">
@@ -104,7 +104,7 @@ export function AuthPage() {
                   minLength={isSignup ? 8 : 1}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="input pr-10"
+                  className="input pr-10 focus-visible:ring-2 focus-visible:ring-primary"
                 />
                 <button
                   type="button"
@@ -143,13 +143,13 @@ export function AuthPage() {
                     placeholder="000-0000"
                     maxLength={8}
                     inputMode="numeric"
-                    className="input"
+                    className="input focus-visible:ring-2 focus-visible:ring-primary"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">7 digits — auto-formatted as NNN-NNNN</p>
                 </Field>
 
                 <Field label="Country">
-                  <select value={country} onChange={(e) => setCountry(e.target.value)} className="input">
+                  <select value={country} onChange={(e) => setCountry(e.target.value)} className="input focus-visible:ring-2 focus-visible:ring-primary">
                     <option>Trinidad & Tobago</option>
                     <option>Other (not supported)</option>
                   </select>
@@ -161,7 +161,7 @@ export function AuthPage() {
                   <div className="grid grid-cols-2 gap-3">
                     {Object.values(PLANS).map((p) => (
                       <button type="button" key={p.id} onClick={() => setPlan(p.id)}
-                        className={`rounded-lg border p-3 text-left transition ${plan === p.id ? "border-primary bg-primary/10" : "border-border"}`}>
+                        className={`rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${plan === p.id ? "border-primary bg-primary/10" : "border-border"}`}>
                         <div className="flex items-center justify-between">
                           <span className="font-semibold">{p.name}</span>
                           {plan === p.id && <Check className="h-4 w-4 text-primary" />}
@@ -176,7 +176,7 @@ export function AuthPage() {
             )}
 
             <button type="submit" disabled={busy || (isSignup && !allRulesPassed)}
-              className="w-full rounded-md bg-primary py-3 font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-60">
+              className="w-full rounded-md bg-primary py-3 font-semibold text-primary-foreground transition hover:bg-primary/85 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
               {busy ? "Please wait…" : isSignup ? "Sign Up" : "Sign In"}
             </button>
           </form>
@@ -184,13 +184,13 @@ export function AuthPage() {
           <p className="mt-6 text-sm text-muted-foreground">
             {isSignup ? "Already have an account?" : "New to TTFlix?"}{" "}
             <button onClick={() => { setError(""); setIsSignup((s) => !s); }}
-              className="font-semibold text-foreground hover:underline">
+              className="font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">
               {isSignup ? "Sign in" : "Sign up now"}
             </button>
           </p>
           {!isSignup && (
             <p className="mt-3 text-sm text-muted-foreground">
-              <Link to="/forgot-password" className="font-semibold text-foreground hover:underline">
+              <Link to="/forgot-password" className="font-semibold text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded">
                 Forgot password?
               </Link>
             </p>
@@ -198,7 +198,7 @@ export function AuthPage() {
           <div className="mt-6 border-t border-border pt-5">
             <Link
               to="/"
-              className="flex w-full items-center justify-center gap-2 rounded-md border border-border py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-accent hover:text-foreground"
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-border py-2.5 text-sm font-semibold text-foreground/80 transition hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               ← Back to Home
             </Link>
