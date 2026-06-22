@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search as SearchIcon, X } from "lucide-react";
 import { searchContent, type TmdbItem } from "@/lib/tmdb.functions.app";
@@ -11,6 +11,14 @@ export function SearchPage() {
   const [query, setQuery] = useState("");
   const { activeProfile } = useProfile();
   const isKids = activeProfile?.is_kids ?? false;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus the input after mount — delayed so the keyboard reliably appears
+  // on Android (both phone and TV with a connected keyboard/remote)
+  useEffect(() => {
+    const t = setTimeout(() => inputRef.current?.focus(), 150);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setQuery(input.trim()), 400);
@@ -29,16 +37,16 @@ export function SearchPage() {
         <div className="relative mb-8">
           <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
           <input
-            autoFocus
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isKids ? "Search cartoons, animal shows, adventures…" : "Search movies, TV shows, cartoons…"}
-            className="w-full rounded-md border border-border bg-input py-3 pl-12 pr-12 text-lg outline-none focus:border-primary"
+            placeholder={isKids ? "Search cartoons, animal shows, adventures…" : "Search movies, TV shows…"}
+            className="w-full rounded-md border border-border bg-input py-3 pl-12 pr-12 text-lg outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
           />
           {input && (
             <button
-              onClick={() => { setInput(""); setQuery(""); }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30"
+              onClick={() => { setInput(""); setQuery(""); inputRef.current?.focus(); }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               aria-label="Clear search"
             >
               <X className="h-4 w-4" />

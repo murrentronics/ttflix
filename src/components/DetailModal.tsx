@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { X, Play, Plus, Check, Star, Lock, ChevronDown } from "lucide-react";
@@ -16,6 +16,8 @@ export function DetailModal() {
   const navigate = useNavigate();
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   const canWatch = isAdmin || (!!user && profile?.status === "approved");
 
@@ -36,12 +38,55 @@ export function DetailModal() {
     enabled: !!current && current.mediaType === "tv",
   });
 
+  // Lock scroll + auto-focus close button when modal opens
   useEffect(() => {
     if (current) {
       document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
+      // Small delay so the modal has rendered before focusing
+      const t = setTimeout(() => closeButtonRef.current?.focus(), 50);
+      return () => {
+        clearTimeout(t);
+        document.body.style.overflow = "";
+      };
     }
   }, [current]);
+
+  // Close on Escape (TV Back button)
+  useEffect(() => {
+    if (!current) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "GoBack") {
+        e.preventDefault();
+        close();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [current, close]);
+
+  // Focus trap — keep D-pad focus inside the modal
+  useEffect(() => {
+    if (!current || !modalRef.current) return;
+    const modal = modalRef.current;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(
+        modal.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => !el.closest("[disabled]"));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [current, data]); // re-run when data loads so focusable list is complete
 
   if (!current) return null;
 
@@ -52,11 +97,11 @@ export function DetailModal() {
   const isBlockedForKids = isKidsProfile && !!data?.certification && KIDS_BLOCKED_RATINGS.has(data.certification.toUpperCase());
 
   const handlePlay = (season = 1, episode = 1) => {
-    if (isBlockedForKids) return; // safety — button is hidden but guard here too
+    if (isBlockedForKids) return;
     close();
     if (!canWatch) { navigate("/"); return; }
-    const poster = data?.poster_path ?? current.poster_path ?? "";
-    const backdrop = data?.backdrop_path ?? current.backdrop_path ?? "";
+    const poster = data?.poster_path ?? "";
+    const backdrop = data?.backdrop_path ?? "";
     const title = data?.title ?? current.title ?? "";
     navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${season}&episode=${episode}&startOver=1`);
   };
@@ -64,18 +109,23 @@ export function DetailModal() {
   const isTv = current.mediaType === "tv";
   const totalSeasons = data?.number_of_seasons ?? 1;
 
+  // Shared focus-visible style for all interactive elements inside the modal
+  const focusStyle = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card";
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-4 py-10 backdrop-blur-sm"
       onClick={close}
     >
       <div
+        ref={modalRef}
         className="relative w-full max-w-3xl overflow-hidden rounded-xl bg-card shadow-[var(--shadow-card)]"
         onClick={(e) => e.stopPropagation()}
       >
         <button
+          ref={closeButtonRef}
           onClick={close}
-          className="absolute right-3 top-3 z-10 rounded-full bg-black/60 p-2 transition hover:bg-black/80"
+          className={`absolute right-3 top-3 z-10 rounded-full bg-black/60 p-2 transition hover:bg-black/80 ${focusStyle}`}
           aria-label="Close"
         >
           <X className="h-5 w-5" />
@@ -134,7 +184,7 @@ export function DetailModal() {
               ) : (
                 <button
                   onClick={() => handlePlay(isTv ? selectedSeason : 1, 1)}
-                  className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85"
+                  className={`flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 ${focusStyle}`}
                 >
                   {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
                   {canWatch ? "Play" : "Unlock"}
@@ -165,7 +215,7 @@ export function DetailModal() {
                     <div className="relative">
                       <button
                         onClick={() => setShowSeasonPicker((v) => !v)}
-                        className="flex items-center gap-1.5 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-semibold transition hover:bg-accent"
+                        className={`flex items-center gap-1.5 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm font-semibold transition hover:bg-accent ${focusStyle}`}
                       >
                         Season {selectedSeason}
                         <ChevronDown className="h-4 w-4" />
@@ -176,7 +226,7 @@ export function DetailModal() {
                             <button
                               key={s}
                               onClick={() => { setSelectedSeason(s); setShowSeasonPicker(false); }}
-                              className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-accent ${s === selectedSeason ? "font-bold text-primary" : ""}`}
+                              className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-accent ${s === selectedSeason ? "font-bold text-primary" : ""} ${focusStyle}`}
                             >
                               Season {s}
                             </button>
@@ -192,12 +242,13 @@ export function DetailModal() {
                   <div className="py-4 text-center text-sm text-muted-foreground">Loading episodes…</div>
                 ) : (
                   <div className="space-y-2">
-                    {(episodes ?? []).map((ep) => (
+                    {(episodes ?? []).map((ep: { episode_number: number; name: string; overview?: string; still_path?: string | null; runtime?: number | null }) => (
                       <button
                         key={ep.episode_number}
                         onClick={() => { if (!isBlockedForKids) handlePlay(selectedSeason, ep.episode_number); }}
+                        onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest" })}
                         disabled={isBlockedForKids}
-                        className={`flex w-full items-start gap-3 rounded-lg p-2 text-left transition hover:bg-accent active:bg-accent/80 ${isBlockedForKids ? "opacity-40 cursor-not-allowed" : ""}`}
+                        className={`flex w-full items-start gap-3 rounded-lg p-2 text-left transition hover:bg-accent active:bg-accent/80 ${isBlockedForKids ? "opacity-40 cursor-not-allowed" : ""} ${focusStyle}`}
                       >
                         {/* Thumbnail */}
                         <div className="relative w-28 shrink-0 overflow-hidden rounded-md bg-muted sm:w-36">
@@ -215,7 +266,6 @@ export function DetailModal() {
                               </div>
                             )}
                           </div>
-                          {/* Play icon overlay */}
                           <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition hover:bg-black/40">
                             <Play className="h-5 w-5 fill-white opacity-0 drop-shadow transition group-hover:opacity-100" />
                           </div>

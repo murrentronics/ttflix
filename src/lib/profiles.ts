@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { PlanId } from "./supabase";
+import { PLANS, type PlanId } from "./supabase";
 
 export type UserProfile = {
   id: string;
@@ -21,7 +21,9 @@ export function randomColor(): string {
 }
 
 export function maxProfiles(plan: PlanId): number {
-  return plan === "premium" ? 6 : 3; // 5 user + 1 kids for premium, 2 user + 1 kids for basic
+  // Standard (2 screens) → 3 profiles, Premium (5 screens) → 6 profiles
+  const screens = PLANS[plan]?.screens ?? 2;
+  return screens === 5 ? 6 : 3;
 }
 
 export async function fetchProfiles(userId: string): Promise<UserProfile[]> {
@@ -31,15 +33,25 @@ export async function fetchProfiles(userId: string): Promise<UserProfile[]> {
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
   const all = (data as UserProfile[]) ?? [];
-  // Deduplicate: keep only the first profile per name+is_kids combo
-  // Guards against duplicate rows that may exist in the DB
-  const seen = new Set<string>();
-  return all.filter((p) => {
-    const key = `${p.name.toLowerCase()}|${p.is_kids}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+
+  // Auto-clean duplicate default and kids profiles from the DB.
+  // Keep the LAST one (most recently created = the renamed one),
+  // delete the older duplicates silently in the background.
+  const defaultProfiles = all.filter((p) => p.is_default);
+  const kidsProfiles = all.filter((p) => p.is_kids && !p.is_default);
+
+  // Keep the last (newest) of each protected type, delete the earlier ones
+  const toDelete: string[] = [
+    ...defaultProfiles.slice(0, -1).map((p) => p.id),  // delete all but last default
+    ...kidsProfiles.slice(0, -1).map((p) => p.id),      // delete all but last kids
+  ];
+
+  if (toDelete.length > 0) {
+    supabase.from("user_profiles").delete().in("id", toDelete).then(() => {});
+  }
+
+  const deleteSet = new Set(toDelete);
+  return all.filter((p) => !deleteSet.has(p.id));
 }
 
 export async function createProfile(
@@ -66,7 +78,8 @@ export async function updateProfile(
   profileId: string,
   updates: { name?: string; avatar_color?: string }
 ): Promise<void> {
-  await supabase.from("user_profiles").update(updates).eq("id", profileId);
+  const { error } = await supabase.from("user_profiles").update(updates).eq("id", profileId);
+  if (error) throw error;
 }
 
 export async function deleteProfile(profileId: string): Promise<void> {

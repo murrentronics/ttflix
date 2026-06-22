@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useAuth } from "./auth";
 import { fetchProfiles, ensureDefaultProfiles, type UserProfile } from "./profiles";
 
@@ -7,7 +7,7 @@ type ProfileContextValue = {
   activeProfile: UserProfile | null;
   setActiveProfile: (p: UserProfile) => void;
   refreshProfiles: () => Promise<void>;
-  profileSelected: boolean; // false = still on profile picker screen
+  profileSelected: boolean;
 };
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
@@ -19,14 +19,25 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [activeProfile, setActiveProfileState] = useState<UserProfile | null>(null);
   const [profileSelected, setProfileSelected] = useState(false);
+  // Track whether we've done the first-time setup for this user already
+  const setupDoneRef = useRef(false);
 
   const refreshProfiles = useCallback(async () => {
     if (!user || !authProfile) return;
-    const list = await ensureDefaultProfiles(
-      user.id,
-      authProfile.full_name ?? authProfile.email ?? "Me",
-      authProfile.plan
-    );
+
+    let list: UserProfile[];
+    if (!setupDoneRef.current) {
+      // First load — run ensureDefaultProfiles to create default+kids if missing
+      setupDoneRef.current = true;
+      list = await ensureDefaultProfiles(
+        user.id,
+        authProfile.full_name ?? authProfile.email ?? "Me",
+        authProfile.plan
+      );
+    } else {
+      // Subsequent refreshes (after edit/delete) — just fetch, never create
+      list = await fetchProfiles(user.id);
+    }
     setProfiles(list);
 
     // Restore last active profile from storage
@@ -39,18 +50,19 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         return;
       }
     }
-    // Don't auto-select — show picker
     setProfileSelected(false);
   }, [user, authProfile]);
 
   useEffect(() => {
     if (!loading && user && authProfile) {
+      setupDoneRef.current = false; // reset on user change
       refreshProfiles();
     }
     if (!user) {
       setProfiles([]);
       setActiveProfileState(null);
       setProfileSelected(false);
+      setupDoneRef.current = false;
     }
   }, [user, authProfile, loading, refreshProfiles]);
 

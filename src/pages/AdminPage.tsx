@@ -130,6 +130,15 @@ export function AdminPage() {
     return () => { supabase.removeChannel(channel); };
   }, [isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, historyPage]);
 
+  // Auto-refresh watching now every 30s so stale pings get cleared automatically
+  useEffect(() => {
+    if (!isAdmin) return;
+    const interval = setInterval(() => {
+      if (tabRef.current === "watching") loadWatching();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [isAdmin, loadWatching]);
+
   const changeStatus = async (u: AdminUser, status: UserStatus) => {
     setBusy(true);
     try {
@@ -205,16 +214,28 @@ export function AdminPage() {
               </span>
             )}
           </button>
-          <button
-            onClick={() => {
-              if (tab === "billing") refreshUpcomingRenewals();
-              else if (tab === "history") loadHistory(historyPage);
-              else if (tab === "watching") loadWatching();
-              else refreshRows(tab as UserStatus);
-            }}
-            className="ml-auto flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground">
-            <RefreshCw className="h-4 w-4" /> Refresh
-          </button>
+          {/* Refresh button — hidden on watching tab (auto-updates) */}
+          {tab !== "watching" && (
+            <button
+              onClick={() => {
+                if (tab === "billing") refreshUpcomingRenewals();
+                else if (tab === "history") loadHistory(historyPage);
+                else refreshRows(tab as UserStatus);
+              }}
+              className="ml-auto flex items-center gap-1.5 px-3 py-2 text-sm text-muted-foreground hover:text-foreground">
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </button>
+          )}
+          {/* Live indicator — watching tab only */}
+          {tab === "watching" && (
+            <span className="ml-auto flex items-center gap-1.5 px-3 py-2 text-xs text-green-400">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+              </span>
+              Live
+            </span>
+          )}
         </div>
 
         {tab === "billing" && (

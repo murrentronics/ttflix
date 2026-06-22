@@ -54,14 +54,14 @@ export function Hero({ items }: { items: TmdbItem[] }) {
         <div className="mt-5 flex gap-3">
           <button
             onClick={handlePlay}
-            className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85"
+            className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
             {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
             {canWatch ? "Play" : "Unlock"}
           </button>
           <button
             onClick={() => open(item)}
-            className="flex items-center gap-2 rounded-md bg-secondary/80 px-6 py-2.5 font-semibold backdrop-blur transition hover:bg-secondary"
+            className="flex items-center gap-2 rounded-md bg-secondary/80 px-6 py-2.5 font-semibold backdrop-blur transition hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
             <Info className="h-5 w-5" /> More Info
           </button>
