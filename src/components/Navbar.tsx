@@ -100,7 +100,7 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-4">
-          <Link to="/search" className="text-foreground/90 transition hover:text-primary" aria-label="Search">
+          <Link to="/search" className="rounded p-1 text-foreground/90 transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Search">
             <Search className="h-5 w-5" />
           </Link>
 
@@ -108,7 +108,7 @@ export function Navbar() {
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => { setMobileOpen(false); setProfileOpen((o) => !o); }}
-                className="flex items-center gap-1 rounded text-sm font-bold text-white"
+                className="flex items-center gap-1 rounded text-sm font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 aria-label="Profile menu"
               >
                 <span
@@ -140,7 +140,7 @@ export function Navbar() {
                           <button
                             key={p.id}
                             onClick={() => { setActiveProfile(p); setProfileOpen(false); navigate("/"); }}
-                            className="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-accent"
+                            className="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:bg-accent"
                           >
                             <span
                               className="flex h-7 w-7 items-center justify-center rounded text-xs font-bold text-white shrink-0"
@@ -158,14 +158,14 @@ export function Navbar() {
                     <Link
                       to="/profiles"
                       onClick={() => setProfileOpen(false)}
-                      className="block px-4 py-2 text-sm hover:bg-accent"
+                      className="block px-4 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:bg-accent"
                     >
                       All Profiles
                     </Link>
                     <Link
                       to="/account"
                       onClick={() => setProfileOpen(false)}
-                      className="block px-4 py-2 text-sm hover:bg-accent"
+                      className="block px-4 py-2 text-sm hover:bg-accent focus-visible:outline-none focus-visible:bg-accent"
                     >
                       Account
                     </Link>
@@ -173,14 +173,14 @@ export function Navbar() {
                       <Link
                         to="/admin"
                         onClick={() => setProfileOpen(false)}
-                        className="block px-4 py-2 text-sm font-semibold text-primary hover:bg-accent"
+                        className="block px-4 py-2 text-sm font-semibold text-primary hover:bg-accent focus-visible:outline-none focus-visible:bg-accent"
                       >
                         Admin Panel
                       </Link>
                     )}
                     <button
                       onClick={async () => { setProfileOpen(false); await signOut(); navigate("/"); }}
-                      className="block w-full px-4 py-2 text-left text-sm text-destructive hover:bg-accent"
+                      className="block w-full px-4 py-2 text-left text-sm text-destructive hover:bg-accent focus-visible:outline-none focus-visible:bg-accent"
                     >
                       Sign Out
                     </button>

@@ -95,7 +95,8 @@ export function ContinueWatchingRow() {
               >
                 <button
                   onClick={() => setPrompt(item)}
-                  className="block w-full cursor-pointer text-left overflow-hidden rounded-md"
+                  onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
+                  className="block w-full cursor-pointer text-left overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:scale-105 transition-transform duration-200"
                   aria-label={`Play ${item.title}`}
                 >
                   <div className="aspect-[2/3] w-full overflow-hidden rounded-md bg-muted">
@@ -115,7 +116,7 @@ export function ContinueWatchingRow() {
 
                 <button
                   onClick={(e) => { e.stopPropagation(); handleRemove(item); }}
-                  className="absolute right-0 top-0 z-10 flex items-center justify-center bg-black"
+                  className="absolute right-0 top-0 z-10 flex items-center justify-center bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   aria-label="Remove"
                   style={{ width: 32, height: 32, borderBottomLeftRadius: 8, WebkitTapHighlightColor: "transparent" }}
                 >

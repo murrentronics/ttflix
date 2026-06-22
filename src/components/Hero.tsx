@@ -74,7 +74,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
               <button
                 key={i}
                 onClick={() => setIndex(i)}
-                className={`h-1 rounded-full transition-all ${i === index ? "w-6 bg-primary" : "w-3 bg-foreground/40"}`}
+                className={`h-1 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${i === index ? "w-6 bg-primary" : "w-3 bg-foreground/40"}`}
                 aria-label={`Slide ${i + 1}`}
               />
             ))}
