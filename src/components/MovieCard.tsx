@@ -10,7 +10,12 @@ export function MovieCard({ item }: { item: TmdbItem }) {
   return (
     <button
       onClick={() => open(item)}
-      className="relative w-[150px] shrink-0 overflow-hidden rounded-md bg-card text-left sm:w-[180px]"
+      onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
+      className="group relative w-[150px] shrink-0 overflow-hidden rounded-md bg-card text-left
+        transition-transform duration-200
+        focus-visible:outline-none focus-visible:scale-105 focus-visible:z-10
+        focus-visible:ring-2 focus-visible:ring-primary focus-visible:shadow-[0_0_0_2px_hsl(var(--primary))]
+        sm:w-[180px]"
     >
       <div className="aspect-[2/3] w-full overflow-hidden bg-muted">
         {poster ? (
@@ -40,6 +45,9 @@ export function MovieCard({ item }: { item: TmdbItem }) {
           <span>{year(item.release_date)}</span>
         </div>
       </div>
+
+      {/* Focus overlay — visible on TV remote focus, invisible on touch */}
+      <div className="pointer-events-none absolute inset-0 rounded-md opacity-0 ring-2 ring-primary transition-opacity duration-200 group-focus-visible:opacity-100" />
     </button>
   );
 }

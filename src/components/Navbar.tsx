@@ -45,6 +45,18 @@ export function Navbar() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // TV remote Back button / keyboard Escape closes any open menu
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "GoBack") {
+        setMobileOpen(false);
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
   const anyMenuOpen = mobileOpen || profileOpen;
 
   return (
@@ -74,9 +86,11 @@ export function Navbar() {
                 to={l.to}
                 end={l.to === "/"}
                 className={({ isActive }) =>
-                  isActive
-                    ? "text-foreground font-semibold"
-                    : "text-foreground/80 transition hover:text-foreground"
+                  `rounded px-2 py-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    isActive
+                      ? "text-foreground font-semibold"
+                      : "text-foreground/80 hover:text-foreground"
+                  }`
                 }
               >
                 {l.label}
