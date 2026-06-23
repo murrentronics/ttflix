@@ -47,9 +47,16 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    /** Exposed to JavaScript as window.AndroidPlayer — launches PlayerActivity */
-    public class PlayerBridge {
+    /** Exposed to JavaScript as window.AndroidDevice — device capability info */
+    public class DeviceBridge {
         @JavascriptInterface
+        public boolean isTV() {
+            return getPackageManager().hasSystemFeature("android.software.leanback");
+        }
+    }
+
+    /** Exposed to JavaScript as window.AndroidPlayer — launches PlayerActivity */
+    public class PlayerBridge {        @JavascriptInterface
         public void open(String url) {
             runOnUiThread(() -> {
                 Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
@@ -147,6 +154,9 @@ public class MainActivity extends BridgeActivity {
 
             // Register orientation bridge
             getBridge().getWebView().addJavascriptInterface(new OrientationBridge(), "AndroidOrientation");
+
+            // Register device bridge so JS can call window.AndroidDevice.isTV()
+            getBridge().getWebView().addJavascriptInterface(new DeviceBridge(), "AndroidDevice");
 
             // Register player bridge so JS can call window.AndroidPlayer.open(url)
             getBridge().getWebView().addJavascriptInterface(new PlayerBridge(), "AndroidPlayer");

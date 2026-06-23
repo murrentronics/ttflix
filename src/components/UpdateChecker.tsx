@@ -6,7 +6,7 @@ import { Capacitor } from "@capacitor/core";
 const VERSION_URL = "https://ttflix.pages.dev/version.json";
 
 // Current version — patched automatically by the CI version bump script
-const CURRENT_VERSION = "1.1.138";
+const CURRENT_VERSION = "1.1.139";
 
 type VersionInfo = {
   versionName: string;
@@ -27,10 +27,15 @@ function isNewer(latest: string, current: string): boolean {
   return false;
 }
 
-// Detect Android TV (leanback feature = TV)
+// Detect Android TV using the native bridge registered in MainActivity.
+// window.AndroidDevice.isTV() reads android.software.leanback — 100% reliable.
+// Falls back to UA sniff only if the bridge isn't available yet.
 function isAndroidTV(): boolean {
-  return typeof (window as any).AndroidTV !== "undefined" ||
-    /Android.*TV|BRAVIA|FireTV|AFT/i.test(navigator.userAgent);
+  try {
+    const bridge = (window as any).AndroidDevice;
+    if (bridge && typeof bridge.isTV === "function") return bridge.isTV();
+  } catch { /* ignore */ }
+  return /Android.*TV|BRAVIA|FireTV|AFT|leanback/i.test(navigator.userAgent);
 }
 
 export function UpdateChecker() {

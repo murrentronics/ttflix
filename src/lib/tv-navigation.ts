@@ -1,40 +1,66 @@
 /**
  * TV remote D-pad vertical navigation helper.
- * Finds the best card to focus when pressing ArrowUp/ArrowDown,
- * escaping overflow-x scroll containers that would otherwise trap focus.
+ * Uses document-relative offsetTop (not viewport-relative getBoundingClientRect)
+ * so off-screen rows are reachable even before they scroll into view.
  */
+
+function getDocumentTop(el: HTMLElement): number {
+  let top = 0;
+  let node: HTMLElement | null = el;
+  while (node) {
+    top += node.offsetTop;
+    node = node.offsetParent as HTMLElement | null;
+  }
+  return top;
+}
+
+function getDocumentLeft(el: HTMLElement): number {
+  let left = 0;
+  let node: HTMLElement | null = el;
+  while (node) {
+    left += node.offsetLeft;
+    node = node.offsetParent as HTMLElement | null;
+  }
+  return left;
+}
+
 export function navigateVertical(current: HTMLElement, dir: "up" | "down") {
   const allCards = Array.from(
     document.querySelectorAll<HTMLElement>("[data-tv-card]")
   );
   if (!allCards.length) return;
 
-  const currentRect = current.getBoundingClientRect();
-  const currentCenterX = currentRect.left + currentRect.width / 2;
-  const currentCenterY = currentRect.top + currentRect.height / 2;
+  const currentTop = getDocumentTop(current);
+  const currentLeft = getDocumentLeft(current);
+  const currentCenterX = currentLeft + current.offsetWidth / 2;
+  const currentCenterY = currentTop + current.offsetHeight / 2;
+
+  // Cards meaningfully above or below (more than half a card height away)
+  const threshold = current.offsetHeight * 0.5;
 
   const candidates = allCards.filter((card) => {
     if (card === current) return false;
-    const rect = card.getBoundingClientRect();
-    const cardCenterY = rect.top + rect.height / 2;
+    const cardCenterY = getDocumentTop(card) + card.offsetHeight / 2;
     return dir === "down"
-      ? cardCenterY > currentCenterY + 20
-      : cardCenterY < currentCenterY - 20;
+      ? cardCenterY > currentCenterY + threshold
+      : cardCenterY < currentCenterY - threshold;
   });
 
   if (!candidates.length) return;
 
   const best = candidates.reduce((closest, card) => {
-    const rect = card.getBoundingClientRect();
-    const closestRect = closest.getBoundingClientRect();
-    const cardVertDist = Math.abs(rect.top - currentRect.top);
-    const closestVertDist = Math.abs(closestRect.top - currentRect.top);
-    // Prefer same row (closest vertical), break ties by horizontal proximity
-    if (Math.abs(cardVertDist - closestVertDist) > 30) {
+    const cardTop = getDocumentTop(card);
+    const closestTop = getDocumentTop(closest);
+    const cardVertDist = Math.abs(cardTop - currentTop);
+    const closestVertDist = Math.abs(closestTop - currentTop);
+
+    // First pick the nearest row vertically (within 60px = same row tolerance)
+    if (Math.abs(cardVertDist - closestVertDist) > 60) {
       return cardVertDist < closestVertDist ? card : closest;
     }
-    const cardCenterX = rect.left + rect.width / 2;
-    const closestCenterX = closestRect.left + closestRect.width / 2;
+    // Same row — pick closest column (horizontal proximity)
+    const cardCenterX = getDocumentLeft(card) + card.offsetWidth / 2;
+    const closestCenterX = getDocumentLeft(closest) + closest.offsetWidth / 2;
     return Math.abs(cardCenterX - currentCenterX) < Math.abs(closestCenterX - currentCenterX)
       ? card : closest;
   });
