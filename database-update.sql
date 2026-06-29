@@ -179,11 +179,11 @@ from public.profiles p
 left join lateral (
   -- Map plan id → price inline (adjust prices if your PLANS object differs)
   select case p.plan
-    when 'basic'          then 50
-    when 'premium'        then 100
-    when 'basic_annual'   then 500
-    when 'premium_annual' then 1000
-    else 50
+    when 'basic'          then 60
+    when 'premium'        then 125
+    when 'basic_annual'   then 550
+    when 'premium_annual' then 750
+    else 60
   end as price
 ) pl on true
 where p.status = 'approved'
