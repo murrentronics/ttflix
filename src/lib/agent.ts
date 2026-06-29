@@ -70,8 +70,11 @@ export async function fetchAgentCustomers(agentId: string): Promise<AgentCustome
 
 // Sign up a new customer (agent flow)
 // Creates auth user + profile + links to agent
+// The agent's session is preserved — they stay logged in after this call.
 export async function agentCreateCustomer(
   agentId: string,
+  agentEmail: string,
+  agentPassword: string,
   data: {
     email: string;
     fullName: string;
@@ -79,11 +82,17 @@ export async function agentCreateCustomer(
     plan: PlanId;
   }
 ): Promise<{ userId: string }> {
-  // 1. Sign up via Supabase auth — password is "Ttflix123!" (temporary)
-  const tempPassword = "Ttflix123!";
+  const TEMP_PASSWORD = "123456";
+
+  // 1. Save the agent's current session so we can restore it after signUp
+  //    (Supabase client-side signUp auto-signs-in the new user, booting the agent)
+  const { data: sessionData } = await supabase.auth.getSession();
+  const agentSession = sessionData.session;
+
+  // 2. Sign up the new customer
   const { data: authData, error: signUpErr } = await supabase.auth.signUp({
     email: data.email,
-    password: tempPassword,
+    password: TEMP_PASSWORD,
     options: {
       data: {
         full_name: data.fullName,
@@ -97,7 +106,8 @@ export async function agentCreateCustomer(
   const newUser = authData.user;
   if (!newUser) throw new Error("User creation failed");
 
-  // 2. Upsert profile row
+  // 3. Upsert profile row (we're briefly signed in as the new user — that's fine,
+  //    the upsert uses newUser.id so RLS (id = auth.uid()) passes)
   const { error: profileErr } = await supabase.from("profiles").upsert({
     id: newUser.id,
     email: data.email.toLowerCase(),
@@ -109,14 +119,25 @@ export async function agentCreateCustomer(
   });
   if (profileErr) throw profileErr;
 
-  // 3. Link customer to agent
+  // 4. Restore agent session immediately
+  if (agentSession?.access_token && agentSession?.refresh_token) {
+    await supabase.auth.setSession({
+      access_token: agentSession.access_token,
+      refresh_token: agentSession.refresh_token,
+    });
+  } else {
+    // Fallback: re-sign in with agent credentials
+    await supabase.auth.signInWithPassword({ email: agentEmail, password: agentPassword });
+  }
+
+  // 5. Now signed in as agent — link customer and create billing request
   const { error: linkErr } = await supabase.from("agent_customers").insert({
     agent_id: agentId,
     customer_id: newUser.id,
   });
   if (linkErr) throw linkErr;
 
-  // 4. Create a pending_agent billing request
+  // 6. Create a pending_agent billing request
   const commission = AGENT_COMMISSION[data.plan];
   await supabase.from("agent_billing_requests").insert({
     agent_id: agentId,

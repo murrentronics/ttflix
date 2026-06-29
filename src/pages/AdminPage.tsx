@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, Ban, UserX, ShieldCheck, RefreshCw, CalendarDays, Receipt, ChevronLeft, ChevronRight, Tv, Search, X, Briefcase } from "lucide-react";
+import { Trash2, Ban, UserX, ShieldCheck, RefreshCw, CalendarDays, Receipt, ChevronLeft, ChevronRight, Tv, Search, X, Briefcase, ChevronDown } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { supabase, STATUS_LABELS, PLANS, type UserStatus } from "@/lib/supabase";
 import {
   fetchUsersByStatus, countByStatus, setUserStatus, deleteUserRecord,
-  fetchPaymentHistory, setUserRole,
+  fetchPaymentHistory,
   fetchPendingAgentBillingRequests, adminApproveAgentRequest, adminRejectAgentRequest,
-  type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin,
+  fetchAgentList, fetchAgentCustomerLinks,
+  type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin, type AgentListItem,
 } from "@/lib/admin";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -37,6 +38,10 @@ export function AdminPage() {
   const [search, setSearch] = useState("");
   const [agentRequests, setAgentRequests] = useState<AgentBillingRequestAdmin[]>([]);
   const [agentRequestCount, setAgentRequestCount] = useState(0);
+  const [agentList, setAgentList] = useState<AgentListItem[]>([]);
+  const [agentCustomerLinks, setAgentCustomerLinks] = useState<Record<string, { agent_name: string | null; agent_email: string }>>({});
+  const [agentSubTab, setAgentSubTab] = useState<"requests" | "list">("requests");
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const tabRef = useRef(tab);
   tabRef.current = tab;
 
@@ -83,9 +88,15 @@ export function AdminPage() {
   }, []);
 
   const loadAgentRequests = useCallback(async () => {
-    const data = await fetchPendingAgentBillingRequests();
+    const [data, list, links] = await Promise.all([
+      fetchPendingAgentBillingRequests(),
+      fetchAgentList(),
+      fetchAgentCustomerLinks(),
+    ]);
     setAgentRequests(data);
     setAgentRequestCount(data.length);
+    setAgentList(list);
+    setAgentCustomerLinks(links);
   }, []);
 
   const loadHistory = useCallback(async (page: number) => {
@@ -109,13 +120,13 @@ export function AdminPage() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    setSearch(""); // clear search on tab switch
+    setSearch("");
     refreshUpcomingRenewals();
     if (tab === "billing") { /* already loaded above */ }
     else if (tab === "history") { setHistoryPage(1); loadHistory(1); }
     else if (tab === "watching") loadWatching();
     else if (tab === "agents") loadAgentRequests();
-    else refreshRows(tab as UserStatus);
+    else { refreshRows(tab as UserStatus); fetchAgentCustomerLinks().then(setAgentCustomerLinks); }
     refreshCounts();
   }, [tab, isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, loadAgentRequests]);
 
@@ -165,21 +176,13 @@ export function AdminPage() {
     } finally { setBusy(false); }
   };
 
-  const toggleAgentRole = async (u: AdminUser) => {
-    setBusy(true);
-    try {
-      const newRole = (u as any).role === "agent" ? null : "agent";
-      await setUserRole(u.id, newRole);
-      await refreshRows(tab as UserStatus);
-    } finally { setBusy(false); }
-  };
-
   const handleApproveAgentRequest = async (req: AgentBillingRequestAdmin) => {
     setBusy(true);
     try {
       await adminApproveAgentRequest(req.id);
-      await loadAgentRequests();
-      await refreshCounts();
+      await Promise.all([loadAgentRequests(), refreshCounts()]);
+      // Refresh the pending tab rows too so the newly approved user moves out
+      if (tabRef.current === "pending") await refreshRows("pending");
     } finally { setBusy(false); }
   };
 
@@ -345,42 +348,135 @@ export function AdminPage() {
         {/* Agent Requests Tab */}
         {tab === "agents" && (
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Agent-confirmed cash collections waiting for your approval. Agent has already collected the money — just hit Approve to activate the customer.
-            </p>
-            {agentRequests.length === 0 && (
-              <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
-                No pending agent requests.
-              </div>
-            )}
-            {agentRequests.map((req) => (
-              <div key={req.id} className="rounded-xl border border-orange-400/30 bg-orange-400/5 p-5">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0 space-y-1 text-sm">
-                    <p className="font-bold text-base">{req.customer_name ?? "—"}</p>
-                    <p className="text-muted-foreground">{req.customer_email} · {req.customer_phone ?? "—"}</p>
-                    <p><span className="text-muted-foreground">Agent:</span> {req.agent_name ?? req.agent_email}</p>
-                    <p><span className="text-muted-foreground">Plan:</span> {PLANS[req.plan as keyof typeof PLANS]?.name ?? req.plan}</p>
-                    <p><span className="text-muted-foreground">Type:</span> <span className="capitalize">{req.request_type.replace(/_/g, " ")}</span></p>
-                    <div className="flex flex-wrap gap-4 pt-1">
-                      <span><span className="text-muted-foreground">Total:</span> <span className="font-bold">TT${req.amount}</span></span>
-                      <span><span className="text-muted-foreground">Agent cut:</span> <span className="text-green-400 font-bold">TT${req.agent_commission}</span></span>
-                      <span><span className="text-muted-foreground">Your portion:</span> <span className="font-bold text-primary">TT${req.admin_amount}</span></span>
+            {/* Sub-tab bar */}
+            <div className="flex gap-1 border-b border-border">
+              <button onClick={() => setAgentSubTab("requests")}
+                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${agentSubTab === "requests" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                Pending Requests
+                {agentRequestCount > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-xs font-bold text-white">
+                    {agentRequestCount}
+                  </span>
+                )}
+              </button>
+              <button onClick={() => setAgentSubTab("list")}
+                className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${agentSubTab === "list" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                <Briefcase className="h-4 w-4" /> Agents ({agentList.length})
+              </button>
+            </div>
+
+            {/* ── Pending Requests sub-tab ── */}
+            {agentSubTab === "requests" && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Agent has collected the cash — approve to activate the customer.
+                </p>
+                {agentRequests.length === 0 && (
+                  <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
+                    No pending agent requests.
+                  </div>
+                )}
+                {agentRequests.map((req) => (
+                  <div key={req.id} className="rounded-xl border border-orange-400/30 bg-orange-400/5 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0 space-y-1 text-sm">
+                        <p className="font-bold text-base">{req.customer_name ?? "—"}</p>
+                        <p className="text-muted-foreground">{req.customer_email} · {req.customer_phone ?? "—"}</p>
+                        <p><span className="text-muted-foreground">Agent:</span> <span className="font-semibold">{req.agent_name ?? req.agent_email}</span></p>
+                        <p><span className="text-muted-foreground">Plan:</span> {PLANS[req.plan as keyof typeof PLANS]?.name ?? req.plan}</p>
+                        <p><span className="text-muted-foreground">Type:</span> <span className="capitalize">{req.request_type.replace(/_/g, " ")}</span></p>
+                        <div className="flex flex-wrap gap-4 pt-1">
+                          <span><span className="text-muted-foreground">Total:</span> <span className="font-bold">TT${req.amount}</span></span>
+                          <span><span className="text-muted-foreground">Agent cut:</span> <span className="text-green-400 font-bold">TT${req.agent_commission}</span></span>
+                          <span><span className="text-muted-foreground">Your portion:</span> <span className="font-bold text-primary">TT${req.admin_amount}</span></span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-2 shrink-0">
+                        <button onClick={() => handleApproveAgentRequest(req)} disabled={busy}
+                          className="rounded-md bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/85 disabled:opacity-60">
+                          ✓ Approve &amp; Activate
+                        </button>
+                        <button onClick={() => handleRejectAgentRequest(req)} disabled={busy}
+                          className="rounded-md border border-destructive/50 px-5 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60">
+                          ✕ Reject
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col gap-2 shrink-0">
-                    <button onClick={() => handleApproveAgentRequest(req)} disabled={busy}
-                      className="rounded-md bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/85 disabled:opacity-60">
-                      ✓ Approve &amp; Activate
-                    </button>
-                    <button onClick={() => handleRejectAgentRequest(req)} disabled={busy}
-                      className="rounded-md border border-destructive/50 px-5 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60">
-                      ✕ Reject
-                    </button>
-                  </div>
-                </div>
+                ))}
               </div>
-            ))}
+            )}
+
+            {/* ── Agents List sub-tab ── */}
+            {agentSubTab === "list" && (
+              <div className="space-y-3">
+                {agentList.length === 0 && (
+                  <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
+                    No agents yet. Approve a user then assign the agent role from their profile.
+                  </div>
+                )}
+                {agentList.map((agent) => {
+                  const expanded = expandedAgent === agent.id;
+                  return (
+                    <div key={agent.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                      {/* Agent header row — clickable to expand */}
+                      <button
+                        onClick={() => setExpandedAgent(expanded ? null : agent.id)}
+                        className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-accent/50 transition text-left"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold">{agent.full_name ?? "—"}</p>
+                            <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-bold text-orange-400">
+                              {agent.customer_count} customer{agent.customer_count !== 1 ? "s" : ""}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{agent.email} {agent.phone ? `· ${agent.phone}` : ""}</p>
+                          <div className="mt-1.5 flex flex-wrap gap-4 text-xs">
+                            <span className="text-green-400 font-semibold">This month income: TT${agent.monthly_income}</span>
+                            <span className="text-primary font-semibold">Payable to admin: TT${agent.monthly_admin}</span>
+                          </div>
+                        </div>
+                        <ChevronDown className={`h-5 w-5 text-muted-foreground shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                      </button>
+
+                      {/* Expanded customer list */}
+                      {expanded && (
+                        <div className="border-t border-border divide-y divide-border">
+                          {agent.customers.length === 0 && (
+                            <p className="px-5 py-4 text-sm text-muted-foreground">No customers linked yet.</p>
+                          )}
+                          {agent.customers.map((c: any) => {
+                            const dueDate = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
+                            return (
+                              <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-4 text-sm">
+                                <div className="min-w-0">
+                                  <p className="font-medium truncate">{c.full_name ?? "—"}</p>
+                                  <p className="text-xs text-muted-foreground">{c.email} {c.phone ? `· ${c.phone}` : ""}</p>
+                                </div>
+                                <div className="shrink-0 text-right space-y-0.5">
+                                  <p className="text-xs">{PLANS[c.plan as keyof typeof PLANS]?.name ?? c.plan}</p>
+                                  <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${
+                                    c.status === "approved" ? "bg-green-500/15 text-green-400"
+                                    : c.status === "pending" ? "bg-yellow-500/15 text-yellow-400"
+                                    : "bg-destructive/15 text-destructive"
+                                  }`}>{c.status}</span>
+                                  {dueDate && (
+                                    <p className="text-xs text-muted-foreground">
+                                      Due {dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -537,7 +633,7 @@ export function AdminPage() {
         )}
 
         {/* Users / Renewals Table */}
-        {tab !== "history" && (
+        {tab !== "history" && tab !== "agents" && tab !== "watching" && (
           <div className="overflow-x-auto rounded-xl border border-border">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -569,6 +665,12 @@ export function AdminPage() {
                       <td className="px-4 py-3">
                         <p className="font-medium">{u.full_name ?? "—"}</p>
                         <p className="text-xs text-muted-foreground">{u.email}</p>
+                        {agentCustomerLinks[u.id] && (
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-semibold text-orange-400">
+                            <Briefcase className="h-3 w-3" />
+                            Agent: {agentCustomerLinks[u.id].agent_name ?? agentCustomerLinks[u.id].agent_email}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{(u as any).phone ?? "—"}</td>
                       <td className="px-4 py-3">{PLANS[u.plan]?.name ?? u.plan} · TT${PLANS[u.plan]?.price ?? "?"}/{PLANS[u.plan]?.annual ? "yr" : "mo"}</td>
@@ -606,14 +708,6 @@ export function AdminPage() {
                               <UserX className="h-3.5 w-3.5" /> Expel
                             </Btn>
                           )}
-                          <Btn
-                            onClick={() => toggleAgentRole(u)}
-                            busy={busy}
-                            variant={(u as any).role === "agent" ? "primary" : "default"}
-                          >
-                            <Briefcase className="h-3.5 w-3.5" />
-                            {(u as any).role === "agent" ? "Remove Agent" : "Make Agent"}
-                          </Btn>
                           <Btn onClick={() => setConfirmDelete(u)} busy={busy} variant="danger">
                             <Trash2 className="h-3.5 w-3.5" /> Delete
                           </Btn>

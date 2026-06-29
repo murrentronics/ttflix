@@ -211,6 +211,92 @@ export async function adminRejectAgentRequest(requestId: string): Promise<void> 
   await supabase.from("agent_billing_requests").update({ status: "rejected" }).eq("id", requestId);
 }
 
+// ── Agent list with customer counts and monthly income ────────────────────────
+export type AgentListItem = {
+  id: string;
+  full_name: string | null;
+  email: string;
+  phone: string | null;
+  customer_count: number;
+  monthly_income: number;   // total collected from agent's customers this month
+  monthly_admin: number;    // admin's portion from agent's customers this month
+  customers: Array<{
+    id: string;
+    full_name: string | null;
+    email: string;
+    phone: string | null;
+    plan: string;
+    status: string;
+    subscription_expires_at: string | null;
+  }>;
+};
+
+export async function fetchAgentList(): Promise<AgentListItem[]> {
+  // Fetch all agent profiles
+  const { data: agents, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, phone")
+    .eq("role", "agent")
+    .neq("email", ADMIN_EMAIL)
+    .order("full_name", { ascending: true });
+  if (error) throw error;
+  if (!agents || agents.length === 0) return [];
+
+  // Fetch agent_customers with customer profiles for all agents
+  const { data: links } = await supabase
+    .from("agent_customers")
+    .select("agent_id, profiles!agent_customers_customer_id_fkey(id, full_name, email, phone, plan, status, subscription_expires_at)")
+    .in("agent_id", (agents as any[]).map((a) => a.id));
+
+  // Fetch approved billing requests to compute monthly income
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const { data: approved } = await supabase
+    .from("agent_billing_requests")
+    .select("agent_id, agent_commission, admin_amount, amount")
+    .eq("status", "approved")
+    .gte("admin_approved_at", monthStart);
+
+  const linksByAgent: Record<string, any[]> = {};
+  for (const link of (links ?? []) as any[]) {
+    if (!linksByAgent[link.agent_id]) linksByAgent[link.agent_id] = [];
+    if (link.profiles) linksByAgent[link.agent_id].push(link.profiles);
+  }
+
+  const incomeByAgent: Record<string, { income: number; admin: number }> = {};
+  for (const row of (approved ?? []) as any[]) {
+    if (!incomeByAgent[row.agent_id]) incomeByAgent[row.agent_id] = { income: 0, admin: 0 };
+    incomeByAgent[row.agent_id].income += row.agent_commission ?? 0;
+    incomeByAgent[row.agent_id].admin += row.admin_amount ?? 0;
+  }
+
+  return (agents as any[]).map((a) => ({
+    id: a.id,
+    full_name: a.full_name ?? null,
+    email: a.email,
+    phone: a.phone ?? null,
+    customer_count: (linksByAgent[a.id] ?? []).length,
+    monthly_income: incomeByAgent[a.id]?.income ?? 0,
+    monthly_admin: incomeByAgent[a.id]?.admin ?? 0,
+    customers: linksByAgent[a.id] ?? [],
+  }));
+}
+
+// Fetch agent_customers links for pending user rows (to show agent badge)
+export async function fetchAgentCustomerLinks(): Promise<Record<string, { agent_name: string | null; agent_email: string }>> {
+  const { data } = await supabase
+    .from("agent_customers")
+    .select("customer_id, profiles!agent_customers_agent_id_fkey(full_name, email)");
+  const map: Record<string, { agent_name: string | null; agent_email: string }> = {};
+  for (const row of (data ?? []) as any[]) {
+    map[row.customer_id] = {
+      agent_name: row.profiles?.full_name ?? null,
+      agent_email: row.profiles?.email ?? "",
+    };
+  }
+  return map;
+}
+
 export async function requestPlanUpgrade(userId: string, newPlan: PlanId) {
   const { error } = await supabase
     .from("profiles")
