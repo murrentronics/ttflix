@@ -44,7 +44,10 @@ create policy "payment_history insert" on public.payment_history for insert to a
   with check (public.is_admin());
 
 -- 4) Realtime for payment_history in admin panel
-alter publication supabase_realtime add table public.payment_history;
+do $$ begin
+  alter publication supabase_realtime add table public.payment_history;
+exception when others then null;
+end $$;
 
 -- 5) Fix watch_progress upsert for rows with no profile (profile_id IS NULL)
 --
@@ -159,3 +162,44 @@ end $$;
 -- Clean up stale watches (ping > 5 min old = player closed without cleanup)
 -- Run this periodically or just let the app handle it
 -- delete from public.active_watches where last_ping < now() - interval '5 minutes';
+
+-- 10) Backfill payment_history for approved users who pre-date the table
+-- This inserts one record per approved user who has no payment_history row yet.
+-- subscription_expires_at is used to back-calculate the period_start (30 days prior).
+-- Safe to run multiple times — the WHERE NOT EXISTS guard prevents duplicates.
+insert into public.payment_history (user_id, plan, amount, period_start, period_end, approved_at)
+select
+  p.id                                                        as user_id,
+  coalesce(p.plan, 'basic')                                   as plan,
+  coalesce(pl.price, 50)                                      as amount,
+  coalesce(p.subscription_expires_at, now()) - interval '30 days' as period_start,
+  coalesce(p.subscription_expires_at, now())                  as period_end,
+  coalesce(p.subscription_expires_at, now()) - interval '30 days' as approved_at
+from public.profiles p
+left join lateral (
+  -- Map plan id → price inline (adjust prices if your PLANS object differs)
+  select case p.plan
+    when 'basic'          then 50
+    when 'premium'        then 100
+    when 'basic_annual'   then 500
+    when 'premium_annual' then 1000
+    else 50
+  end as price
+) pl on true
+where p.status = 'approved'
+  and p.role is distinct from 'agent'
+  and not exists (
+    select 1 from public.payment_history h where h.user_id = p.id
+  );
+
+-- 11) Allow agents to be stored without a plan (plan column made nullable)
+-- Agents don't subscribe so plan/subscription fields should be nullable.
+alter table public.profiles alter column plan drop not null;
+
+-- 12) Strip subscription from existing agents (in case any were promoted while subscribed)
+update public.profiles
+set
+  subscription_expires_at = null,
+  pending_plan = null,
+  plan = null
+where role = 'agent';

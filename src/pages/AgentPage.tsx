@@ -87,6 +87,12 @@ export function AgentPage() {
   const switchTab = (id: AgentTab) => { setTab(id); setSidebarOpen(false); };
 
   const pendingApprovals = billingRequests.filter((r) => r.status === "pending_agent");
+  const [customerSubTab, setCustomerSubTab] = useState<"pending" | "approved" | "expelled">("approved");
+
+  const custPending  = customers.filter((c) => c.status === "pending");
+  const custApproved = customers.filter((c) => c.status === "approved");
+  const custExpelled = customers.filter((c) => c.status === "expelled" || c.status === "suspended");
+
   const badges: Partial<Record<AgentTab, number>> = {
     approvals: pendingApprovals.length,
     renewals: upcomingRenewals.length,
@@ -153,10 +159,11 @@ export function AgentPage() {
 
   return (
     <AppShell>
-      <div className="pt-16 min-h-screen flex flex-col">
+      {/* Outer wrapper — starts below the fixed app navbar (h ≈ 56px = top-14) */}
+      <div className="min-h-screen flex flex-col pt-14">
 
-        {/* ── Mobile top bar ── */}
-        <div className="flex items-center gap-3 bg-[#c0001a] px-4 py-3 md:hidden">
+        {/* ── Agent dashboard header — sticky below app navbar ── */}
+        <div className="sticky top-14 z-30 flex items-center gap-3 bg-[#c0001a] px-4 py-3 md:hidden shadow-md">
           <button
             onClick={() => setSidebarOpen((o) => !o)}
             className="rounded p-1 text-white focus-visible:outline-none"
@@ -166,7 +173,6 @@ export function AgentPage() {
           </button>
           <TrendingUp className="h-5 w-5 text-white" />
           <span className="text-lg font-extrabold text-white">Agent Dashboard</span>
-          {/* Active tab label */}
           <span className="ml-auto text-sm font-semibold text-white/80">
             {NAV_ITEMS.find((n) => n.id === tab)?.label}
           </span>
@@ -183,13 +189,13 @@ export function AgentPage() {
         <div className="flex flex-1">
           {/* ── Sidebar ── */}
           <aside className={`
-            fixed inset-y-0 left-0 z-50 w-64 bg-[#c0001a] flex flex-col pt-16
+            fixed inset-y-0 left-0 z-50 w-64 bg-[#c0001a] flex flex-col pt-14
             transform transition-transform duration-200
-            md:static md:translate-x-0 md:pt-0 md:w-56 md:min-h-screen md:shrink-0
+            md:sticky md:top-14 md:self-start md:h-[calc(100vh-3.5rem)] md:translate-x-0 md:pt-0 md:w-56 md:shrink-0
             ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
           `}>
             {/* Sidebar header — desktop only */}
-            <div className="hidden md:flex items-center gap-2 px-5 py-5 border-b border-black/30">
+            <div className="hidden md:flex items-center gap-2 px-5 py-5 border-b border-black/30 bg-[#c0001a] sticky top-14 z-10">
               <TrendingUp className="h-5 w-5 text-white" />
               <span className="font-extrabold text-white text-base">Agent Dashboard</span>
             </div>
@@ -311,52 +317,81 @@ export function AgentPage() {
             {tab === "customers" && (
               <div className="space-y-3 max-w-2xl">
                 <h2 className="text-lg font-bold">My Customers</h2>
-                {customers.length === 0 && (
-                  <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
-                    No customers yet. Use Create Customer to add your first one.
-                  </div>
-                )}
-                {customers.map((c) => {
-                  const dueDate = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
-                  const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
-                  const isDueSoon = daysLeft !== null && daysLeft <= 5 && daysLeft >= 0;
-                  return (
-                    <button key={c.id} onClick={() => openCustomer(c)}
-                      className="w-full rounded-xl border border-border bg-card p-4 text-left transition hover:border-[#c0001a] hover:bg-[#c0001a]/5">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold truncate">{c.full_name ?? "—"}</p>
-                          <p className="text-xs text-muted-foreground truncate">{c.email}</p>
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                            <span className={`rounded-full px-2 py-0.5 font-semibold ${
-                              c.status === "approved" ? "bg-green-500/15 text-green-400"
-                              : c.status === "pending" ? "bg-yellow-500/15 text-yellow-400"
-                              : "bg-destructive/15 text-destructive"
-                            }`}>{c.status}</span>
-                            <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
-                              {PLANS[c.plan as PlanId]?.name ?? c.plan}
-                            </span>
+
+                {/* Sub-tabs */}
+                <div className="flex gap-1 border-b border-border">
+                  {(["approved", "pending", "expelled"] as const).map((s) => {
+                    const count = s === "approved" ? custApproved.length : s === "pending" ? custPending.length : custExpelled.length;
+                    const active = customerSubTab === s;
+                    const badgeColor = s === "approved" ? "bg-green-500" : s === "pending" ? "bg-yellow-500" : "bg-destructive";
+                    return (
+                      <button key={s} onClick={() => setCustomerSubTab(s)}
+                        className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold capitalize transition ${active ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                        {s}
+                        {count > 0 && (
+                          <span className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-bold text-white ${badgeColor}`}>
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Customer list for active sub-tab */}
+                {(() => {
+                  const list = customerSubTab === "approved" ? custApproved : customerSubTab === "pending" ? custPending : custExpelled;
+                  if (list.length === 0) return (
+                    <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
+                      No {customerSubTab} customers yet.
+                    </div>
+                  );
+                  return list.map((c) => {
+                    const dueDate = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
+                    const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+                    const isDueSoon = daysLeft !== null && daysLeft <= 5 && daysLeft >= 0;
+                    return (
+                      <button key={c.id} onClick={() => openCustomer(c)}
+                        className="w-full rounded-xl border border-border bg-card p-4 text-left transition hover:border-[#c0001a] hover:bg-[#c0001a]/5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold truncate">{c.full_name ?? "—"}</p>
+                            <p className="text-xs text-muted-foreground truncate">{c.email}</p>
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                              <span className={`rounded-full px-2 py-0.5 font-semibold ${
+                                c.status === "approved" ? "bg-green-500/15 text-green-400"
+                                : c.status === "pending" ? "bg-yellow-500/15 text-yellow-400"
+                                : "bg-destructive/15 text-destructive"
+                              }`}>{c.status}</span>
+                              <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+                                {PLANS[c.plan as PlanId]?.name ?? c.plan}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            {customerSubTab === "approved" && dueDate ? (
+                              <>
+                                <p className="text-xs text-muted-foreground">Next due</p>
+                                <p className="text-sm font-semibold">
+                                  {dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
+                                </p>
+                                {isDueSoon && (
+                                  <p className="text-xs font-bold text-yellow-400">
+                                    {daysLeft === 0 ? "Due today!" : `${daysLeft}d left`}
+                                  </p>
+                                )}
+                              </>
+                            ) : customerSubTab === "pending" ? (
+                              <p className="text-xs text-yellow-400 font-semibold">Awaiting approval</p>
+                            ) : (
+                              <p className="text-xs text-destructive font-semibold">Expelled</p>
+                            )}
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          {dueDate ? (
-                            <>
-                              <p className="text-xs text-muted-foreground">Next due</p>
-                              <p className="text-sm font-semibold">
-                                {dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
-                              </p>
-                              {isDueSoon && (
-                                <p className="text-xs font-bold text-yellow-400">
-                                  {daysLeft === 0 ? "Due today!" : `${daysLeft}d left`}
-                                </p>
-                              )}
-                            </>
-                          ) : <p className="text-xs text-muted-foreground">No expiry set</p>}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  });
+                })()}
               </div>
             )}
 

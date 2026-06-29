@@ -1,4 +1,4 @@
-import { supabase, type UserStatus, ADMIN_EMAIL, type PlanId } from "./supabase";
+import { supabase, PLANS, type UserStatus, ADMIN_EMAIL, type PlanId } from "./supabase";
 import type { Profile } from "./auth";
 
 export type AdminUser = Profile & {
@@ -8,25 +8,12 @@ export type AdminUser = Profile & {
 };
 
 export async function fetchUsersByStatus(status: UserStatus): Promise<AdminUser[]> {
-  if (status === "pending") {
-    // Pending = new sign-ups OR approved users within 5 days of expiry (renewal due)
-    const fiveDaysFromNow = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .or(`status.eq.pending,and(status.eq.approved,subscription_expires_at.lte.${fiveDaysFromNow})`)
-      .neq("email", ADMIN_EMAIL)
-      .order("subscription_expires_at", { ascending: true });
-    if (error) throw error;
-    return (data as AdminUser[]) ?? [];
-  }
-
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
     .eq("status", status)
     .neq("email", ADMIN_EMAIL)
-    .order("email", { ascending: true });
+    .order("created_at", { ascending: false });
   if (error) throw error;
   return (data as AdminUser[]) ?? [];
 }
@@ -117,6 +104,22 @@ export async function deleteUserRecord(id: string) {
 // ── Agent role management ─────────────────────────────────────────────────────
 export async function setUserRole(id: string, role: string | null) {
   const { error } = await supabase.from("profiles").update({ role }).eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Promote a subscriber to agent:
+ * - Sets role = 'agent'
+ * - Clears subscription_expires_at, pending_plan, plan
+ * - Sets status = 'approved' (agents are always active, no subscription needed)
+ */
+export async function makeUserAgent(id: string) {
+  const { error } = await supabase.from("profiles").update({
+    role: "agent",
+    subscription_expires_at: null,
+    pending_plan: null,
+    plan: null,
+  }).eq("id", id);
   if (error) throw error;
 }
 
@@ -282,19 +285,80 @@ export async function fetchAgentList(): Promise<AgentListItem[]> {
   }));
 }
 
-// Fetch agent_customers links for pending user rows (to show agent badge)
-export async function fetchAgentCustomerLinks(): Promise<Record<string, { agent_name: string | null; agent_email: string }>> {
+// Fetch agent_customers links for pending/approved user rows (to show agent badge)
+export async function fetchAgentCustomerLinks(): Promise<Record<string, { agent_id: string; agent_name: string | null; agent_email: string }>> {
   const { data } = await supabase
     .from("agent_customers")
-    .select("customer_id, profiles!agent_customers_agent_id_fkey(full_name, email)");
-  const map: Record<string, { agent_name: string | null; agent_email: string }> = {};
+    .select("agent_id, customer_id, profiles!agent_customers_agent_id_fkey(full_name, email)");
+  const map: Record<string, { agent_id: string; agent_name: string | null; agent_email: string }> = {};
   for (const row of (data ?? []) as any[]) {
     map[row.customer_id] = {
+      agent_id: row.agent_id,
       agent_name: row.profiles?.full_name ?? null,
       agent_email: row.profiles?.email ?? "",
     };
   }
   return map;
+}
+
+// ── Agent payment tracking (admin records cash received from agent) ────────────
+export type AgentOwedSummary = {
+  agent_id: string;
+  full_name: string | null;
+  email: string;
+  total_owed: number;      // sum of admin_amount on approved requests
+  total_paid: number;      // sum of recorded payments
+  balance_due: number;     // total_owed - total_paid
+};
+
+export async function fetchAgentOwedSummaries(): Promise<AgentOwedSummary[]> {
+  // All approved agent billing requests
+  const { data: requests } = await supabase
+    .from("agent_billing_requests")
+    .select("agent_id, admin_amount, profiles!agent_billing_requests_agent_id_fkey(id, full_name, email)")
+    .eq("status", "approved");
+
+  // All recorded agent payments
+  const { data: payments } = await supabase
+    .from("agent_payments")
+    .select("agent_id, amount");
+
+  // Aggregate owed per agent
+  const owedMap: Record<string, { owed: number; name: string | null; email: string }> = {};
+  for (const r of (requests ?? []) as any[]) {
+    if (!owedMap[r.agent_id]) {
+      owedMap[r.agent_id] = {
+        owed: 0,
+        name: r.profiles?.full_name ?? null,
+        email: r.profiles?.email ?? "",
+      };
+    }
+    owedMap[r.agent_id].owed += r.admin_amount ?? 0;
+  }
+
+  // Aggregate paid per agent
+  const paidMap: Record<string, number> = {};
+  for (const p of (payments ?? []) as any[]) {
+    paidMap[p.agent_id] = (paidMap[p.agent_id] ?? 0) + (p.amount ?? 0);
+  }
+
+  return Object.entries(owedMap).map(([agentId, info]) => ({
+    agent_id: agentId,
+    full_name: info.name,
+    email: info.email,
+    total_owed: info.owed,
+    total_paid: paidMap[agentId] ?? 0,
+    balance_due: info.owed - (paidMap[agentId] ?? 0),
+  }));
+}
+
+export async function recordAgentPayment(agentId: string, amount: number, notes?: string): Promise<void> {
+  const { error } = await supabase.from("agent_payments").insert({
+    agent_id: agentId,
+    amount,
+    notes: notes ?? null,
+  });
+  if (error) throw error;
 }
 
 export async function requestPlanUpgrade(userId: string, newPlan: PlanId) {
