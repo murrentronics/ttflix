@@ -18,7 +18,7 @@ const KIDS_LINKS = [
 ] as const;
 
 export function Navbar() {
-  const { user, profile, isAdmin, signOut } = useAuth();
+  const { user, profile, isAdmin, isAgent, signOut } = useAuth();
   const { activeProfile, profiles, setActiveProfile } = useProfile();
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
@@ -195,6 +195,15 @@ export function Navbar() {
                         className="block px-4 py-2 text-sm font-semibold text-primary hover:bg-accent focus-visible:outline-none focus-visible:bg-accent"
                       >
                         Admin Panel
+                      </Link>
+                    )}
+                    {isAgent && (
+                      <Link
+                        to="/agent"
+                        onClick={() => setProfileOpen(false)}
+                        className="block px-4 py-2 text-sm font-semibold text-primary hover:bg-accent focus-visible:outline-none focus-visible:bg-accent"
+                      >
+                        Agent Dashboard
                       </Link>
                     )}
                     <button

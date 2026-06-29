@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, Ban, UserX, ShieldCheck, RefreshCw, CalendarDays, Receipt, ChevronLeft, ChevronRight, Tv } from "lucide-react";
+import { Trash2, Ban, UserX, ShieldCheck, RefreshCw, CalendarDays, Receipt, ChevronLeft, ChevronRight, Tv, Search, X, Briefcase } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { supabase, STATUS_LABELS, PLANS, type UserStatus } from "@/lib/supabase";
 import {
   fetchUsersByStatus, countByStatus, setUserStatus, deleteUserRecord,
-  fetchPaymentHistory, type AdminUser, type PaymentRecord,
+  fetchPaymentHistory, setUserRole,
+  fetchPendingAgentBillingRequests, adminApproveAgentRequest, adminRejectAgentRequest,
+  type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin,
 } from "@/lib/admin";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -14,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const STATUS_TABS: UserStatus[] = ["pending", "approved", "suspended", "expelled"];
-type AdminTab = UserStatus | "billing" | "history" | "watching";
+type AdminTab = UserStatus | "billing" | "history" | "watching" | "agents";
 const PAGE_SIZE = 100;
 
 export function AdminPage() {
@@ -32,6 +34,9 @@ export function AdminPage() {
   const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
   const [watchingNow, setWatchingNow] = useState<any[]>([]);
   const [watchingCount, setWatchingCount] = useState(0);
+  const [search, setSearch] = useState("");
+  const [agentRequests, setAgentRequests] = useState<AgentBillingRequestAdmin[]>([]);
+  const [agentRequestCount, setAgentRequestCount] = useState(0);
   const tabRef = useRef(tab);
   tabRef.current = tab;
 
@@ -77,6 +82,12 @@ export function AdminPage() {
     setWatchingCount(rows.length);
   }, []);
 
+  const loadAgentRequests = useCallback(async () => {
+    const data = await fetchPendingAgentBillingRequests();
+    setAgentRequests(data);
+    setAgentRequestCount(data.length);
+  }, []);
+
   const loadHistory = useCallback(async (page: number) => {
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
@@ -98,13 +109,15 @@ export function AdminPage() {
 
   useEffect(() => {
     if (!isAdmin) return;
+    setSearch(""); // clear search on tab switch
     refreshUpcomingRenewals();
     if (tab === "billing") { /* already loaded above */ }
     else if (tab === "history") { setHistoryPage(1); loadHistory(1); }
     else if (tab === "watching") loadWatching();
+    else if (tab === "agents") loadAgentRequests();
     else refreshRows(tab as UserStatus);
     refreshCounts();
-  }, [tab, isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching]);
+  }, [tab, isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, loadAgentRequests]);
 
   // Reset to page 1 when history page changes
   useEffect(() => {
@@ -117,7 +130,7 @@ export function AdminPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
         refreshUpcomingRenewals();
         if (tabRef.current === "billing") { }
-        else if (tabRef.current !== "history" && tabRef.current !== "watching") refreshRows(tabRef.current as UserStatus);
+        else if (tabRef.current !== "history" && tabRef.current !== "watching" && tabRef.current !== "agents") refreshRows(tabRef.current as UserStatus);
         refreshCounts();
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "payment_history" }, () => {
@@ -126,9 +139,12 @@ export function AdminPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "active_watches" }, () => {
         loadWatching();
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "agent_billing_requests" }, () => {
+        loadAgentRequests();
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, historyPage]);
+  }, [isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, loadAgentRequests, historyPage]);
 
   // Auto-refresh watching now every 30s so stale pings get cleared automatically
   useEffect(() => {
@@ -146,6 +162,32 @@ export function AdminPage() {
       if (tab === "billing") await refreshUpcomingRenewals();
       else if (tab !== "history") await refreshRows(tab as UserStatus);
       await refreshCounts();
+    } finally { setBusy(false); }
+  };
+
+  const toggleAgentRole = async (u: AdminUser) => {
+    setBusy(true);
+    try {
+      const newRole = (u as any).role === "agent" ? null : "agent";
+      await setUserRole(u.id, newRole);
+      await refreshRows(tab as UserStatus);
+    } finally { setBusy(false); }
+  };
+
+  const handleApproveAgentRequest = async (req: AgentBillingRequestAdmin) => {
+    setBusy(true);
+    try {
+      await adminApproveAgentRequest(req.id);
+      await loadAgentRequests();
+      await refreshCounts();
+    } finally { setBusy(false); }
+  };
+
+  const handleRejectAgentRequest = async (req: AgentBillingRequestAdmin) => {
+    setBusy(true);
+    try {
+      await adminRejectAgentRequest(req.id);
+      await loadAgentRequests();
     } finally { setBusy(false); }
   };
 
@@ -169,6 +211,33 @@ export function AdminPage() {
 
   const totalHistoryPages = Math.ceil(historyTotal / PAGE_SIZE);
   const tableRows = tab === "billing" ? upcomingRenewals : rows;
+
+  // ── Search filter ─────────────────────────────────────────────────────────
+  const q = search.trim().toLowerCase();
+  const filteredTableRows = q
+    ? tableRows.filter((u) =>
+        (u.full_name ?? "").toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q) ||
+        ((u as any).phone ?? "").toLowerCase().includes(q)
+      )
+    : tableRows;
+
+  const filteredHistory = q
+    ? paymentHistory.filter((p) =>
+        (p.full_name ?? "").toLowerCase().includes(q) ||
+        (p.email ?? "").toLowerCase().includes(q) ||
+        (p.phone ?? "").toLowerCase().includes(q) ||
+        p.plan.toLowerCase().includes(q)
+      )
+    : paymentHistory;
+
+  const filteredWatching = q
+    ? watchingNow.filter((w) =>
+        (w.profiles?.full_name ?? "").toLowerCase().includes(q) ||
+        (w.profiles?.email ?? "").toLowerCase().includes(q) ||
+        (w.title ?? "").toLowerCase().includes(q)
+      )
+    : watchingNow;
 
   return (
     <AppShell>
@@ -214,8 +283,17 @@ export function AdminPage() {
               </span>
             )}
           </button>
+          <button onClick={() => setTab("agents")}
+            className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${tab === "agents" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+            <Briefcase className="h-4 w-4" /> Agent Requests
+            {agentRequestCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-xs font-bold text-white">
+                {agentRequestCount}
+              </span>
+            )}
+          </button>
           {/* Refresh button — hidden on watching tab (auto-updates) */}
-          {tab !== "watching" && (
+          {tab !== "watching" && tab !== "agents" && (
             <button
               onClick={() => {
                 if (tab === "billing") refreshUpcomingRenewals();
@@ -244,6 +322,68 @@ export function AdminPage() {
           </p>
         )}
 
+        {/* Search bar — shown on all tabs */}
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by name, email, phone…"
+            className="w-full rounded-md border border-border bg-input py-2 pl-9 pr-9 text-sm outline-none focus:border-primary"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Agent Requests Tab */}
+        {tab === "agents" && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Agent-confirmed cash collections waiting for your approval. Agent has already collected the money — just hit Approve to activate the customer.
+            </p>
+            {agentRequests.length === 0 && (
+              <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
+                No pending agent requests.
+              </div>
+            )}
+            {agentRequests.map((req) => (
+              <div key={req.id} className="rounded-xl border border-orange-400/30 bg-orange-400/5 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0 space-y-1 text-sm">
+                    <p className="font-bold text-base">{req.customer_name ?? "—"}</p>
+                    <p className="text-muted-foreground">{req.customer_email} · {req.customer_phone ?? "—"}</p>
+                    <p><span className="text-muted-foreground">Agent:</span> {req.agent_name ?? req.agent_email}</p>
+                    <p><span className="text-muted-foreground">Plan:</span> {PLANS[req.plan as keyof typeof PLANS]?.name ?? req.plan}</p>
+                    <p><span className="text-muted-foreground">Type:</span> <span className="capitalize">{req.request_type.replace(/_/g, " ")}</span></p>
+                    <div className="flex flex-wrap gap-4 pt-1">
+                      <span><span className="text-muted-foreground">Total:</span> <span className="font-bold">TT${req.amount}</span></span>
+                      <span><span className="text-muted-foreground">Agent cut:</span> <span className="text-green-400 font-bold">TT${req.agent_commission}</span></span>
+                      <span><span className="text-muted-foreground">Your portion:</span> <span className="font-bold text-primary">TT${req.admin_amount}</span></span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    <button onClick={() => handleApproveAgentRequest(req)} disabled={busy}
+                      className="rounded-md bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/85 disabled:opacity-60">
+                      ✓ Approve &amp; Activate
+                    </button>
+                    <button onClick={() => handleRejectAgentRequest(req)} disabled={busy}
+                      className="rounded-md border border-destructive/50 px-5 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60">
+                      ✕ Reject
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Watching Now Tab */}
         {tab === "watching" && (
           <>
@@ -269,7 +409,14 @@ export function AdminPage() {
                       </td>
                     </tr>
                   )}
-                  {watchingNow.map((w) => (
+                  {watchingNow.length > 0 && filteredWatching.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                        No results for "{search}".
+                      </td>
+                    </tr>
+                  )}
+                  {filteredWatching.map((w) => (
                     <tr key={w.id} className="border-t border-border">
                       <td className="px-4 py-3">
                         <p className="font-medium">{w.profiles?.full_name ?? "—"}</p>
@@ -336,7 +483,12 @@ export function AdminPage() {
                       <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">No payment records yet.</td>
                     </tr>
                   )}
-                  {paymentHistory.map((p) => (
+                  {paymentHistory.length > 0 && filteredHistory.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">No results for "{search}".</td>
+                    </tr>
+                  )}
+                  {filteredHistory.map((p) => (
                     <tr key={p.id} className="border-t border-border">
                       <td className="px-4 py-3">
                         <p className="font-medium">{p.full_name ?? "—"}</p>
@@ -398,16 +550,18 @@ export function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {tableRows.length === 0 && (
+                {filteredTableRows.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
-                      {tab === "billing"
-                        ? "No upcoming renewals in the next 5 days."
-                        : `No ${STATUS_LABELS[tab as UserStatus]?.toLowerCase()} users.`}
+                      {q
+                        ? `No results for "${search}".`
+                        : tab === "billing"
+                          ? "No upcoming renewals in the next 5 days."
+                          : `No ${STATUS_LABELS[tab as UserStatus]?.toLowerCase()} users.`}
                     </td>
                   </tr>
                 )}
-                {tableRows.map((u) => {
+                {filteredTableRows.map((u) => {
                   const dueDate = u.subscription_expires_at ? new Date(u.subscription_expires_at) : null;
                   const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
                   return (
@@ -452,6 +606,14 @@ export function AdminPage() {
                               <UserX className="h-3.5 w-3.5" /> Expel
                             </Btn>
                           )}
+                          <Btn
+                            onClick={() => toggleAgentRole(u)}
+                            busy={busy}
+                            variant={(u as any).role === "agent" ? "primary" : "default"}
+                          >
+                            <Briefcase className="h-3.5 w-3.5" />
+                            {(u as any).role === "agent" ? "Remove Agent" : "Make Agent"}
+                          </Btn>
                           <Btn onClick={() => setConfirmDelete(u)} busy={busy} variant="danger">
                             <Trash2 className="h-3.5 w-3.5" /> Delete
                           </Btn>

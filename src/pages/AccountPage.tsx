@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Check, Monitor, CreditCard, AlertCircle, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Check, Monitor, CreditCard, AlertCircle, ChevronDown, ChevronUp, X, Briefcase } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { supabase, PLANS, type PlanId } from "@/lib/supabase";
 import { AppShell } from "@/components/AppShell";
@@ -20,7 +20,7 @@ function formatPhone(raw: string): string {
 }
 
 export function AccountPage() {
-  const { user, profile, loading, isAdmin, signOut, refreshProfile } = useAuth();
+  const { user, profile, loading, isAdmin, isAgent, signOut, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -261,6 +261,19 @@ export function AccountPage() {
             <p className="text-sm text-muted-foreground">Unlimited access — no plan or screen limits.</p>
             <Link to="/admin" className="mt-4 inline-block rounded-md bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85">
               Open Admin Panel
+            </Link>
+          </section>
+        ) : isAgent ? (
+          <section className="rounded-xl border border-border bg-card p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Briefcase className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-bold">Agent Account</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-1">
+              You have 2 screens for watching. Manage your customers and commissions from the Agent Dashboard.
+            </p>
+            <Link to="/agent" className="mt-3 inline-block rounded-md bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/85">
+              Agent Dashboard
             </Link>
           </section>
         ) : (

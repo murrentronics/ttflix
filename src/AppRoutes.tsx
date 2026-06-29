@@ -9,6 +9,7 @@ import { SearchPage } from "./pages/SearchPage";
 import { MyListPage } from "./pages/MyListPage";
 import { AccountPage } from "./pages/AccountPage";
 import { AdminPage } from "./pages/AdminPage";
+import { AgentPage } from "./pages/AgentPage";
 import { BillingPage } from "./pages/BillingPage";
 import { WatchPage } from "./pages/WatchPage";
 import { ProfilePickerPage } from "./pages/ProfilePickerPage";
@@ -43,6 +44,7 @@ export function AppRoutes() {
           <Route path="/my-list" element={<MyListPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/agent" element={<AgentPage />} />
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/watch/:mediaType/:id" element={<WatchPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />

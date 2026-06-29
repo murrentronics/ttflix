@@ -42,24 +42,29 @@ export async function countByStatus(status: UserStatus): Promise<number> {
 export async function setUserStatus(id: string, status: UserStatus) {
   const patch: Record<string, unknown> = { status };
   if (status === "approved") {
-    // Fetch current expiry and plan
+    // Fetch current profile including pending_plan
     const { data: prof } = await supabase
       .from("profiles")
-      .select("plan")
+      .select("plan, pending_plan")
       .eq("id", id)
       .maybeSingle();
 
-    const plan = (prof as any)?.plan ?? "basic";
-    const amount = plan === "premium" ? 100 : 50;
+    const plan = ((prof as any)?.pending_plan ?? (prof as any)?.plan ?? "basic") as PlanId;
+    const planDef = PLANS[plan];
+    const amount = planDef?.price ?? 50;
+    const isAnnual = planDef?.annual ?? false;
 
-    // Add exactly 1 calendar month from approval date
     const now = new Date();
     const periodStart = now.toISOString();
-    const nextMonth = new Date(now);
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
-    const periodEnd = nextMonth.toISOString();
+    const periodEnd = new Date(now);
+    if (isAnnual) periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+    else periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-    patch.subscription_expires_at = periodEnd;
+    patch.subscription_expires_at = periodEnd.toISOString();
+    if ((prof as any)?.pending_plan) {
+      patch.plan = plan;
+      patch.pending_plan = null;
+    }
 
     // Record the payment
     await supabase.from("payment_history").insert({
@@ -67,7 +72,7 @@ export async function setUserStatus(id: string, status: UserStatus) {
       plan,
       amount,
       period_start: periodStart,
-      period_end: periodEnd,
+      period_end: periodEnd.toISOString(),
     });
   }
   const { error } = await supabase.from("profiles").update(patch).eq("id", id);
@@ -107,6 +112,103 @@ export async function fetchPaymentHistory(): Promise<PaymentRecord[]> {
 export async function deleteUserRecord(id: string) {
   const { error } = await supabase.from("profiles").delete().eq("id", id);
   if (error) throw error;
+}
+
+// ── Agent role management ─────────────────────────────────────────────────────
+export async function setUserRole(id: string, role: string | null) {
+  const { error } = await supabase.from("profiles").update({ role }).eq("id", id);
+  if (error) throw error;
+}
+
+// ── Agent billing requests (admin approval queue) ─────────────────────────────
+export type AgentBillingRequestAdmin = {
+  id: string;
+  agent_id: string;
+  customer_id: string;
+  plan: string;
+  amount: number;
+  agent_commission: number;
+  admin_amount: number;
+  request_type: string;
+  status: string;
+  created_at: string;
+  agent_approved_at: string | null;
+  // joined
+  agent_name?: string | null;
+  agent_email?: string;
+  customer_name?: string | null;
+  customer_email?: string;
+  customer_phone?: string | null;
+};
+
+export async function fetchPendingAgentBillingRequests(): Promise<AgentBillingRequestAdmin[]> {
+  const { data, error } = await supabase
+    .from("agent_billing_requests")
+    .select(`
+      *,
+      agent:profiles!agent_billing_requests_agent_id_fkey(full_name, email),
+      customer:profiles!agent_billing_requests_customer_id_fkey(full_name, email, phone)
+    `)
+    .eq("status", "pending_admin")
+    .order("agent_approved_at", { ascending: true });
+  if (error) throw error;
+  return ((data ?? []) as any[]).map((r) => ({
+    ...r,
+    agent_name: r.agent?.full_name ?? null,
+    agent_email: r.agent?.email ?? "",
+    customer_name: r.customer?.full_name ?? null,
+    customer_email: r.customer?.email ?? "",
+    customer_phone: r.customer?.phone ?? null,
+  }));
+}
+
+export async function adminApproveAgentRequest(requestId: string): Promise<void> {
+  // 1. Fetch request details
+  const { data: req } = await supabase
+    .from("agent_billing_requests")
+    .select("*")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (!req) throw new Error("Request not found");
+
+  const plan = req.plan as import("./supabase").PlanId;
+  const customerId = req.customer_id;
+  const isAnnual = plan === "basic_annual" || plan === "premium_annual";
+  const now = new Date();
+  const periodStart = now.toISOString();
+  const periodEnd = new Date(now);
+  if (isAnnual) periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+  else periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+  // 2. Activate customer
+  await supabase.from("profiles").update({
+    status: "approved",
+    plan,
+    subscription_expires_at: periodEnd.toISOString(),
+    pending_plan: null,
+  }).eq("id", customerId);
+
+  // 3. Record payment with agent info
+  await supabase.from("payment_history").insert({
+    user_id: customerId,
+    plan,
+    amount: req.amount,
+    period_start: periodStart,
+    period_end: periodEnd.toISOString(),
+    agent_id: req.agent_id,
+    agent_commission: req.agent_commission,
+    admin_amount: req.admin_amount,
+  });
+
+  // 4. Mark request as approved
+  await supabase.from("agent_billing_requests").update({
+    status: "approved",
+    admin_approved_at: now.toISOString(),
+  }).eq("id", requestId);
+}
+
+export async function adminRejectAgentRequest(requestId: string): Promise<void> {
+  await supabase.from("agent_billing_requests").update({ status: "rejected" }).eq("id", requestId);
 }
 
 export async function requestPlanUpgrade(userId: string, newPlan: PlanId) {
@@ -180,12 +282,13 @@ export async function checkRenewal(userId: string, isAdmin: boolean): Promise<vo
 
   const { data: prof } = await supabase
     .from("profiles")
-    .select("status, subscription_expires_at")
+    .select("status, subscription_expires_at, role")
     .eq("id", userId)
     .maybeSingle();
 
   if (!prof || !prof.subscription_expires_at) return;
   if (prof.status === "expelled") return;
+  if (prof.role === "agent") return; // agents don't have subscription expiry
 
   const now = Date.now();
   const expiresAt = new Date(prof.subscription_expires_at).getTime();

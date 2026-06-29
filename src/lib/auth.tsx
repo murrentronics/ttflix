@@ -21,6 +21,7 @@ export type Profile = {
   status: UserStatus;
   subscription_expires_at: string | null;
   pending_plan?: string | null;
+  role?: string | null;
   _maxScreens?: boolean;
 };
 
@@ -31,6 +32,7 @@ type AuthContextValue = {
   loading: boolean;
   profileLoading: boolean;
   isAdmin: boolean;
+  isAgent: boolean;
   signUp: (args: {
     email: string;
     password: string;
@@ -164,9 +166,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!signedIn || !signedInSession) throw new Error("Sign in failed");
 
     // ── Geo-check — verify user is in Trinidad & Tobago by real IP ──────────
-    // Skip for admin so they can manage from anywhere
+    // Skip for admin and agents so they can manage from anywhere
     const isAdminEmail = (signedIn.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
-    if (!isAdminEmail) {
+    const profileForGeo = await loadProfile(signedIn.id);
+    const isAgentRole = profileForGeo?.role === "agent";
+    if (!isAdminEmail && !isAgentRole) {
       try {
         const geoRes = await supabase.functions.invoke("geo-check", { method: "POST" });
         const geoData = geoRes.data as { allowed: boolean; reason?: string } | null;
@@ -206,7 +210,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       prof &&
       prof.status === "approved" &&
       prof.subscription_expires_at &&
-      new Date(prof.subscription_expires_at).getTime() < Date.now()
+      new Date(prof.subscription_expires_at).getTime() < Date.now() &&
+      prof.role !== "agent"
     ) {
       await supabase.from("profiles").update({ status: "suspended" }).eq("id", prof.id);
       prof = await loadProfile(signedIn.id);
@@ -242,6 +247,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (user?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase() ||
     (profile?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
+  const isAgent = !isAdmin && (profile?.role === "agent");
+
   return (
     <AuthContext.Provider
       value={{
@@ -251,6 +258,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         profileLoading,
         isAdmin,
+        isAgent,
         signUp,
         signIn,
         signOut,
