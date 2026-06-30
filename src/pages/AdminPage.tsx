@@ -48,6 +48,7 @@ export function AdminPage() {
   const [agentCustomerLinks, setAgentCustomerLinks] = useState<Record<string, { agent_id: string; agent_name: string | null; agent_email: string }>>({});
   const [agentSubTab, setAgentSubTab] = useState<"requests" | "list">("requests");
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
   const [dashLoading, setDashLoading] = useState(false);
   const tabRef = useRef(tab);
@@ -825,115 +826,113 @@ export function AdminPage() {
               </div>
             )}
 
-            {/* ── USER / RENEWALS TABLE (pending, approved, suspended, expelled, billing) ── */}
+            {/* ── USER / RENEWALS ACCORDION (pending, approved, suspended, expelled, billing) ── */}
             {tab !== "history" && tab !== "agents" && tab !== "watching" && tab !== "dashboard" && (
-              <div className="space-y-3">
+              <div className="space-y-3 max-w-2xl">
                 {tab === "billing" && (
                   <p className="text-sm text-muted-foreground">
                     Approved subscribers due within 5 days. Collect cash, then hit Approve to reset their cycle.
                   </p>
                 )}
-                <div className="overflow-x-auto rounded-xl border border-border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3">Name</th>
-                        <th className="px-4 py-3">Phone</th>
-                        <th className="px-4 py-3">Plan</th>
-                        {tab !== "pending" && <th className="px-4 py-3">{tab === "billing" ? "Due Date" : "Renews"}</th>}
-                        <th className="px-4 py-3 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredTableRows.length === 0 && (
-                        <tr>
-                          <td colSpan={tab !== "pending" ? 5 : 4} className="px-4 py-10 text-center text-muted-foreground">
-                            {q
-                              ? `No results for "${search}".`
-                              : tab === "billing"
-                                ? "No upcoming renewals in the next 5 days."
-                                : `No ${STATUS_LABELS[tab as UserStatus]?.toLowerCase()} users.`}
-                          </td>
-                        </tr>
-                      )}
-                      {filteredTableRows.map((u) => {
-                        const dueDate = u.subscription_expires_at ? new Date(u.subscription_expires_at) : null;
-                        const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
-                        const agentLink = agentCustomerLinks[u.id];
-                        return (
-                          <React.Fragment key={u.id}>
-                            <tr className="border-t border-border">
-                              <td className="px-4 py-3">
-                                <p className="font-medium">{u.full_name ?? "—"}</p>
-                                <p className="text-xs text-muted-foreground">{u.email}</p>
-                                {agentLink && (
-                                  <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-semibold text-orange-400">
-                                    <Briefcase className="h-3 w-3" />
-                                    Agent: {agentLink.agent_name ?? agentLink.agent_email}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-muted-foreground">{(u as any).phone ?? "—"}</td>
-                              <td className="px-4 py-3">{PLANS[u.plan]?.name ?? u.plan} · TT${PLANS[u.plan]?.price ?? "?"}/{PLANS[u.plan]?.annual ? "yr" : "mo"}</td>
-                              {tab !== "pending" && (
-                                <td className="px-4 py-3">
-                                  {dueDate ? (
-                                    <div>
-                                      <p>{dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}</p>
-                                      {daysLeft !== null && tab === "billing" && (
-                                        <p className={`text-xs font-semibold ${daysLeft <= 1 ? "text-destructive" : "text-yellow-500"}`}>
-                                          {daysLeft === 0 ? "Due today" : daysLeft < 0 ? "Overdue" : `${daysLeft}d left`}
-                                        </p>
-                                      )}
-                                    </div>
-                                  ) : "—"}
-                                </td>
+                {filteredTableRows.length === 0 && (
+                  <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
+                    {q
+                      ? `No results for "${search}".`
+                      : tab === "billing"
+                        ? "No upcoming renewals in the next 5 days."
+                        : `No ${STATUS_LABELS[tab as UserStatus]?.toLowerCase()} users.`}
+                  </div>
+                )}
+                {filteredTableRows.map((u) => {
+                  const dueDate = u.subscription_expires_at ? new Date(u.subscription_expires_at) : null;
+                  const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+                  const agentLink = agentCustomerLinks[u.id];
+                  const expanded = expandedUser === u.id;
+                  return (
+                    <div key={u.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                      <div className="p-4">
+                        <div className="flex items-start gap-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold truncate">{u.full_name ?? "—"}</p>
+                            <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                              {agentLink && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-semibold text-orange-400">
+                                  <Briefcase className="h-3 w-3" />
+                                  Agent: {agentLink.agent_name ?? agentLink.agent_email}
+                                </span>
                               )}
-                              <td className="px-4 py-3">
-                                <div className="flex flex-wrap justify-end gap-2">
-                                  {(tab === "pending" || tab === "billing") && (
-                                    <Btn onClick={() => changeStatus(u, "approved")} busy={busy} variant="primary">
-                                      <ShieldCheck className="h-3.5 w-3.5" /> Approve
-                                    </Btn>
-                                  )}
-                                  {tab === "approved" && (
-                                    <Btn onClick={() => changeStatus(u, "suspended")} busy={busy}>
-                                      <Ban className="h-3.5 w-3.5" /> Suspend
-                                    </Btn>
-                                  )}
-                                  {tab === "approved" && (
-                                    u.role === "agent" ? (
-                                      <Btn onClick={async () => { setBusy(true); try { await removeUserAgent(u.id); await refreshRows("approved"); await refreshCounts(); } finally { setBusy(false); } }} busy={busy}>
-                                        <UserX className="h-3.5 w-3.5" /> Remove Agent
-                                      </Btn>
-                                    ) : (
-                                      <Btn onClick={async () => { setBusy(true); try { await makeUserAgent(u.id); await refreshRows("approved"); await refreshCounts(); } finally { setBusy(false); } }} busy={busy} variant="primary">
-                                        <Briefcase className="h-3.5 w-3.5" /> Make Agent
-                                      </Btn>
-                                    )
-                                  )}
-                                  {tab === "suspended" && (
-                                    <Btn onClick={() => changeStatus(u, "approved")} busy={busy} variant="primary">
-                                      <ShieldCheck className="h-3.5 w-3.5" /> Reactivate
-                                    </Btn>
-                                  )}
-                                  {(tab === "suspended" || tab === "pending" || tab === "billing") && (
-                                    <Btn onClick={() => changeStatus(u, "expelled")} busy={busy}>
-                                      <UserX className="h-3.5 w-3.5" /> Expel
-                                    </Btn>
-                                  )}
-                                  <Btn onClick={() => setConfirmDelete(u)} busy={busy} variant="danger">
-                                    <Trash2 className="h-3.5 w-3.5" /> Delete
-                                  </Btn>
-                                </div>
-                              </td>
-                            </tr>
-                          </React.Fragment>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                              {(u as any).phone && (
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">{(u as any).phone}</span>
+                              )}
+                              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-primary">
+                                {PLANS[u.plan]?.name ?? u.plan} · TT${PLANS[u.plan]?.price ?? "?"}/{PLANS[u.plan]?.annual ? "yr" : "mo"}
+                              </span>
+                              {tab !== "pending" && dueDate && (
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                  tab === "billing" && daysLeft !== null && daysLeft <= 1
+                                    ? "bg-destructive/15 text-destructive"
+                                    : "bg-yellow-500/15 text-yellow-400"
+                                }`}>
+                                  {tab === "billing"
+                                    ? (daysLeft === 0 ? "Due today" : daysLeft < 0 ? "Overdue" : `${daysLeft}d left`)
+                                    : `Renews ${dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}`}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setExpandedUser(expanded ? null : u.id)}
+                            className="shrink-0 rounded p-1 hover:bg-accent"
+                            aria-label="Toggle actions"
+                          >
+                            <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
+                          </button>
+                        </div>
+                      </div>
+                      {expanded && (
+                        <div className="border-t border-border px-4 pb-4 pt-3">
+                          <div className="flex flex-wrap gap-2">
+                            {(tab === "pending" || tab === "billing") && (
+                              <Btn onClick={() => changeStatus(u, "approved")} busy={busy} variant="primary">
+                                <ShieldCheck className="h-3.5 w-3.5" /> Approve
+                              </Btn>
+                            )}
+                            {tab === "approved" && (
+                              <Btn onClick={() => changeStatus(u, "suspended")} busy={busy}>
+                                <Ban className="h-3.5 w-3.5" /> Suspend
+                              </Btn>
+                            )}
+                            {tab === "approved" && (
+                              u.role === "agent" ? (
+                                <Btn onClick={async () => { setBusy(true); try { await removeUserAgent(u.id); await refreshRows("approved"); await refreshCounts(); } finally { setBusy(false); } }} busy={busy}>
+                                  <UserX className="h-3.5 w-3.5" /> Remove Agent
+                                </Btn>
+                              ) : (
+                                <Btn onClick={async () => { setBusy(true); try { await makeUserAgent(u.id); await refreshRows("approved"); await refreshCounts(); } finally { setBusy(false); } }} busy={busy} variant="primary">
+                                  <Briefcase className="h-3.5 w-3.5" /> Make Agent
+                                </Btn>
+                              )
+                            )}
+                            {tab === "suspended" && (
+                              <Btn onClick={() => changeStatus(u, "approved")} busy={busy} variant="primary">
+                                <ShieldCheck className="h-3.5 w-3.5" /> Reactivate
+                              </Btn>
+                            )}
+                            {(tab === "suspended" || tab === "pending" || tab === "billing") && (
+                              <Btn onClick={() => changeStatus(u, "expelled")} busy={busy}>
+                                <UserX className="h-3.5 w-3.5" /> Expel
+                              </Btn>
+                            )}
+                            <Btn onClick={() => setConfirmDelete(u)} busy={busy} variant="danger">
+                              <Trash2 className="h-3.5 w-3.5" /> Delete
+                            </Btn>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
