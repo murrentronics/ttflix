@@ -78,6 +78,8 @@ export function AdminPage() {
       .from("profiles")
       .select("*", { count: "exact" })
       .eq("status", "approved")
+      .neq("role", "agent")
+      .neq("email", "kellymarshall2026@gmail.com")
       .lte("subscription_expires_at", in5Days)
       .gte("subscription_expires_at", now)
       .order("subscription_expires_at", { ascending: true });
