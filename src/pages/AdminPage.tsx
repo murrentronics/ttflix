@@ -108,13 +108,13 @@ export function AdminPage() {
     setAgentCustomerLinks(links);
   }, []);
 
-  const loadDashboard = useCallback(async () => {
-    setDashLoading(true);
+  const loadDashboard = useCallback(async (silent = false) => {
+    if (!silent) setDashLoading(true);
     try {
       const stats = await fetchDashboardStats();
       setDashStats(stats);
     } finally {
-      setDashLoading(false);
+      if (!silent) setDashLoading(false);
     }
   }, []);
 
@@ -170,26 +170,26 @@ export function AdminPage() {
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "payment_history" }, () => {
         if (tabRef.current === "history") loadHistory(historyPage);
-        if (tabRef.current === "dashboard") loadDashboard();
+        if (tabRef.current === "dashboard") loadDashboard(true);
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "active_watches" }, () => { 
         loadWatching();
-        if (tabRef.current === "dashboard") loadDashboard(); 
+        if (tabRef.current === "dashboard") loadDashboard(true); 
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "agent_billing_requests" }, () => { 
         loadAgentRequests(); 
-        if (tabRef.current === "dashboard") loadDashboard();
+        if (tabRef.current === "dashboard") loadDashboard(true);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, loadAgentRequests, loadDashboard, historyPage]);
 
-  // Real‑time refresh for dashboard every 3 seconds
+  // Real‑time refresh for dashboard every 3 seconds (silent)
   useEffect(() => {
     if (!isAdmin) return;
     if (tab === "dashboard") {
       dashboardIntervalRef.current = setInterval(() => {
-        loadDashboard();
+        loadDashboard(true);
       }, 3000);
     } else {
       if (dashboardIntervalRef.current) {
