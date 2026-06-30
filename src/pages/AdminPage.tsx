@@ -682,49 +682,44 @@ export function AdminPage() {
 
             {/* ── WATCHING NOW TAB ── */}
             {tab === "watching" && (
-              <div className="space-y-3">
+              <div className="space-y-3 max-w-2xl">
                 <p className="text-sm text-muted-foreground">Users actively watching right now (pinged in the last 5 minutes).</p>
-                <div className="overflow-x-auto rounded-xl border border-border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3">User</th>
-                        <th className="px-4 py-3">Plan</th>
-                        <th className="px-4 py-3">Watching</th>
-                        <th className="px-4 py-3">Type</th>
-                        <th className="px-4 py-3">Started</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {watchingNow.length === 0 && (
-                        <tr><td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">Nobody is watching right now.</td></tr>
-                      )}
-                      {watchingNow.length > 0 && filteredWatching.length === 0 && (
-                        <tr><td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">No results for "{search}".</td></tr>
-                      )}
-                      {filteredWatching.map((w) => (
-                        <tr key={w.id} className="border-t border-border">
-                          <td className="px-4 py-3">
-                            <p className="font-medium">{w.profiles?.full_name ?? "—"}</p>
-                            <p className="text-xs text-muted-foreground">{w.profiles?.email ?? "—"}</p>
-                          </td>
-                          <td className="px-4 py-3 capitalize">{PLANS[w.profiles?.plan as keyof typeof PLANS]?.name ?? w.profiles?.plan ?? "—"}</td>
-                          <td className="px-4 py-3 font-medium">{w.title ?? "—"}</td>
-                          <td className="px-4 py-3 capitalize text-muted-foreground">{w.media_type ?? "—"}</td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                {watchingNow.length === 0 && (
+                  <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">Nobody is watching right now.</div>
+                )}
+                {watchingNow.length > 0 && filteredWatching.length === 0 && (
+                  <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">No results for "{search}".</div>
+                )}
+                {filteredWatching.map((w) => (
+                  <div key={w.id} className="rounded-xl border border-border bg-card p-5">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold">{w.profiles?.full_name ?? "—"}</p>
+                        <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs text-primary">
+                          {PLANS[w.profiles?.plan as keyof typeof PLANS]?.name ?? w.profiles?.plan ?? "—"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{w.profiles?.email ?? "—"}</p>
+                      <div className="flex flex-wrap items-center gap-3 text-sm">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{w.title ?? "—"}</p>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="rounded-full bg-muted px-2 py-0.5 capitalize">{w.media_type ?? "—"}</span>
+                          <span className="text-muted-foreground">
                             {w.started_at ? new Date(w.started_at).toLocaleTimeString("en-TT", { hour: "2-digit", minute: "2-digit" }) : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
 
             {/* ── PAYMENT HISTORY TAB ── */}
             {tab === "history" && (
-              <div className="space-y-4">
+              <div className="space-y-4 max-w-2xl">
                 <div className="flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">
                     {historyTotal} total payment{historyTotal !== 1 ? "s" : ""} · Page {historyPage} of {totalHistoryPages || 1}
@@ -742,46 +737,46 @@ export function AdminPage() {
                     </div>
                   )}
                 </div>
-                <div className="overflow-x-auto rounded-xl border border-border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3">Customer</th>
-                        <th className="px-4 py-3">Phone</th>
-                        <th className="px-4 py-3">Plan</th>
-                        <th className="px-4 py-3">Amount</th>
-                        <th className="px-4 py-3">Period</th>
-                        <th className="px-4 py-3">Approved</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paymentHistory.length === 0 && (
-                        <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">No payment records yet.</td></tr>
-                      )}
-                      {paymentHistory.length > 0 && filteredHistory.length === 0 && (
-                        <tr><td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">No results for "{search}".</td></tr>
-                      )}
-                      {filteredHistory.map((p) => (
-                        <tr key={p.id} className="border-t border-border">
-                          <td className="px-4 py-3">
-                            <p className="font-medium">{p.full_name ?? "—"}</p>
-                            <p className="text-xs text-muted-foreground">{p.email}</p>
-                          </td>
-                          <td className="px-4 py-3 text-muted-foreground">{p.phone ?? "—"}</td>
-                          <td className="px-4 py-3 capitalize">{p.plan}</td>
-                          <td className="px-4 py-3 font-semibold text-primary">TT${p.amount}</td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                {paymentHistory.length === 0 && (
+                  <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">No payment records yet.</div>
+                )}
+                {paymentHistory.length > 0 && filteredHistory.length === 0 && (
+                  <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">No results for "{search}".</div>
+                )}
+                <div className="space-y-3">
+                  {filteredHistory.map((p) => (
+                    <div key={p.id} className="rounded-xl border border-border bg-card p-5">
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold">{p.full_name ?? "—"}</p>
+                          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs text-primary">
+                            {PLANS[p.plan as keyof typeof PLANS]?.name ?? p.plan}
+                          </span>
+                          <span className="rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-semibold text-green-400">
+                            TT${p.amount}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                          {p.phone && <span>{p.phone}</span>}
+                          <span>{p.email}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                          <div>
+                            <span className="font-semibold text-foreground">Period:</span>
+                            {" "}
                             {new Date(p.period_start).toLocaleDateString("en-TT", { day: "numeric", month: "short" })}
                             {" — "}
                             {new Date(p.period_end).toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-muted-foreground">
+                          </div>
+                          <div>
+                            <span className="font-semibold text-foreground">Approved:</span>
+                            {" "}
                             {new Date(p.approved_at).toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
                 {totalHistoryPages > 1 && (
                   <div className="flex items-center justify-center gap-2 pt-2">
