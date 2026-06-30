@@ -25,11 +25,11 @@ function formatPhone(raw: string): string {
 const NAV_ITEMS: Array<{ id: AgentTab; label: string; icon: React.ReactNode }> = [
   { id: "create",    label: "Create Customer", icon: <UserPlus    className="h-4 w-4 shrink-0" /> },
   { id: "pending",   label: "Pending",         icon: <Clock       className="h-4 w-4 shrink-0" /> },
-  { id: "active",    label: "Active",           icon: <Users       className="h-4 w-4 shrink-0" /> },
-  { id: "suspended", label: "Suspended",        icon: <AlertCircle className="h-4 w-4 shrink-0" /> },
-  { id: "expelled",  label: "Expelled",         icon: <AlertCircle className="h-4 w-4 shrink-0" /> },
-  { id: "approvals", label: "Approvals",        icon: <CheckCircle className="h-4 w-4 shrink-0" /> },
-  { id: "renewals",  label: "Renewals Due",     icon: <Clock       className="h-4 w-4 shrink-0" /> },
+  { id: "active",    label: "Active",          icon: <Users       className="h-4 w-4 shrink-0" /> },
+  { id: "suspended", label: "Suspended",       icon: <AlertCircle className="h-4 w-4 shrink-0" /> },
+  { id: "expelled",  label: "Expelled",        icon: <AlertCircle className="h-4 w-4 shrink-0" /> },
+  { id: "approvals", label: "Approvals",       icon: <CheckCircle className="h-4 w-4 shrink-0" /> },
+  { id: "renewals",  label: "Renewals Due",    icon: <Clock       className="h-4 w-4 shrink-0" /> },
 ];
 
 export function AgentPage() {
@@ -194,16 +194,16 @@ export function AgentPage() {
 
   if (loading || !user || !profile) return (
     <AppShell>
-      <div className="flex min-h-[60vh] items-center justify-center pt-20 text-muted-foreground">Loadingâ€¦</div>
+      <div className="flex min-h-[60vh] items-center justify-center pt-20 text-muted-foreground">Loading…</div>
     </AppShell>
   );
 
   return (
     <AppShell>
-      {/* Outer wrapper â€” starts below the fixed app navbar (h â‰ˆ 56px = top-14) */}
+      {/* Outer wrapper — starts below the fixed app navbar (h ≈ 56px = top-14) */}
       <div className="min-h-screen flex flex-col pt-14">
 
-        {/* â”€â”€ Agent dashboard header â€” sticky below app navbar â”€â”€ */}
+        {/* —— Agent dashboard header — sticky below app navbar —— */}
         <div className="sticky top-14 z-30 flex items-center gap-3 bg-[#c0001a] px-4 py-3 md:hidden shadow-md">
           <button
             onClick={() => setSidebarOpen((o) => !o)}
@@ -219,7 +219,7 @@ export function AgentPage() {
           </span>
         </div>
 
-        {/* â”€â”€ Mobile sidebar overlay â”€â”€ */}
+        {/* —— Mobile sidebar overlay —— */}
         {sidebarOpen && (
           <div
             className="fixed inset-0 z-40 bg-black/60 md:hidden"
@@ -228,14 +228,14 @@ export function AgentPage() {
         )}
 
         <div className="flex flex-1">
-          {/* â”€â”€ Sidebar â”€â”€ */}
+          {/* —— Sidebar —— */}
           <aside className={`
             fixed inset-y-0 left-0 z-50 w-64 bg-[#c0001a] flex flex-col pt-14
             transform transition-transform duration-200
             md:sticky md:top-14 md:self-start md:h-[calc(100vh-3.5rem)] md:translate-x-0 md:pt-0 md:w-56 md:shrink-0
             ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
           `}>
-            {/* Sidebar header â€” desktop only */}
+            {/* Sidebar header — desktop only */}
             <div className="hidden md:flex items-center gap-2 px-5 py-5 border-b border-black/30 bg-[#c0001a] sticky top-14 z-10">
               <TrendingUp className="h-5 w-5 text-white" />
               <span className="font-extrabold text-white text-base">Agent Dashboard</span>
@@ -285,7 +285,7 @@ export function AgentPage() {
             </div>
           </aside>
 
-          {/* â”€â”€ Main content â”€â”€ */}
+          {/* —— Main content —— */}
           <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 overflow-y-auto">
 
             {msg && (
@@ -294,7 +294,7 @@ export function AgentPage() {
               </div>
             )}
 
-            {/* Summary cards â€” mobile only */}
+            {/* Summary cards — mobile only */}
             <div className="grid grid-cols-2 gap-3 mb-6 md:hidden">
               <SummaryCard label="Commission" value={`TT$${summary.totalCommission}`} icon={<CheckCircle className="h-4 w-4 text-green-500" />} />
               <SummaryCard label="Pending" value={`TT$${summary.pendingCollection}`} icon={<Clock className="h-4 w-4 text-yellow-500" />} />
@@ -302,14 +302,14 @@ export function AgentPage() {
               <SummaryCard label="Active" value={`${custActive.length}`} icon={<Users className="h-4 w-4 text-primary" />} />
             </div>
 
-            {/* â”€â”€ CREATE TAB â”€â”€ */}
+            {/* —— CREATE TAB —— */}
             {tab === "create" && (
               <section className="max-w-lg rounded-xl border border-border bg-card p-5 sm:p-6">
                 <h2 className="mb-1 text-lg font-bold">Sign Up a New Customer</h2>
                 <p className="mb-4 text-sm text-muted-foreground">
-                  Temporary password: <span className="font-mono font-bold text-foreground">123456</span> â€” customer changes it after admin approval.
+                  Temporary password: <span className="font-mono font-bold text-foreground">123456</span> — customer changes it after admin approval.
                 </p>
-                {/* 6-hour activation note â€” always visible */}
+                {/* 6-hour activation note — always visible */}
                 <div className="mb-4 rounded-md bg-yellow-500/10 border border-yellow-500/25 px-3 py-2.5 text-xs text-yellow-400 leading-relaxed">
                   <span className="font-bold">Tell your customer:</span> After registration, account activation may take up to 6 hours. Please be patient while the admin processes the request.
                 </div>
@@ -354,13 +354,13 @@ export function AgentPage() {
                   </FormField>
                   <button type="submit" disabled={creating}
                     className="w-full rounded-md bg-[#c0001a] py-3 font-bold text-white transition hover:bg-[#a30016] disabled:opacity-60">
-                    {creating ? "Creatingâ€¦" : "Create Customer Account"}
+                    {creating ? "Creating…" : "Create Customer Account"}
                   </button>
                 </form>
               </section>
             )}
 
-            {/* â”€â”€ CUSTOMER LIST TABS (pending / active / suspended / expelled) â”€â”€ */}
+            {/* —— CUSTOMER LIST TABS (pending / active / suspended / expelled) —— */}
             {(tab === "pending" || tab === "active" || tab === "suspended" || tab === "expelled") && (() => {
               const listMap: Record<string, AgentCustomer[]> = {
                 pending:   custPending,
@@ -401,7 +401,7 @@ export function AgentPage() {
                         <div className="p-4">
                           <div className="flex items-start gap-4">
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold truncate">{c.full_name ?? "â€”"}</p>
+                              <p className="font-semibold truncate">{c.full_name ?? "—"}</p>
                               <p className="text-xs text-muted-foreground truncate">{c.email}</p>
                               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                                 <span className={`rounded-full px-2 py-0.5 font-semibold ${
@@ -456,7 +456,7 @@ export function AgentPage() {
                                   Plan: <span className="text-foreground">{PLANS[c.plan as PlanId]?.name}</span>
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  Enter exact amount: <span className="font-bold text-foreground">TT${planPrice}</span>
+                                  Enter exact amount: <span className="font-bold text-foreground">TT$${planPrice}</span>
                                 </p>
                               </div>
                               <div className="flex items-center gap-2">
@@ -468,7 +468,7 @@ export function AgentPage() {
                                 />
                                 <button onClick={() => handlePayAndSubmit(c)} disabled={busy || !amountExact}
                                   className="rounded-md bg-[#c0001a] px-5 py-2 text-sm font-bold text-white hover:bg-[#a30016] disabled:opacity-50 disabled:cursor-not-allowed transition">
-                                  {busy ? "Sendingâ€¦" : "Send"}
+                                  {busy ? "Sending…" : "Send"}
                                 </button>
                               </div>
                               {payError && <p className="text-xs font-semibold text-destructive">{payError}</p>}
@@ -488,9 +488,9 @@ export function AgentPage() {
                           <div className="border-t border-border px-4 pb-4 pt-3 space-y-4">
                             <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                               <div><p className="text-xs text-muted-foreground">Email</p><p className="font-medium break-all">{c.email}</p></div>
-                              <div><p className="text-xs text-muted-foreground">Phone</p><p className="font-medium">{c.phone ?? "â€”"}</p></div>
+                              <div><p className="text-xs text-muted-foreground">Phone</p><p className="font-medium">{c.phone ?? "—"}</p></div>
                               <div><p className="text-xs text-muted-foreground">Plan</p><p className="font-medium">{PLANS[c.plan as PlanId]?.name ?? c.plan}</p></div>
-                              <div><p className="text-xs text-muted-foreground">Amount</p><p className="font-medium text-primary">TT${PLANS[c.plan as PlanId]?.price ?? "â€”"}</p></div>
+                              <div><p className="text-xs text-muted-foreground">Amount</p><p className="font-medium text-primary">TT${PLANS[c.plan as PlanId]?.price ?? "—"}</p></div>
                               <div>
                                 <p className="text-xs text-muted-foreground">Status</p>
                                 <p className={`font-semibold capitalize ${
@@ -509,7 +509,7 @@ export function AgentPage() {
                             </div>
                             <div>
                               <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2 border-t border-border pt-3">Payment History</p>
-                              {histLoading && <p className="text-sm text-muted-foreground">Loadingâ€¦</p>}
+                              {histLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
                               {!histLoading && hist.length === 0 && <p className="text-sm text-muted-foreground">No payments recorded yet.</p>}
                               {!histLoading && hist.map((p) => (
                                 <div key={p.id} className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 mb-1.5 text-sm">
@@ -517,7 +517,7 @@ export function AgentPage() {
                                     <p className="font-medium capitalize">{p.plan.replace(/_/g, " ")}</p>
                                     <p className="text-xs text-muted-foreground">
                                       {new Date(p.period_start).toLocaleDateString("en-TT", { day: "numeric", month: "short" })}
-                                      {" â€“ "}
+                                      {" – "}
                                       {new Date(p.period_end).toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
                                     </p>
                                   </div>
@@ -535,12 +535,12 @@ export function AgentPage() {
             })()
             }
 
-            {/* â”€â”€ APPROVALS TAB â”€â”€ */}
+            {/* —— APPROVALS TAB —— */}
             {tab === "approvals" && (
               <div className="space-y-4 max-w-2xl">
                 <h2 className="text-lg font-bold">Approvals</h2>
                 <p className="text-sm text-muted-foreground">
-                  Confirm cash collected â€” admin will then activate the account.
+                  Confirm cash collected — admin will then activate the account.
                 </p>
                 {pendingApprovals.length === 0 && (
                   <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
@@ -551,7 +551,7 @@ export function AgentPage() {
                   <div key={req.id} className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-5">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0 space-y-1 text-sm">
-                        <p className="font-semibold text-base">{req.customer_full_name ?? "â€”"}</p>
+                        <p className="font-semibold text-base">{req.customer_full_name ?? "—"}</p>
                         <p className="text-muted-foreground">{req.customer_email}</p>
                         <p><span className="text-muted-foreground">Plan:</span> {PLANS[req.plan as PlanId]?.name ?? req.plan}</p>
                         <p><span className="text-muted-foreground">Total:</span> <span className="font-bold">TT${req.amount}</span></p>
@@ -561,7 +561,7 @@ export function AgentPage() {
                       </div>
                       <button onClick={() => handleApproveRequest(req)} disabled={busy}
                         className="shrink-0 rounded-md bg-[#c0001a] px-4 py-2 text-sm font-bold text-white hover:bg-[#a30016] disabled:opacity-60">
-                        âœ“ Cash Collected
+                        ✓ Cash Collected
                       </button>
                     </div>
                   </div>
@@ -571,9 +571,9 @@ export function AgentPage() {
                     <p className="mb-2 text-sm font-semibold text-muted-foreground">Waiting for Admin</p>
                     {billingRequests.filter((r) => r.status === "pending_admin").map((req) => (
                       <div key={req.id} className="rounded-xl border border-border bg-card p-4 mb-2">
-                        <p className="font-semibold text-sm">{req.customer_full_name ?? "â€”"}</p>
-                        <p className="text-xs text-muted-foreground">{req.customer_email} Â· {PLANS[req.plan as PlanId]?.name}</p>
-                        <p className="mt-1 text-xs text-yellow-400 font-semibold">Awaiting admin activationâ€¦</p>
+                        <p className="font-semibold text-sm">{req.customer_full_name ?? "—"}</p>
+                        <p className="text-xs text-muted-foreground">{req.customer_email} · {PLANS[req.plan as PlanId]?.name}</p>
+                        <p className="mt-1 text-xs text-yellow-400 font-semibold">Awaiting admin activation…</p>
                       </div>
                     ))}
                   </div>
@@ -581,12 +581,12 @@ export function AgentPage() {
               </div>
             )}
 
-            {/* â”€â”€ RENEWALS TAB â”€â”€ */}
+            {/* —— RENEWALS TAB —— */}
             {tab === "renewals" && (
               <div className="space-y-4 max-w-2xl">
                 <h2 className="text-lg font-bold">Renewals Due</h2>
                 <p className="text-sm text-muted-foreground">
-                  Customers expiring in the next 5 days. Collect cash and tap Collect &amp; Request.
+                  Customers expiring in the next 5 days. Collect cash and tap Collect & Request.
                 </p>
                 {upcomingRenewals.length === 0 && (
                   <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
@@ -604,12 +604,12 @@ export function AgentPage() {
                     <div key={c.id} className="rounded-xl border border-orange-400/30 bg-orange-400/5 p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0 space-y-1 text-sm">
-                          <p className="font-semibold text-base">{c.full_name ?? "â€”"}</p>
+                          <p className="font-semibold text-base">{c.full_name ?? "—"}</p>
                           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.phone ?? "â€”"}</span>
+                            <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.phone ?? "—"}</span>
                             <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{c.email}</span>
                           </div>
-                          <p><span className="text-muted-foreground">Plan:</span> {PLANS[c.plan as PlanId]?.name} Â· TT${PLANS[c.plan as PlanId]?.price}</p>
+                          <p><span className="text-muted-foreground">Plan:</span> {PLANS[c.plan as PlanId]?.name} · TT${PLANS[c.plan as PlanId]?.price}</p>
                           <p>
                             <span className="text-muted-foreground">Due:</span>{" "}
                             {dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
@@ -628,7 +628,7 @@ export function AgentPage() {
                         ) : (
                           <button onClick={() => handleRequestRenewal(c)} disabled={busy}
                             className="shrink-0 rounded-md bg-[#c0001a] px-4 py-2 text-sm font-bold text-white hover:bg-[#a30016] disabled:opacity-60">
-                            Collect &amp; Request
+                            Collect & Request
                           </button>
                         )}
                       </div>
@@ -674,4 +674,3 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
     </div>
   );
 }
-
