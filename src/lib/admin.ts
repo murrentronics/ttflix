@@ -29,9 +29,9 @@ export async function fetchUsersByStatus(status: UserStatus): Promise<AdminUser[
     .neq("email", ADMIN_EMAIL)
     .order("email", { ascending: true });
 
-  // For approved status, exclude agents
+  // For approved status, exclude agents (only if role is actually agent; if role is null or doesn't exist, include them)
   if (status === "approved") {
-    query = query.not("role", "eq", "agent");
+    query = query.or("role.is.null,role.neq.agent");
   }
 
   const { data, error } = await query;
@@ -43,11 +43,12 @@ export async function countByStatus(status: UserStatus): Promise<number> {
   let query = supabase
     .from("profiles")
     .select("*", { count: "exact", head: true })
-    .eq("status", status);
+    .eq("status", status)
+    .neq("email", ADMIN_EMAIL); // Don't forget to exclude admin!
 
-  // For approved status, exclude agents
+  // For approved status, exclude agents (only if role is actually agent; if role is null or doesn't exist, include them)
   if (status === "approved") {
-    query = query.not("role", "eq", "agent");
+    query = query.or("role.is.null,role.neq.agent");
   }
 
   const { count } = await query;
