@@ -111,9 +111,11 @@ public class MainActivity extends BridgeActivity {
             justResumed = false;
             return;
         }
-        // Dispatch GoBack keyboard event into the WebView
+        // First check if WebView can go back
         if (getBridge() != null && getBridge().getWebView() != null) {
-            getBridge().getWebView().evaluateJavascript(
+            final WebView webView = getBridge().getWebView();
+            // Dispatch GoBack keyboard event into the WebView
+            webView.evaluateJavascript(
                 "(function(){" +
                 "  var e = new KeyboardEvent('keydown', {key:'GoBack',bubbles:true,cancelable:true});" +
                 "  var consumed = !document.dispatchEvent(e);" +
@@ -121,7 +123,14 @@ public class MainActivity extends BridgeActivity {
                 "})()",
                 result -> {
                     if (result != null && result.contains("consumed")) return;
-                    runOnUiThread(() -> moveTaskToBack(true));
+                    // If JS didn't consume it, check WebView history
+                    runOnUiThread(() -> {
+                        if (webView.canGoBack()) {
+                            webView.goBack();
+                        } else {
+                            moveTaskToBack(true);
+                        }
+                    });
                 }
             );
         } else {

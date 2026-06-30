@@ -74,6 +74,7 @@ export async function setUserStatus(id: string, status: UserStatus) {
       amount,
       period_start: periodStart,
       period_end: periodEnd.toISOString(),
+      approved_at: periodStart,
     });
   }
   const { error } = await supabase.from("profiles").update(patch).eq("id", id);
@@ -236,6 +237,7 @@ export async function adminApproveAgentRequest(requestId: string): Promise<void>
     agent_id: req.agent_id,
     agent_commission: req.agent_commission,
     admin_amount: req.admin_amount,
+    approved_at: periodStart,
   });
 
   // 4. Mark request as approved

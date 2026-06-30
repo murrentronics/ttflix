@@ -467,32 +467,6 @@ export function AdminPage() {
                       </div>
                     </div>
 
-                    {/* ── Subscribers by plan ── */}
-                    <div>
-                      <h2 className="text-base font-bold mb-3 flex items-center gap-2">
-                        <Receipt className="h-4 w-4 text-primary" />
-                        Subscribers by Plan
-                      </h2>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                        {Object.entries(dashStats.subsByPlan).map(([planId, g]) => (
-                          <div key={planId} className="rounded-xl border border-border bg-card p-4 space-y-2">
-                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{g.planName}</p>
-                            <p className="text-2xl font-extrabold text-foreground">{g.count}</p>
-                            <div className="text-xs text-muted-foreground space-y-0.5">
-                              <p>TT${g.planPrice}<span className="text-muted-foreground/60">/{PLANS[planId as keyof typeof PLANS]?.annual ? "yr" : "mo"}</span> per sub</p>
-                              <p className="font-semibold text-primary">
-                                ≈ TT${g.monthlyRevenue.toLocaleString()} / mo
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                        {Object.keys(dashStats.subsByPlan).length === 0 && (
-                          <div className="col-span-4 rounded-xl border border-border bg-card p-8 text-center text-muted-foreground text-sm">
-                            No active subscribers yet.
-                          </div>
-                        )}
-                      </div>
-                    </div>
 
                     {/* ── Payments received this month ── */}
                     <div>
