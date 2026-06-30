@@ -735,7 +735,7 @@ export function AdminPage() {
                             <p className="font-medium">{w.profiles?.full_name ?? "—"}</p>
                             <p className="text-xs text-muted-foreground">{w.profiles?.email ?? "—"}</p>
                           </td>
-                          <td className="px-4 py-3 capitalize">{PLANS[w.profiles?.plan as string]?.name ?? w.profiles?.plan ?? "—"}</td>
+                          <td className="px-4 py-3 capitalize">{PLANS[w.profiles?.plan as keyof typeof PLANS]?.name ?? w.profiles?.plan ?? "—"}</td>
                           <td className="px-4 py-3 font-medium">{w.title ?? "—"}</td>
                           <td className="px-4 py-3 capitalize text-muted-foreground">{w.media_type ?? "—"}</td>
                           <td className="px-4 py-3 text-xs text-muted-foreground">
