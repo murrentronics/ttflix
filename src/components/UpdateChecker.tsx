@@ -6,7 +6,8 @@ import { Capacitor } from "@capacitor/core";
 const VERSION_URL = "https://ttflix.pages.dev/version.json";
 
 // Current version — patched automatically by the CI version bump script
-const CURRENT_VERSION = "1.1.150";
+const CURRENT_VERSION_NAME = "1.1.151";
+const CURRENT_VERSION_CODE = 153;
 
 type VersionInfo = {
   versionName: string;
@@ -15,16 +16,9 @@ type VersionInfo = {
   apkUrl: string;
 };
 
-function isNewer(latest: string, current: string): boolean {
-  const l = latest.split(".").map(Number);
-  const c = current.split(".").map(Number);
-  for (let i = 0; i < Math.max(l.length, c.length); i++) {
-    const lv = l[i] ?? 0;
-    const cv = c[i] ?? 0;
-    if (lv > cv) return true;
-    if (lv < cv) return false;
-  }
-  return false;
+// Use versionCode (integer) for comparison — more reliable than string versionName
+function isNewer(latestVersionCode: number, currentVersionCode: number): boolean {
+  return latestVersionCode > currentVersionCode;
 }
 
 // Detect Android TV using the native bridge registered in MainActivity.
@@ -52,7 +46,7 @@ export function UpdateChecker() {
     fetch(`${VERSION_URL}?t=${Date.now()}`)
       .then((r) => r.json())
       .then((v: VersionInfo) => {
-        if (isNewer(v.versionName, CURRENT_VERSION)) {
+        if (isNewer(v.versionCode, CURRENT_VERSION_CODE)) {
           setUpdate(v);
         }
       })

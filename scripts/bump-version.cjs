@@ -35,12 +35,11 @@ gradle = gradle
   .replace(/versionName\s+"[^"]+"/, `versionName "${v.versionName}"`);
 fs.writeFileSync(GRADLE_FILE, gradle);
 
-// ── 3. Patch CURRENT_VERSION in UpdateChecker.tsx ────────────────────────────
+// ── 3. Patch CURRENT_VERSION_NAME and CURRENT_VERSION_CODE in UpdateChecker.tsx ──────────────────
 let checker = fs.readFileSync(CHECKER_FILE, "utf8");
-checker = checker.replace(
-  /const CURRENT_VERSION = "[^"]+"/,
-  `const CURRENT_VERSION = "${v.versionName}"`
-);
+checker = checker
+  .replace(/const CURRENT_VERSION_NAME = "[^"]+"/, `const CURRENT_VERSION_NAME = "${v.versionName}"`)
+  .replace(/const CURRENT_VERSION_CODE = \d+/, `const CURRENT_VERSION_CODE = ${v.versionCode}`);
 fs.writeFileSync(CHECKER_FILE, checker);
 
 console.log(`✓  Bumped to v${v.versionName} (build ${v.versionCode})`);
