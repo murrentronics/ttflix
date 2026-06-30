@@ -419,15 +419,19 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   // Active subscribers with their plans
   const { data: subs } = await supabase
     .from("profiles")
-    .select("id, plan, role")
+    .select("id, plan, role, email, status")
     .eq("status", "approved")
     .neq("role", "agent")
     .neq("email", ADMIN_EMAIL);
+
+  console.log("fetchDashboardStats subs:", subs);
 
   // All payment history ever
   const { data: allPayments } = await supabase
     .from("payment_history")
     .select("*");
+
+  console.log("fetchDashboardStats allPayments:", allPayments);
 
   // Count agents
   const { count: agentCount } = await supabase
@@ -435,12 +439,14 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     .select("*", { count: "exact", head: true })
     .eq("role", "agent");
 
-  // Count live watching (last 10 seconds)
-  const staleDate = new Date(Date.now() - 10 * 1000).toISOString();
-  const { count: watchingCount } = await supabase
+  // Count live watching (last 30 seconds)
+  const staleDate = new Date(Date.now() - 30 * 1000).toISOString();
+  const { count: watchingCount, data: watchingData } = await supabase
     .from("active_watches")
-    .select("*", { count: "exact", head: true })
+    .select("*", { count: "exact" })
     .gte("last_ping", staleDate);
+
+  console.log("fetchDashboardStats watchingData:", watchingData, "watchingCount:", watchingCount);
 
   // Count pending agent requests
   const { count: pendingRequestsCount } = await supabase
@@ -461,7 +467,14 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   let totalMonthlyRevenue = 0;
   let totalYearlyRevenue = 0;
   for (const sub of subList) {
-    const planId = (sub.plan || "basic") as PlanId;
+    // Safely get a valid PlanId
+    let planId: PlanId;
+    const rawPlan = sub.plan;
+    if (rawPlan && Object.keys(PLANS).includes(rawPlan)) {
+      planId = rawPlan as PlanId;
+    } else {
+      planId = "basic";
+    }
     const planDef = PLANS[planId];
     const price = planDef?.price ?? 0;
     if (planDef?.annual) {
