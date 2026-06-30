@@ -234,6 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut: AuthContextValue["signOut"] = async () => {
     await supabase.auth.signOut();
     setProfile(null);
+    localStorage.removeItem("ttflix_active_profile");
   };
 
   const changePlan: AuthContextValue["changePlan"] = async (plan) => {

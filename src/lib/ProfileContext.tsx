@@ -55,10 +55,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loading && user && authProfile) {
-      setupDoneRef.current = false; // reset on user change
+      // Clear saved profile storage for this user (switching to a new user)
+      localStorage.removeItem(STORAGE_KEY);
+      setupDoneRef.current = false;
       refreshProfiles();
     }
     if (!user) {
+      localStorage.removeItem(STORAGE_KEY);
       setProfiles([]);
       setActiveProfileState(null);
       setProfileSelected(false);
