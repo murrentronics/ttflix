@@ -8,21 +8,35 @@ export type AdminUser = Profile & {
 };
 
 export async function fetchUsersByStatus(status: UserStatus): Promise<AdminUser[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from("profiles")
     .select("*")
     .eq("status", status)
     .neq("email", ADMIN_EMAIL)
     .order("created_at", { ascending: false });
+  
+  // For approved status, exclude agents
+  if (status === "approved") {
+    query = query.not("role", "eq", "agent");
+  }
+  
+  const { data, error } = await query;
   if (error) throw error;
   return (data as AdminUser[]) ?? [];
 }
 
 export async function countByStatus(status: UserStatus): Promise<number> {
-  const { count } = await supabase
+  let query = supabase
     .from("profiles")
     .select("*", { count: "exact", head: true })
     .eq("status", status);
+  
+  // For approved status, exclude agents
+  if (status === "approved") {
+    query = query.not("role", "eq", "agent");
+  }
+  
+  const { count } = await query;
   return count ?? 0;
 }
 
