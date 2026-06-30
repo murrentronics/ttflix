@@ -44,7 +44,17 @@ export async function fetchProfiles(userId: string): Promise<UserProfile[]> {
   }
 
   const deleteSet = new Set(toDelete);
-  return all.filter((p) => !deleteSet.has(p.id));
+  const cleaned = all.filter((p) => !deleteSet.has(p.id));
+  
+  // Sort profiles: Default first, then non-kids, then Kids always last
+  return cleaned.sort((a, b) => {
+    if (a.is_default) return -1;
+    if (b.is_default) return 1;
+    if (a.is_kids && !b.is_kids) return 1;
+    if (!a.is_kids && b.is_kids) return -1;
+    // For non-kids/non-default: sort by created_at
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  });
 }
 
 export async function createProfile(
