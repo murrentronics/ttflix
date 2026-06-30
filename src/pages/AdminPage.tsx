@@ -866,7 +866,7 @@ export function AdminPage() {
                                 <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">{(u as any).phone}</span>
                               )}
                               <span className="rounded-full bg-primary/15 px-2 py-0.5 text-primary">
-                                {PLANS[u.plan]?.name ?? u.plan} · TT${PLANS[u.plan]?.price ?? "?"}/{PLANS[u.plan]?.annual ? "yr" : "mo"}
+                                {PLANS[u.plan as keyof typeof PLANS]?.name ?? u.plan} · TT${PLANS[u.plan as keyof typeof PLANS]?.price ?? "?"}/{PLANS[u.plan as keyof typeof PLANS]?.annual ? "yr" : "mo"}
                               </span>
                               {tab !== "pending" && dueDate && (
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -875,7 +875,7 @@ export function AdminPage() {
                                     : "bg-yellow-500/15 text-yellow-400"
                                 }`}>
                                   {tab === "billing"
-                                    ? (daysLeft === 0 ? "Due today" : daysLeft < 0 ? "Overdue" : `${daysLeft}d left`)
+                                    ? (daysLeft! === 0 ? "Due today" : daysLeft! < 0 ? "Overdue" : `${daysLeft!}d left`)
                                     : `Renews ${dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}`}
                                 </span>
                               )}
