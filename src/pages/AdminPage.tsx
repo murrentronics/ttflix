@@ -88,7 +88,7 @@ export function AdminPage() {
   }, []);
 
   const loadWatching = useCallback(async () => {
-    const staleDate = new Date(Date.now() - 10 * 1000).toISOString();
+    const staleDate = new Date(Date.now() - 30 * 1000).toISOString();
     const { data } = await supabase
       .from("active_watches")
       .select("*, profiles(full_name, email, plan)")

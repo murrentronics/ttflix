@@ -433,8 +433,8 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     .select("*", { count: "exact", head: true })
     .eq("role", "agent");
 
-  // Count live watching (last 5 min)
-  const staleDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  // Count live watching (last 30 seconds)
+  const staleDate = new Date(Date.now() - 30 * 1000).toISOString();
   const { count: watchingCount } = await supabase
     .from("active_watches")
     .select("*", { count: "exact", head: true })
