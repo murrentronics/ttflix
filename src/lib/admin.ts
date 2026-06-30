@@ -29,7 +29,8 @@ export async function countByStatus(status: UserStatus): Promise<number> {
   let query = supabase
     .from("profiles")
     .select("*", { count: "exact", head: true })
-    .eq("status", status);
+    .eq("status", status)
+    .neq("email", ADMIN_EMAIL);
   
   // For approved status, exclude agents
   if (status === "approved") {
