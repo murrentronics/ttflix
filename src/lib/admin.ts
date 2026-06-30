@@ -420,7 +420,8 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     .from("profiles")
     .select("id, plan, role")
     .eq("status", "approved")
-    .neq("role", "agent");
+    .neq("role", "agent")
+    .neq("email", ADMIN_EMAIL);
 
   // All payment history ever
   const { data: allPayments } = await supabase
@@ -433,8 +434,8 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     .select("*", { count: "exact", head: true })
     .eq("role", "agent");
 
-  // Count live watching (last 5 min)
-  const staleDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  // Count live watching (last 10 seconds)
+  const staleDate = new Date(Date.now() - 10 * 1000).toISOString();
   const { count: watchingCount } = await supabase
     .from("active_watches")
     .select("*", { count: "exact", head: true })
