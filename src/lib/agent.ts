@@ -269,13 +269,14 @@ export async function fetchAgentUpcomingRenewals(agentId: string): Promise<Agent
     });
 }
 
-// Create a renewal billing request for an agent customer
+// Create a renewal billing request for an agent customer — directly pending admin
 export async function agentRequestRenewal(
   agentId: string,
   customerId: string,
   plan: PlanId
 ): Promise<void> {
   const commission = AGENT_COMMISSION[plan];
+  const now = new Date().toISOString();
   const { error } = await supabase.from("agent_billing_requests").insert({
     agent_id: agentId,
     customer_id: customerId,
@@ -284,9 +285,13 @@ export async function agentRequestRenewal(
     agent_commission: commission.agent,
     admin_amount: commission.admin,
     request_type: "renewal",
-    status: "pending_agent",
+    status: "pending_admin",
+    agent_approved_at: now,
   });
   if (error) throw error;
+  
+  // Mark customer as pending so admin sees them in pending tab
+  await supabase.from("profiles").update({ status: "pending" }).eq("id", customerId);
 }
 
 // One-step pay: agent has collected cash and immediately submits to admin queue.

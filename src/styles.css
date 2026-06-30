@@ -108,6 +108,9 @@
   .text-balance {
     text-wrap: balance;
   }
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
 
   /* ── TV remote / keyboard focus rings ─────────────────────────────────────
    * Only show focus-visible styles on non-touch devices (TV remote, keyboard).

@@ -11,7 +11,7 @@ import { supabase, STATUS_LABELS, PLANS, type UserStatus } from "@/lib/supabase"
 import {
   fetchUsersByStatus, countByStatus, setUserStatus, setUserRole, makeUserAgent, removeUserAgent, deleteUserRecord,
   fetchPendingAgentBillingRequests, adminApproveAgentRequest, adminRejectAgentRequest,
-  fetchAgentList, fetchAgentCustomerLinks, fetchDashboardStats,
+  fetchAgentList, fetchAgentCustomerLinks, fetchDashboardStats, fetchPaymentHistory,
   type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin, type AgentListItem, type DashboardStats,
 } from "@/lib/admin";
 import {
@@ -122,22 +122,9 @@ export function AdminPage() {
   }, []);
 
   const loadHistory = useCallback(async (page: number) => {
-    const from = (page - 1) * PAGE_SIZE;
-    const to = from + PAGE_SIZE - 1;
-    const { data, count } = await supabase
-      .from("payment_history")
-      .select("*, profiles(full_name, email, phone)", { count: "exact" })
-      .order("approved_at", { ascending: false })
-      .range(from, to);
-    setHistoryTotal(count ?? 0);
-    setPaymentHistory(
-      ((data ?? []) as any[]).map((r) => ({
-        ...r,
-        full_name: r.profiles?.full_name ?? null,
-        email: r.profiles?.email ?? "—",
-        phone: r.profiles?.phone ?? null,
-      }))
-    );
+    const { data, count } = await fetchPaymentHistory(page, PAGE_SIZE);
+    setHistoryTotal(count);
+    setPaymentHistory(data);
   }, []);
 
   useEffect(() => {

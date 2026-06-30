@@ -2,19 +2,20 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users, UserPlus, TrendingUp, Clock, CheckCircle, AlertCircle,
-  Check, Phone, Mail, Menu, ChevronDown, LayoutDashboard, DollarSign,
+  Check, Phone, Mail, Menu, ChevronDown, LayoutDashboard,
+  Search, X,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { PLANS, type PlanId, supabase } from "@/lib/supabase";
 import {
-  fetchAgentCustomers, agentCreateCustomer, agentApproveBillingRequest,
+  fetchAgentCustomers, agentCreateCustomer,
   fetchAgentBillingRequests, fetchAgentSummary, fetchAgentUpcomingRenewals,
   agentRequestRenewal, agentPayAndSubmitRenewal, fetchCustomerPaymentHistory,
   AGENT_COMMISSION, type AgentCustomer, type AgentBillingRequest,
 } from "@/lib/agent";
 
-type AgentTab = "dashboard" | "create" | "pending" | "active" | "suspended" | "expelled" | "approvals" | "renewals";
+type AgentTab = "dashboard" | "create" | "pending" | "active" | "suspended" | "expelled" | "renewals";
 
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, "").slice(0, 7);
@@ -29,7 +30,6 @@ const NAV_ITEMS: Array<{ id: AgentTab; label: string; icon: React.ReactNode }> =
   { id: "active",    label: "Active",          icon: <Users           className="h-4 w-4 shrink-0" /> },
   { id: "suspended", label: "Suspended",       icon: <AlertCircle     className="h-4 w-4 shrink-0" /> },
   { id: "expelled",  label: "Expelled",        icon: <AlertCircle     className="h-4 w-4 shrink-0" /> },
-  { id: "approvals", label: "Approvals",       icon: <CheckCircle     className="h-4 w-4 shrink-0" /> },
   { id: "renewals",  label: "Renewals Due",    icon: <Clock           className="h-4 w-4 shrink-0" /> },
 ];
 
@@ -39,6 +39,7 @@ export function AgentPage() {
   const [tab, setTab] = useState<AgentTab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [customers, setCustomers] = useState<AgentCustomer[]>([]);
+  const [search, setSearch] = useState("");
   const [billingRequests, setBillingRequests] = useState<AgentBillingRequest[]>([]);
   const [upcomingRenewals, setUpcomingRenewals] = useState<AgentCustomer[]>([]);
   const [summary, setSummary] = useState({
@@ -128,21 +129,37 @@ export function AgentPage() {
     setTimeout(() => setMsg(null), 4000);
   };
 
-  const switchTab = (id: AgentTab) => { setTab(id); setSidebarOpen(false); };
+  const switchTab = (id: AgentTab) => { setTab(id); setSidebarOpen(false); setSearch(""); };
 
-  const pendingApprovals = billingRequests.filter((r) => r.status === "pending_agent");
+  const searchLower = search.trim().toLowerCase();
 
-  const custPending   = customers.filter((c) => c.status === "pending");
-  const custActive    = customers.filter((c) => c.status === "approved");
-  const custSuspended = customers.filter((c) => c.status === "suspended");
-  const custExpelled  = customers.filter((c) => c.status === "expelled");
+  const sortAndFilter = (list: AgentCustomer[]) => {
+    return list
+      .filter((c) => {
+        if (!searchLower) return true;
+        return (
+          (c.full_name ?? "").toLowerCase().includes(searchLower) ||
+          (c.email ?? "").toLowerCase().includes(searchLower) ||
+          (c.phone ?? "").toLowerCase().includes(searchLower)
+        );
+      })
+      .sort((a, b) => {
+        const nameA = (a.full_name ?? a.email ?? "").toLowerCase();
+        const nameB = (b.full_name ?? b.email ?? "").toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+  };
+
+  const custPending   = sortAndFilter(customers.filter((c) => c.status === "pending"));
+  const custActive    = sortAndFilter(customers.filter((c) => c.status === "approved"));
+  const custSuspended = sortAndFilter(customers.filter((c) => c.status === "suspended"));
+  const custExpelled  = sortAndFilter(customers.filter((c) => c.status === "expelled"));
 
   const badges: Partial<Record<AgentTab, number>> = {
     pending:   custPending.length,
     active:    custActive.length,
     suspended: custSuspended.length,
     expelled:  custExpelled.length,
-    approvals: pendingApprovals.length,
     renewals:  upcomingRenewals.length,
   };
 
@@ -171,23 +188,13 @@ export function AgentPage() {
     } finally { setCreating(false); }
   };
 
-  const handleApproveRequest = async (req: AgentBillingRequest) => {
-    setBusy(true);
-    try {
-      await agentApproveBillingRequest(req.id);
-      await refresh();
-      showMsg("Cash confirmed! Admin will now activate the account.");
-    } catch (err: any) { showMsg(err?.message ?? "Failed.", "err"); }
-    finally { setBusy(false); }
-  };
-
   const handleRequestRenewal = async (customer: AgentCustomer) => {
     if (!user) return;
     setBusy(true);
     try {
       await agentRequestRenewal(user.id, customer.id, customer.plan as PlanId);
       await refresh();
-      showMsg(`Renewal created for ${customer.full_name ?? customer.email}. Check Approvals.`);
+      showMsg(`Renewal created for ${customer.full_name ?? customer.email}! Waiting for admin approval.`);
     } catch (err: any) { showMsg(err?.message ?? "Failed.", "err"); }
     finally { setBusy(false); }
   };
@@ -303,7 +310,6 @@ export function AgentPage() {
                   item.id === "active"    ? "bg-green-500 text-black" :
                   item.id === "suspended" ? "bg-orange-500 text-white" :
                   item.id === "expelled"  ? "bg-destructive text-white" :
-                  item.id === "approvals" ? "bg-white text-[#c0001a]" :
                   item.id === "renewals"  ? "bg-yellow-500 text-black" :
                   "bg-white text-[#c0001a]";
                 return (
@@ -350,24 +356,19 @@ export function AgentPage() {
             {tab === "dashboard" && (
               <div className="space-y-6">
                 <h2 className="text-xl font-extrabold">Dashboard</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                   <SummaryCard label="Total Commission" value={`TT$${summary.totalCommission}`} icon={<CheckCircle className="h-4 w-4 text-green-500" />} />
                   <SummaryCard label="Pending Collection" value={`TT$${summary.pendingCollection}`} icon={<Clock className="h-4 w-4 text-yellow-500" />} />
                   <SummaryCard label="Owed to Admin" value={`TT$${summary.pendingAdminCut}`} icon={<AlertCircle className="h-4 w-4 text-orange-400" />} />
                   <SummaryCard label="Active Customers" value={`${custActive.length}`} icon={<Users className="h-4 w-4 text-primary" />} />
-                  <SummaryCard label="Pending Requests" value={`${pendingApprovals.length}`} icon={<CheckCircle className="h-4 w-4 text-yellow-500" />} />
                   <SummaryCard label="Renewals Due" value={`${upcomingRenewals.length}`} icon={<Clock className="h-4 w-4 text-orange-400" />} />
                 </div>
                 
                 {/* Quick action buttons */}
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => switchTab("create")} className="rounded-xl bg-[#c0001a] p-4 flex items-center gap-3 text-white font-semibold hover:bg-[#a30016] transition">
+                <div className="grid grid-cols-1 gap-3">
+                  <button onClick={() => switchTab("create")} className="rounded-xl bg-[#c0001a] p-4 flex items-center justify-center gap-3 text-white font-semibold hover:bg-[#a30016] transition">
                     <UserPlus className="h-5 w-5" />
                     Create Customer
-                  </button>
-                  <button onClick={() => switchTab("approvals")} className="rounded-xl border border-border bg-card p-4 flex items-center gap-3 font-semibold hover:bg-accent transition">
-                    <CheckCircle className="h-5 w-5" />
-                    Pending Requests
                   </button>
                 </div>
               </div>
@@ -447,6 +448,23 @@ export function AgentPage() {
               return (
                 <div className="space-y-3 max-w-2xl">
                   <h2 className="text-lg font-bold">{NAV_ITEMS.find(n => n.id === tab)?.label}</h2>
+                  {/* Search input */}
+                  <div className="relative max-w-sm">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search by name, email, phone…"
+                      className="w-full rounded-md border border-border bg-input px-3 py-2 pl-9 pr-9 text-sm outline-none focus:border-primary"
+                    />
+                    {search && (
+                      <button onClick={() => setSearch("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        aria-label="Clear search">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                   {list.length === 0 && (
                     <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
                       No {emptyLabel} customers yet.
@@ -459,8 +477,6 @@ export function AgentPage() {
                     const comm = AGENT_COMMISSION[c.plan as PlanId];
                     const planPrice = comm?.total ?? PLANS[c.plan as PlanId]?.price ?? 0;
                     const isPayOpen = payOpen === c.id;
-                    const enteredAmt = parseInt(payAmount, 10);
-                    const amountExact = !isNaN(enteredAmt) && enteredAmt === planPrice;
                     const alreadyPending = billingRequests.some(
                       (r) => r.customer_id === c.id &&
                         (r.status === "pending_agent" || r.status === "pending_admin")
@@ -522,34 +538,7 @@ export function AgentPage() {
                             </div>
                           </div>
 
-                          {isPayOpen && tab === "active" && (
-                            <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-                              <div>
-                                <p className="text-xs font-semibold text-muted-foreground mb-0.5">
-                                  Plan: <span className="text-foreground">{PLANS[c.plan as PlanId]?.name}</span>
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  Enter exact amount: <span className="font-bold text-foreground">TT$${planPrice}</span>
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-semibold shrink-0">TT$</span>
-                                <input type="number" inputMode="numeric" min={1}
-                                  value={payAmount} onChange={(e) => { setPayAmount(e.target.value); setPayError(""); }}
-                                  placeholder={`${planPrice}`}
-                                  className="w-32 rounded-md border border-border bg-input px-3 py-2 text-sm outline-none focus:border-primary"
-                                />
-                                <button onClick={() => handlePayAndSubmit(c)} disabled={busy || !amountExact}
-                                  className="rounded-md bg-[#c0001a] px-5 py-2 text-sm font-bold text-white hover:bg-[#a30016] disabled:opacity-50 disabled:cursor-not-allowed transition">
-                                  {busy ? "Sending…" : "Send"}
-                                </button>
-                              </div>
-                              {payError && <p className="text-xs font-semibold text-destructive">{payError}</p>}
-                              <div className="rounded-md bg-yellow-500/10 border border-yellow-500/25 px-3 py-2.5 text-xs text-yellow-400 leading-relaxed">
-                                <span className="font-bold">Note to tell your customer:</span> After payment is submitted, account activation may take up to 6 hours.
-                              </div>
-                            </div>
-                          )}
+
 
                           <button onClick={() => toggleCustomer(c)} aria-label={isExpanded ? "Collapse" : "Expand"}
                             className="mt-3 flex w-full items-center justify-center text-muted-foreground hover:text-foreground transition">
@@ -608,51 +597,7 @@ export function AgentPage() {
             })()
             }
 
-            {/* —— APPROVALS TAB —— */}
-            {tab === "approvals" && (
-              <div className="space-y-4 max-w-2xl">
-                <h2 className="text-lg font-bold">Approvals</h2>
-                <p className="text-sm text-muted-foreground">
-                  Confirm cash collected — admin will then activate the account.
-                </p>
-                {pendingApprovals.length === 0 && (
-                  <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
-                    No pending approvals. All caught up!
-                  </div>
-                )}
-                {pendingApprovals.map((req) => (
-                  <div key={req.id} className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0 space-y-1 text-sm">
-                        <p className="font-semibold text-base">{req.customer_full_name ?? "—"}</p>
-                        <p className="text-muted-foreground">{req.customer_email}</p>
-                        <p><span className="text-muted-foreground">Plan:</span> {PLANS[req.plan as PlanId]?.name ?? req.plan}</p>
-                        <p><span className="text-muted-foreground">Total:</span> <span className="font-bold">TT${req.amount}</span></p>
-                        <p><span className="text-muted-foreground">Your cut:</span> <span className="font-bold text-green-400">TT${req.agent_commission}</span></p>
-                        <p><span className="text-muted-foreground">Admin's portion:</span> TT${req.admin_amount}</p>
-                        <p><span className="text-muted-foreground">Type:</span> <span className="capitalize">{req.request_type.replace(/_/g, " ")}</span></p>
-                      </div>
-                      <button onClick={() => handleApproveRequest(req)} disabled={busy}
-                        className="shrink-0 rounded-md bg-[#c0001a] px-4 py-2 text-sm font-bold text-white hover:bg-[#a30016] disabled:opacity-60">
-                        ✓ Cash Collected
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                {billingRequests.filter((r) => r.status === "pending_admin").length > 0 && (
-                  <div>
-                    <p className="mb-2 text-sm font-semibold text-muted-foreground">Waiting for Admin</p>
-                    {billingRequests.filter((r) => r.status === "pending_admin").map((req) => (
-                      <div key={req.id} className="rounded-xl border border-border bg-card p-4 mb-2">
-                        <p className="font-semibold text-sm">{req.customer_full_name ?? "—"}</p>
-                        <p className="text-xs text-muted-foreground">{req.customer_email} · {PLANS[req.plan as PlanId]?.name}</p>
-                        <p className="mt-1 text-xs text-yellow-400 font-semibold">Awaiting admin activation…</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+
 
             {/* —— RENEWALS TAB —— */}
             {tab === "renewals" && (
@@ -661,12 +606,34 @@ export function AgentPage() {
                 <p className="text-sm text-muted-foreground">
                   Customers expiring in the next 5 days. Collect cash and tap Collect & Request.
                 </p>
-                {upcomingRenewals.length === 0 && (
-                  <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
-                    No renewals due in the next 5 days.
+                {/* Search input for renewals */}
+                <div className="relative max-w-sm">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search by name, email, phone…"
+                      className="w-full rounded-md border border-border bg-input px-3 py-2 pl-9 pr-9 text-sm outline-none focus:border-primary"
+                    />
+                    {search && (
+                      <button onClick={() => setSearch("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        aria-label="Clear search">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
-                )}
-                {upcomingRenewals.map((c) => {
+                {/* Filter and sort upcoming renewals */}
+                {(() => {
+                  const filteredRenewals = sortAndFilter(upcomingRenewals);
+                  return (
+                    <>
+                      {filteredRenewals.length === 0 && (
+                        <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
+                          {search ? "No results found" : "No renewals due in the next 5 days."}
+                        </div>
+                      )}
+                      {filteredRenewals.map((c) => {
                   const dueDate = new Date(c.subscription_expires_at!);
                   const daysLeft = Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                   const comm = AGENT_COMMISSION[c.plan as PlanId];
@@ -708,12 +675,62 @@ export function AgentPage() {
                     </div>
                   );
                 })}
+              </>
+            );
+          })()}
               </div>
             )}
 
           </main>
         </div>
       </div>
+
+      {/* Fixed bottom pay modal */}
+      {payOpen && (() => {
+        const c = customers.find(cust => cust.id === payOpen)!;
+        const comm = AGENT_COMMISSION[c.plan as PlanId];
+        const planPrice = comm?.total ?? PLANS[c.plan as PlanId]?.price ?? 0;
+        const enteredAmt = parseInt(payAmount, 10);
+        const amountExact = !isNaN(enteredAmt) && enteredAmt === planPrice;
+        return (
+          <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card p-4 pb-safe shadow-2xl">
+            <div className="max-w-2xl mx-auto">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="font-semibold">{c.full_name ?? "—"}</p>
+                  <p className="text-xs text-muted-foreground">{c.email}</p>
+                </div>
+                <button onClick={() => { setPayOpen(null); setPayAmount(""); setPayError(""); }}
+                  className="text-muted-foreground hover:text-foreground">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-muted-foreground">Plan</p>
+                  <p className="text-sm font-semibold">{PLANS[c.plan as PlanId]?.name}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold shrink-0">TT$</span>
+                  <input autoFocus type="number" inputMode="numeric" min={1}
+                    value={payAmount} onChange={(e) => { setPayAmount(e.target.value); setPayError(""); }}
+                    placeholder={`${planPrice}`}
+                    className="flex-1 rounded-md border border-border bg-input px-3 py-3 text-base outline-none focus:border-primary"
+                  />
+                  <button onClick={() => handlePayAndSubmit(c)} disabled={busy || !amountExact}
+                    className="rounded-md bg-[#c0001a] px-6 py-3 text-base font-bold text-white hover:bg-[#a30016] disabled:opacity-50 disabled:cursor-not-allowed transition">
+                    {busy ? "Sending…" : "Send"}
+                  </button>
+                </div>
+                {payError && <p className="text-xs font-semibold text-destructive">{payError}</p>}
+                <div className="rounded-md bg-yellow-500/10 border border-yellow-500/25 px-3 py-2.5 text-xs text-yellow-400 leading-relaxed">
+                  <span className="font-bold">Note to tell your customer:</span> After payment is submitted, account activation may take up to 6 hours.
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </AppShell>
   );
