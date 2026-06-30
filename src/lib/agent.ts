@@ -137,8 +137,9 @@ export async function agentCreateCustomer(
   });
   if (linkErr) throw linkErr;
 
-  // 6. Create a pending_agent billing request
+  // 6. Create billing request directly at pending_admin — cash collected at signup
   const commission = AGENT_COMMISSION[data.plan];
+  const now = new Date().toISOString();
   await supabase.from("agent_billing_requests").insert({
     agent_id: agentId,
     customer_id: newUser.id,
@@ -147,7 +148,8 @@ export async function agentCreateCustomer(
     agent_commission: commission.agent,
     admin_amount: commission.admin,
     request_type: "new_subscription",
-    status: "pending_agent",
+    status: "pending_admin",
+    agent_approved_at: now,
   });
 
   return { userId: newUser.id };
@@ -285,6 +287,41 @@ export async function agentRequestRenewal(
     status: "pending_agent",
   });
   if (error) throw error;
+}
+
+// One-step pay: agent has collected cash and immediately submits to admin queue.
+// Creates the renewal request already at pending_admin (no separate confirm step).
+export async function agentPayAndSubmitRenewal(
+  agentId: string,
+  customerId: string,
+  plan: PlanId
+): Promise<void> {
+  const commission = AGENT_COMMISSION[plan];
+  const now = new Date().toISOString();
+
+  // Insert request directly as pending_admin — cash already collected
+  const { data: req, error } = await supabase
+    .from("agent_billing_requests")
+    .insert({
+      agent_id: agentId,
+      customer_id: customerId,
+      plan,
+      amount: commission.total,
+      agent_commission: commission.agent,
+      admin_amount: commission.admin,
+      request_type: "renewal",
+      status: "pending_admin",
+      agent_approved_at: now,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error) throw error;
+
+  // Mark customer as pending so admin sees them in the pending tab
+  await supabase
+    .from("profiles")
+    .update({ status: "pending" })
+    .eq("id", customerId);
 }
 
 // Calculate agent summary stats

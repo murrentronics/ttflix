@@ -118,3 +118,17 @@ create policy "profiles select" on public.profiles for select to authenticated
 alter table public.payment_history add column if not exists agent_id uuid references public.profiles(id) on delete set null;
 alter table public.payment_history add column if not exists agent_commission integer;
 alter table public.payment_history add column if not exists admin_amount integer;
+
+-- 8) Allow agents to read payment_history for their own customers
+-- Replaces the old policy that only allowed users to see their own + admin seeing all.
+drop policy if exists "payment_history select" on public.payment_history;
+create policy "payment_history select" on public.payment_history for select to authenticated
+  using (
+    user_id = auth.uid()
+    or public.is_admin()
+    or exists (
+      select 1 from public.agent_customers ac
+      where ac.customer_id = payment_history.user_id
+        and ac.agent_id = auth.uid()
+    )
+  );

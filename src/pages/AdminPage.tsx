@@ -3,16 +3,16 @@ import { useNavigate } from "react-router-dom";
 import {
   Trash2, Ban, UserX, ShieldCheck, RefreshCw, CalendarDays, Receipt,
   ChevronLeft, ChevronRight, Tv, Search, X, Briefcase, ChevronDown, Menu,
+  LayoutDashboard, TrendingUp, Users, DollarSign,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { supabase, STATUS_LABELS, PLANS, type UserStatus } from "@/lib/supabase";
 import {
-  fetchUsersByStatus, countByStatus, setUserStatus, setUserRole, makeUserAgent, deleteUserRecord,
+  fetchUsersByStatus, countByStatus, setUserStatus, setUserRole, makeUserAgent, removeUserAgent, deleteUserRecord,
   fetchPendingAgentBillingRequests, adminApproveAgentRequest, adminRejectAgentRequest,
-  fetchAgentList, fetchAgentCustomerLinks,
-  fetchAgentOwedSummaries, recordAgentPayment,
-  type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin, type AgentListItem,
+  fetchAgentList, fetchAgentCustomerLinks, fetchDashboardStats,
+  type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin, type AgentListItem, type DashboardStats,
 } from "@/lib/admin";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const STATUS_TABS: UserStatus[] = ["pending", "approved", "suspended", "expelled"];
-type AdminTab = UserStatus | "billing" | "history" | "watching" | "agents";
+type AdminTab = UserStatus | "billing" | "history" | "watching" | "agents" | "dashboard";
 const PAGE_SIZE = 100;
 
 type NavItem = { id: AdminTab; label: string; icon: React.ReactNode };
@@ -28,7 +28,7 @@ type NavItem = { id: AdminTab; label: string; icon: React.ReactNode };
 export function AdminPage() {
   const { user, isAdmin, loading } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<AdminTab>("pending");
+  const [tab, setTab] = useState<AdminTab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [rows, setRows] = useState<AdminUser[]>([]);
   const [upcomingRenewals, setUpcomingRenewals] = useState<AdminUser[]>([]);
@@ -48,9 +48,8 @@ export function AdminPage() {
   const [agentCustomerLinks, setAgentCustomerLinks] = useState<Record<string, { agent_id: string; agent_name: string | null; agent_email: string }>>({});
   const [agentSubTab, setAgentSubTab] = useState<"requests" | "list">("requests");
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
-  const [agentOwed, setAgentOwed] = useState<Record<string, number>>({});
-  const [paymentOpen, setPaymentOpen] = useState<string | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState("");
+  const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
+  const [dashLoading, setDashLoading] = useState(false);
   const tabRef = useRef(tab);
   tabRef.current = tab;
 
@@ -107,6 +106,16 @@ export function AdminPage() {
     setAgentCustomerLinks(links);
   }, []);
 
+  const loadDashboard = useCallback(async () => {
+    setDashLoading(true);
+    try {
+      const stats = await fetchDashboardStats();
+      setDashStats(stats);
+    } finally {
+      setDashLoading(false);
+    }
+  }, []);
+
   const loadHistory = useCallback(async (page: number) => {
     const from = (page - 1) * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
@@ -130,23 +139,19 @@ export function AdminPage() {
     if (!isAdmin) return;
     setSearch("");
     refreshUpcomingRenewals();
-    if (tab === "billing") { /* loaded above */ }
+    // Always refresh agent request count so the sidebar badge stays current
+    loadAgentRequests();
+    if (tab === "dashboard") { loadDashboard(); }
+    else if (tab === "billing") { /* loaded above */ }
     else if (tab === "history") { setHistoryPage(1); loadHistory(1); }
     else if (tab === "watching") loadWatching();
-    else if (tab === "agents") loadAgentRequests();
+    else if (tab === "agents") { /* loadAgentRequests already called above */ }
     else {
       refreshRows(tab as UserStatus);
       fetchAgentCustomerLinks().then(setAgentCustomerLinks);
-      if (tab === "approved") {
-        fetchAgentOwedSummaries().then((summaries) => {
-          const map: Record<string, number> = {};
-          summaries.forEach((s) => { map[s.agent_id] = s.balance_due; });
-          setAgentOwed(map);
-        });
-      }
     }
     refreshCounts();
-  }, [tab, isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, loadAgentRequests]);
+  }, [tab, isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, loadAgentRequests, loadDashboard]);
 
   useEffect(() => {
     if (tab === "history") loadHistory(historyPage);
@@ -157,18 +162,19 @@ export function AdminPage() {
     const channel = supabase.channel("admin-profiles")
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
         refreshUpcomingRenewals();
-        if (tabRef.current !== "billing" && tabRef.current !== "history" && tabRef.current !== "watching" && tabRef.current !== "agents")
+        if (tabRef.current !== "billing" && tabRef.current !== "history" && tabRef.current !== "watching" && tabRef.current !== "agents" && tabRef.current !== "dashboard")
           refreshRows(tabRef.current as UserStatus);
         refreshCounts();
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "payment_history" }, () => {
         if (tabRef.current === "history") loadHistory(historyPage);
+        if (tabRef.current === "dashboard") loadDashboard();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "active_watches" }, () => { loadWatching(); })
       .on("postgres_changes", { event: "*", schema: "public", table: "agent_billing_requests" }, () => { loadAgentRequests(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, loadAgentRequests, historyPage]);
+  }, [isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, loadAgentRequests, loadDashboard, historyPage]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -205,22 +211,6 @@ export function AdminPage() {
     } finally { setBusy(false); }
   };
 
-  const handleRecordPayment = async (agentUserId: string) => {
-    const val = parseInt(paymentAmount, 10);
-    const maxOwed = agentOwed[agentUserId] ?? 0;
-    if (!val || val <= 0 || val > maxOwed) return;
-    setBusy(true);
-    try {
-      await recordAgentPayment(agentUserId, val);
-      const summaries = await fetchAgentOwedSummaries();
-      const map: Record<string, number> = {};
-      summaries.forEach((s) => { map[s.agent_id] = s.balance_due; });
-      setAgentOwed(map);
-      setPaymentOpen(null);
-      setPaymentAmount("");
-    } finally { setBusy(false); }
-  };
-
   const doDelete = async () => {
     if (!confirmDelete) return;
     setBusy(true);
@@ -242,7 +232,10 @@ export function AdminPage() {
   );
 
   const totalHistoryPages = Math.ceil(historyTotal / PAGE_SIZE);
-  const tableRows = tab === "billing" ? upcomingRenewals : rows;
+  // Exclude agents from the approved/billing table — they live in Agents & Requests tab
+  const tableRows = (tab === "billing" ? upcomingRenewals : rows).filter(
+    (u) => !(tab === "approved" && u.role === "agent")
+  );
   const q = search.trim().toLowerCase();
   const filteredTableRows = q
     ? tableRows.filter((u) =>
@@ -269,6 +262,7 @@ export function AdminPage() {
 
   // ── Nav items with badge counts ────────────────────────────────────────────
   const NAV_ITEMS: NavItem[] = [
+    { id: "dashboard", label: "Dashboard",          icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
     { id: "pending",   label: STATUS_LABELS["pending"],   icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
     { id: "approved",  label: STATUS_LABELS["approved"],  icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
     { id: "suspended", label: STATUS_LABELS["suspended"], icon: <Ban className="h-4 w-4 shrink-0" /> },
@@ -368,7 +362,8 @@ export function AdminPage() {
             {/* Sidebar summary */}
             <div className="px-4 py-4 space-y-1.5 border-t border-black/30">
               <p className="text-xs font-bold text-white/60 uppercase tracking-wide">Summary</p>
-              <SidebarStat label="Total subscribers" value={`${counts.approved}`} />
+              <SidebarStat label="Total subscribers" value={`${Math.max(0, counts.approved - agentList.length)}`} />
+              <SidebarStat label="Total agents" value={`${agentList.length}`} />
               <SidebarStat label="Pending approval" value={`${counts.pending}`} />
               <SidebarStat label="Watching now" value={`${watchingCount}`} />
             </div>
@@ -377,7 +372,8 @@ export function AdminPage() {
           {/* ── Main content ── */}
           <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 overflow-y-auto">
 
-            {/* Search bar */}
+            {/* Search bar — hidden on dashboard */}
+            {tab !== "dashboard" && (
             <div className="relative max-w-sm mb-6">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -394,8 +390,10 @@ export function AdminPage() {
                 </button>
               )}
             </div>
+            )}
 
-            {/* Refresh / Live indicator row */}
+            {/* Refresh / Live indicator row — hidden on dashboard */}
+            {tab !== "dashboard" && (
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold">{currentLabel}</h2>
               {tab === "watching" ? (
@@ -419,10 +417,141 @@ export function AdminPage() {
                 </button>
               ) : null}
             </div>
+            )}
+
+            {/* ── DASHBOARD TAB ── */}
+            {tab === "dashboard" && (
+              <div className="space-y-8 max-w-5xl">
+                {dashLoading && (
+                  <div className="text-muted-foreground text-sm">Loading dashboard…</div>
+                )}
+                {!dashLoading && dashStats && (
+                  <>
+                    {/* ── Hero stats row ── */}
+                    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#c0001a] via-[#8b0013] to-[#1a0005] p-6 sm:p-8 shadow-[0_8px_40px_oklch(0.55_0.22_27/0.35)]">
+                      {/* decorative glow */}
+                      <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/5 blur-3xl" />
+                      <div className="pointer-events-none absolute -bottom-8 left-8 h-40 w-40 rounded-full bg-white/5 blur-2xl" />
+
+                      <div className="relative">
+                        <div className="flex items-center gap-2 mb-1">
+                          <ShieldCheck className="h-5 w-5 text-white/80" />
+                          <span className="text-sm font-semibold text-white/80 uppercase tracking-widest">Admin Panel</span>
+                        </div>
+                        <h1 className="text-2xl sm:text-3xl font-extrabold text-white mb-6">Overview</h1>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          <DashCard
+                            icon={<Users className="h-5 w-5 text-white/70" />}
+                            label="Subscribers"
+                            value={dashStats.totalSubscribers.toString()}
+                          />
+                          <DashCard
+                            icon={<Briefcase className="h-5 w-5 text-white/70" />}
+                            label="Agents"
+                            value={dashStats.totalAgents.toString()}
+                          />
+                          <DashCard
+                            icon={<TrendingUp className="h-5 w-5 text-white/70" />}
+                            label="Est. Monthly Revenue"
+                            value={`TT$${dashStats.totalMonthlyRevenue.toLocaleString()}`}
+                          />
+                          <DashCard
+                            icon={<DollarSign className="h-5 w-5 text-white/70" />}
+                            label="Your Income This Month"
+                            value={`TT$${dashStats.adminMonthlyIncome.toLocaleString()}`}
+                            highlight
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── Subscribers by plan ── */}
+                    <div>
+                      <h2 className="text-base font-bold mb-3 flex items-center gap-2">
+                        <Receipt className="h-4 w-4 text-primary" />
+                        Subscribers by Plan
+                      </h2>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {Object.entries(dashStats.subsByPlan).map(([planId, g]) => (
+                          <div key={planId} className="rounded-xl border border-border bg-card p-4 space-y-2">
+                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{g.planName}</p>
+                            <p className="text-2xl font-extrabold text-foreground">{g.count}</p>
+                            <div className="text-xs text-muted-foreground space-y-0.5">
+                              <p>TT${g.planPrice}<span className="text-muted-foreground/60">/{PLANS[planId as keyof typeof PLANS]?.annual ? "yr" : "mo"}</span> per sub</p>
+                              <p className="font-semibold text-primary">
+                                ≈ TT${g.monthlyRevenue.toLocaleString()} / mo
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                        {Object.keys(dashStats.subsByPlan).length === 0 && (
+                          <div className="col-span-4 rounded-xl border border-border bg-card p-8 text-center text-muted-foreground text-sm">
+                            No active subscribers yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── Payments received this month ── */}
+                    <div>
+                      <h2 className="text-base font-bold mb-3 flex items-center gap-2">
+                        <CalendarDays className="h-4 w-4 text-primary" />
+                        Payments Received This Month
+                        <span className="ml-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-bold text-primary">
+                          {dashStats.paymentsThisMonth.length}
+                        </span>
+                      </h2>
+                      <div className="overflow-x-auto rounded-xl border border-border">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                            <tr>
+                              <th className="px-4 py-3">Customer</th>
+                              <th className="px-4 py-3">Plan</th>
+                              <th className="px-4 py-3">Total</th>
+                              <th className="px-4 py-3">Your Cut</th>
+                              <th className="px-4 py-3">Date</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dashStats.paymentsThisMonth.length === 0 && (
+                              <tr>
+                                <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                                  No payments recorded this month yet.
+                                </td>
+                              </tr>
+                            )}
+                            {dashStats.paymentsThisMonth.map((p) => {
+                              const agentComm = (p as any).agent_commission ?? 0;
+                              const adminCut = (p as any).admin_amount ?? (p.amount - agentComm);
+                              return (
+                                <tr key={p.id} className="border-t border-border">
+                                  <td className="px-4 py-3">
+                                    <p className="font-medium">{p.full_name ?? "—"}</p>
+                                    <p className="text-xs text-muted-foreground">{p.email}</p>
+                                  </td>
+                                  <td className="px-4 py-3 capitalize text-muted-foreground">
+                                    {PLANS[p.plan as keyof typeof PLANS]?.name ?? p.plan}
+                                  </td>
+                                  <td className="px-4 py-3 font-semibold">TT${p.amount}</td>
+                                  <td className="px-4 py-3 font-bold text-primary">TT${adminCut}</td>
+                                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                                    {new Date(p.approved_at).toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* ── AGENT REQUESTS TAB ── */}
-            {tab === "agents" && (
-              <div className="space-y-4 max-w-2xl">
+            {tab === "agents" && (              <div className="space-y-4 max-w-2xl">
                 <div className="flex gap-1 border-b border-border">
                   <button onClick={() => setAgentSubTab("requests")}
                     className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${agentSubTab === "requests" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
@@ -487,46 +616,55 @@ export function AdminPage() {
                       const expanded = expandedAgent === agent.id;
                       return (
                         <div key={agent.id} className="rounded-xl border border-border bg-card overflow-hidden">
-                          <div className="flex items-center gap-2 px-5 py-4">
-                            {/* Info — clicking this toggles expand */}
-                            <button
-                              onClick={() => setExpandedAgent(expanded ? null : agent.id)}
-                              className="flex-1 min-w-0 text-left"
-                            >
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="font-semibold">{agent.full_name ?? "—"}</p>
-                                <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-bold text-orange-400">
-                                  {agent.customer_count} customer{agent.customer_count !== 1 ? "s" : ""}
-                                </span>
-                              </div>
-                              <p className="text-xs text-muted-foreground">{agent.email} {agent.phone ? `· ${agent.phone}` : ""}</p>
-                              <div className="mt-1.5 flex flex-wrap gap-4 text-xs">
-                                <span className="text-green-400 font-semibold">This month: TT${agent.monthly_income}</span>
-                                <span className="text-primary font-semibold">Owed to admin: TT${agent.monthly_admin}</span>
-                              </div>
-                            </button>
-                            {/* Agent action buttons */}
-                            <div className="flex items-center gap-2 shrink-0">
-                              <Btn
-                                onClick={() => changeStatus({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser, "suspended")}
-                                busy={busy}
-                              >
-                                <Ban className="h-3.5 w-3.5" /> Suspend
-                              </Btn>
-                              <Btn
-                                onClick={() => setConfirmDelete({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser)}
-                                busy={busy}
-                                variant="danger"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" /> Delete
-                              </Btn>
+                          <div className="px-5 py-4">
+                            {/* Row 1: info (click to expand) + Suspend / Delete / Chevron */}
+                            <div className="flex items-center gap-2">
                               <button
                                 onClick={() => setExpandedAgent(expanded ? null : agent.id)}
-                                className="rounded p-1 hover:bg-accent"
-                                aria-label="Toggle customers"
+                                className="flex-1 min-w-0 text-left"
                               >
-                                <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="font-semibold">{agent.full_name ?? "—"}</p>
+                                  <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-bold text-orange-400">
+                                    {agent.customer_count} customer{agent.customer_count !== 1 ? "s" : ""}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">{agent.email} {agent.phone ? `· ${agent.phone}` : ""}</p>
+                                <div className="mt-1.5 flex flex-wrap gap-4 text-xs">
+                                  <span className="text-green-400 font-semibold">This month: TT${agent.monthly_income}</span>
+                                </div>
                               </button>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <Btn
+                                  onClick={() => changeStatus({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser, "suspended")}
+                                  busy={busy}
+                                >
+                                  <Ban className="h-3.5 w-3.5" /> Suspend
+                                </Btn>
+                                <Btn
+                                  onClick={() => setConfirmDelete({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser)}
+                                  busy={busy}
+                                  variant="danger"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                                </Btn>
+                                <button
+                                  onClick={() => setExpandedAgent(expanded ? null : agent.id)}
+                                  className="rounded p-1 hover:bg-accent"
+                                  aria-label="Toggle customers"
+                                >
+                                  <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
+                                </button>
+                              </div>
+                            </div>
+                            {/* Row 2: Remove Agent button — full width so it never wraps off-screen */}
+                            <div className="mt-2 pt-2 border-t border-border/50">
+                              <Btn
+                                onClick={async () => { setBusy(true); try { await removeUserAgent(agent.id); await loadAgentRequests(); } finally { setBusy(false); } }}
+                                busy={busy}
+                              >
+                                <UserX className="h-3.5 w-3.5" /> Remove Agent
+                              </Btn>
                             </div>
                           </div>
                           {expanded && (
@@ -688,7 +826,7 @@ export function AdminPage() {
             )}
 
             {/* ── USER / RENEWALS TABLE (pending, approved, suspended, expelled, billing) ── */}
-            {tab !== "history" && tab !== "agents" && tab !== "watching" && (
+            {tab !== "history" && tab !== "agents" && tab !== "watching" && tab !== "dashboard" && (
               <div className="space-y-3">
                 {tab === "billing" && (
                   <p className="text-sm text-muted-foreground">
@@ -722,7 +860,6 @@ export function AdminPage() {
                         const dueDate = u.subscription_expires_at ? new Date(u.subscription_expires_at) : null;
                         const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
                         const agentLink = agentCustomerLinks[u.id];
-                        const showPaymentForm = tab === "approved" && paymentOpen === u.id && !!agentLink;
                         return (
                           <React.Fragment key={u.id}>
                             <tr className="border-t border-border">
@@ -765,16 +902,15 @@ export function AdminPage() {
                                     </Btn>
                                   )}
                                   {tab === "approved" && (
-                                    <Btn onClick={async () => { setBusy(true); try { await makeUserAgent(u.id); await refreshRows("approved"); await refreshCounts(); } finally { setBusy(false); } }} busy={busy} variant="primary">
-                                      <Briefcase className="h-3.5 w-3.5" /> Make Agent
-                                    </Btn>
-                                  )}
-                                  {tab === "approved" && agentLink && (
-                                    <Btn
-                                      onClick={() => { setPaymentOpen(paymentOpen === u.id ? null : u.id); setPaymentAmount(""); }}
-                                      busy={false} variant="primary">
-                                      <Briefcase className="h-3.5 w-3.5" /> Update
-                                    </Btn>
+                                    u.role === "agent" ? (
+                                      <Btn onClick={async () => { setBusy(true); try { await removeUserAgent(u.id); await refreshRows("approved"); await refreshCounts(); } finally { setBusy(false); } }} busy={busy}>
+                                        <UserX className="h-3.5 w-3.5" /> Remove Agent
+                                      </Btn>
+                                    ) : (
+                                      <Btn onClick={async () => { setBusy(true); try { await makeUserAgent(u.id); await refreshRows("approved"); await refreshCounts(); } finally { setBusy(false); } }} busy={busy} variant="primary">
+                                        <Briefcase className="h-3.5 w-3.5" /> Make Agent
+                                      </Btn>
+                                    )
                                   )}
                                   {tab === "suspended" && (
                                     <Btn onClick={() => changeStatus(u, "approved")} busy={busy} variant="primary">
@@ -792,49 +928,6 @@ export function AdminPage() {
                                 </div>
                               </td>
                             </tr>
-                            {showPaymentForm && (() => {
-                              const agentId = agentLink.agent_id;
-                              const agentLabel = agentLink.agent_name ?? agentLink.agent_email;
-                              const owed = agentOwed[agentId] ?? 0;
-                              const val = parseInt(paymentAmount, 10);
-                              const valid = !isNaN(val) && val > 0 && val <= owed;
-                              return (
-                                <tr key={`pay-${u.id}`} className="border-t border-border bg-orange-400/5">
-                                  <td colSpan={5} className="px-4 py-4">
-                                    <p className="text-xs font-semibold text-muted-foreground mb-1">
-                                      Record payment from <span className="text-foreground">{agentLabel}</span>
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mb-2">
-                                      Amount owed:{" "}
-                                      <span className={`font-bold ${owed > 0 ? "text-primary" : "text-green-400"}`}>TT${owed}</span>
-                                      {owed === 0 && <span className="ml-1 text-green-400">(fully paid)</span>}
-                                    </p>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <span className="text-sm font-semibold">TT$</span>
-                                      <input type="number" min={1} max={owed}
-                                        value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)}
-                                        placeholder={`Max TT$${owed}`} disabled={owed === 0}
-                                        className="w-32 rounded-md border border-border bg-input px-3 py-1.5 text-sm outline-none focus:border-primary disabled:opacity-50"
-                                      />
-                                      <button onClick={() => handleRecordPayment(agentId)}
-                                        disabled={busy || !valid || owed === 0}
-                                        className="rounded-md bg-primary px-4 py-1.5 text-sm font-bold text-primary-foreground hover:bg-primary/85 disabled:opacity-50">
-                                        {busy ? "Saving…" : "Paid"}
-                                      </button>
-                                      <button onClick={() => { setPaymentOpen(null); setPaymentAmount(""); }}
-                                        className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent">
-                                        Cancel
-                                      </button>
-                                    </div>
-                                    {paymentAmount && !valid && owed > 0 && (
-                                      <p className="mt-1 text-xs text-destructive">
-                                        {val > owed ? `Cannot exceed TT$${owed}` : "Enter a valid amount"}
-                                      </p>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })()}
                           </React.Fragment>
                         );
                       })}
@@ -875,6 +968,20 @@ function SidebarStat({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between">
       <span className="text-xs text-white/70">{label}</span>
       <span className="text-xs font-bold text-white">{value}</span>
+    </div>
+  );
+}
+
+function DashCard({ icon, label, value, highlight }: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className={`rounded-xl p-4 space-y-1 ${highlight ? "bg-white/15 ring-1 ring-white/30" : "bg-black/25"}`}>
+      <div className="flex items-center gap-1.5 text-white/70">{icon}<span className="text-xs font-semibold">{label}</span></div>
+      <p className={`text-xl font-extrabold ${highlight ? "text-white" : "text-white/90"}`}>{value}</p>
     </div>
   );
 }

@@ -123,6 +123,27 @@ export async function makeUserAgent(id: string) {
   if (error) throw error;
 }
 
+/**
+ * Revert an agent back to a regular subscriber:
+ * - Clears role (null = regular user)
+ * - Restores basic plan with a fresh 30-day subscription
+ * - Status stays 'approved' so they are immediately active
+ */
+export async function removeUserAgent(id: string) {
+  const now = new Date();
+  const periodEnd = new Date(now);
+  periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+  const { error } = await supabase.from("profiles").update({
+    role: null,
+    plan: "basic",
+    subscription_expires_at: periodEnd.toISOString(),
+    pending_plan: null,
+    status: "approved",
+  }).eq("id", id);
+  if (error) throw error;
+}
+
 // ── Agent billing requests (admin approval queue) ─────────────────────────────
 export type AgentBillingRequestAdmin = {
   id: string;
@@ -359,6 +380,84 @@ export async function recordAgentPayment(agentId: string, amount: number, notes?
     notes: notes ?? null,
   });
   if (error) throw error;
+}
+
+// ── Dashboard summary stats ───────────────────────────────────────────────────
+export type DashboardStats = {
+  totalSubscribers: number;
+  totalAgents: number;
+  subsByPlan: Record<string, { count: number; planName: string; monthlyRevenue: number; planPrice: number }>;
+  totalMonthlyRevenue: number;
+  paymentsThisMonth: PaymentRecord[];
+  adminMonthlyIncome: number;  // admin's net (excludes agent commissions)
+};
+
+export async function fetchDashboardStats(): Promise<DashboardStats> {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  // Active subscribers with their plans
+  const { data: subs } = await supabase
+    .from("profiles")
+    .select("id, plan, role")
+    .eq("status", "approved")
+    .neq("role", "agent");
+
+  // Payment history for this month
+  const { data: payments } = await supabase
+    .from("payment_history")
+    .select("*, profiles(full_name, email, phone)")
+    .gte("approved_at", monthStart)
+    .order("approved_at", { ascending: false });
+
+  // Count agents
+  const { count: agentCount } = await supabase
+    .from("profiles")
+    .select("*", { count: "exact", head: true })
+    .eq("role", "agent");
+
+  const subList = (subs ?? []) as any[];
+  const payList = (payments ?? []) as any[];
+
+  // Group subscribers by plan
+  const planGroups: Record<string, { count: number; planName: string; monthlyRevenue: number; planPrice: number }> = {};
+  for (const sub of subList) {
+    const planId = sub.plan ?? "basic";
+    const planDef = PLANS[planId as PlanId];
+    const price = planDef?.price ?? 0;
+    const name = planDef?.name ?? planId;
+    // For monthly revenue estimate, annual plans count as price/12
+    const monthlyEquiv = planDef?.annual ? Math.round(price / 12) : price;
+    if (!planGroups[planId]) planGroups[planId] = { count: 0, planName: name, monthlyRevenue: 0, planPrice: price };
+    planGroups[planId].count++;
+    planGroups[planId].monthlyRevenue += monthlyEquiv;
+  }
+
+  // Total monthly revenue (sum of all plan prices × subscriber count, annuals /12)
+  const totalMonthlyRevenue = Object.values(planGroups).reduce((sum, g) => sum + g.monthlyRevenue, 0);
+
+  // Admin's net income this month (from payment_history, subtracting agent commissions)
+  let adminMonthlyIncome = 0;
+  for (const p of payList) {
+    const agentComm = p.agent_commission ?? 0;
+    adminMonthlyIncome += (p.admin_amount ?? (p.amount - agentComm));
+  }
+
+  const paymentsThisMonth: PaymentRecord[] = payList.map((r: any) => ({
+    ...r,
+    full_name: r.profiles?.full_name ?? null,
+    email: r.profiles?.email ?? "—",
+    phone: r.profiles?.phone ?? null,
+  }));
+
+  return {
+    totalSubscribers: subList.length,
+    totalAgents: agentCount ?? 0,
+    subsByPlan: planGroups,
+    totalMonthlyRevenue,
+    paymentsThisMonth,
+    adminMonthlyIncome,
+  };
 }
 
 export async function requestPlanUpgrade(userId: string, newPlan: PlanId) {
