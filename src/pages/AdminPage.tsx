@@ -52,6 +52,7 @@ export function AdminPage() {
   const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
   const [dashLoading, setDashLoading] = useState(false);
   const dashboardIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const watchingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const tabRef = useRef(tab);
   tabRef.current = tab;
 
@@ -85,7 +86,7 @@ export function AdminPage() {
   }, []);
 
   const loadWatching = useCallback(async () => {
-    const staleDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const staleDate = new Date(Date.now() - 10 * 1000).toISOString();
     const { data } = await supabase
       .from("active_watches")
       .select("*, profiles(full_name, email, plan)")
@@ -204,6 +205,27 @@ export function AdminPage() {
       }
     };
   }, [isAdmin, tab, loadDashboard]);
+
+  // Real‑time refresh for watching now every 1 second
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (tab === "watching" || tab === "dashboard") {
+      watchingIntervalRef.current = setInterval(() => {
+        loadWatching();
+      }, 1000);
+    } else {
+      if (watchingIntervalRef.current) {
+        clearInterval(watchingIntervalRef.current);
+        watchingIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (watchingIntervalRef.current) {
+        clearInterval(watchingIntervalRef.current);
+        watchingIntervalRef.current = null;
+      }
+    };
+  }, [isAdmin, tab, loadWatching]);
 
   useEffect(() => {
     if (!isAdmin) return;

@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -110,7 +110,7 @@ export function WatchPage() {
     const max = PLANS[profile.plan]?.screens ?? 2;
 
     async function registerWatch() {
-      const staleDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const staleDate = new Date(Date.now() - 30 * 1000).toISOString();
       await supabase.from("active_watches").delete().eq("user_id", user!.id).lt("last_ping", staleDate);
       const { data: existing } = await supabase.from("active_watches").select("id")
         .eq("user_id", user!.id).eq("session_id", sessionId).maybeSingle();
@@ -136,7 +136,7 @@ export function WatchPage() {
     const ping = setInterval(() => {
       if (watchIdRef.current)
         supabase.from("active_watches").update({ last_ping: new Date().toISOString() }).eq("id", watchIdRef.current);
-    }, 30_000);
+    }, 3000);
     return () => {
       clearInterval(ping);
       if (watchIdRef.current) supabase.from("active_watches").delete().eq("id", watchIdRef.current);
