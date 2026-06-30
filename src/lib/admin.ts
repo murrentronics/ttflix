@@ -402,10 +402,13 @@ export async function recordAgentPayment(agentId: string, amount: number, notes?
 export type DashboardStats = {
   totalSubscribers: number;
   totalAgents: number;
-  subsByPlan: Record<string, { count: number; planName: string; monthlyRevenue: number; planPrice: number }>;
   totalMonthlyRevenue: number;
-  paymentsThisMonth: PaymentRecord[];
+  totalYearlyRevenue: number;
+  totalAdminIncome: number; // all time admin net income
   adminMonthlyIncome: number;  // admin's net (excludes agent commissions)
+  liveWatchingCount: number;
+  pendingAgentRequestsCount: number;
+  pendingSubscribersCount: number;
 };
 
 export async function fetchDashboardStats(): Promise<DashboardStats> {
@@ -419,12 +422,10 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     .eq("status", "approved")
     .neq("role", "agent");
 
-  // Payment history for this month
-  const { data: payments } = await supabase
+  // All payment history ever
+  const { data: allPayments } = await supabase
     .from("payment_history")
-    .select("*, profiles(full_name, email, phone)")
-    .gte("approved_at", monthStart)
-    .order("approved_at", { ascending: false });
+    .select("*");
 
   // Count agents
   const { count: agentCount } = await supabase
@@ -432,47 +433,67 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     .select("*", { count: "exact", head: true })
     .eq("role", "agent");
 
-  const subList = (subs ?? []) as any[];
-  const payList = (payments ?? []) as any[];
+  // Count live watching (last 5 min)
+  const staleDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { count: watchingCount } = await supabase
+    .from("active_watches")
+    .select("*", { count: "exact", head: true })
+    .gte("last_ping", staleDate);
 
-  // Group subscribers by plan
-  const planGroups: Record<string, { count: number; planName: string; monthlyRevenue: number; planPrice: number }> = {};
+  // Count pending agent requests
+  const { count: pendingRequestsCount } = await supabase
+    .from("agent_billing_requests")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "pending_admin");
+
+  // Count pending subscribers
+  const { count: pendingSubsCount } = await supabase
+    .from("profiles")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "pending");
+
+  const subList = (subs ?? []) as any[];
+  const allPayList = (allPayments ?? []) as any[];
+
+  // Calculate monthly and yearly revenue from active subs
+  let totalMonthlyRevenue = 0;
+  let totalYearlyRevenue = 0;
   for (const sub of subList) {
     const planId = sub.plan ?? "basic";
     const planDef = PLANS[planId as PlanId];
     const price = planDef?.price ?? 0;
-    const name = planDef?.name ?? planId;
-    // For monthly revenue estimate, annual plans count as price/12
-    const monthlyEquiv = planDef?.annual ? Math.round(price / 12) : price;
-    if (!planGroups[planId]) planGroups[planId] = { count: 0, planName: name, monthlyRevenue: 0, planPrice: price };
-    planGroups[planId].count++;
-    planGroups[planId].monthlyRevenue += monthlyEquiv;
+    if (planDef?.annual) {
+      totalMonthlyRevenue += Math.round(price / 12);
+      totalYearlyRevenue += price;
+    } else {
+      totalMonthlyRevenue += price;
+      totalYearlyRevenue += price * 12;
+    }
   }
 
-  // Total monthly revenue (sum of all plan prices × subscriber count, annuals /12)
-  const totalMonthlyRevenue = Object.values(planGroups).reduce((sum, g) => sum + g.monthlyRevenue, 0);
-
-  // Admin's net income this month (from payment_history, subtracting agent commissions)
+  // Admin's total all time income
+  let totalAdminIncome = 0;
   let adminMonthlyIncome = 0;
-  for (const p of payList) {
+  for (const p of allPayList) {
     const agentComm = p.agent_commission ?? 0;
-    adminMonthlyIncome += (p.admin_amount ?? (p.amount - agentComm));
+    const adminPart = p.admin_amount ?? (p.amount - agentComm);
+    totalAdminIncome += adminPart;
+    // Also check if payment is this month
+    if (p.approved_at && new Date(p.approved_at) >= new Date(monthStart)) {
+      adminMonthlyIncome += adminPart;
+    }
   }
-
-  const paymentsThisMonth: PaymentRecord[] = payList.map((r: any) => ({
-    ...r,
-    full_name: r.profiles?.full_name ?? null,
-    email: r.profiles?.email ?? "—",
-    phone: r.profiles?.phone ?? null,
-  }));
 
   return {
     totalSubscribers: subList.length,
     totalAgents: agentCount ?? 0,
-    subsByPlan: planGroups,
     totalMonthlyRevenue,
-    paymentsThisMonth,
+    totalYearlyRevenue,
+    totalAdminIncome,
     adminMonthlyIncome,
+    liveWatchingCount: watchingCount ?? 0,
+    pendingAgentRequestsCount: pendingRequestsCount ?? 0,
+    pendingSubscribersCount: pendingSubsCount ?? 0,
   };
 }
 

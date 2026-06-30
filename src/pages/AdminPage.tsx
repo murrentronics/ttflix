@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Trash2, Ban, UserX, ShieldCheck, RefreshCw, CalendarDays, Receipt,
   ChevronLeft, ChevronRight, Tv, Search, X, Briefcase, ChevronDown, Menu,
-  LayoutDashboard, TrendingUp, Users, DollarSign,
+  LayoutDashboard, TrendingUp, Users, DollarSign, UserPlus,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
@@ -51,6 +51,7 @@ export function AdminPage() {
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
   const [dashLoading, setDashLoading] = useState(false);
+  const dashboardIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const tabRef = useRef(tab);
   tabRef.current = tab;
 
@@ -171,11 +172,38 @@ export function AdminPage() {
         if (tabRef.current === "history") loadHistory(historyPage);
         if (tabRef.current === "dashboard") loadDashboard();
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "active_watches" }, () => { loadWatching(); })
-      .on("postgres_changes", { event: "*", schema: "public", table: "agent_billing_requests" }, () => { loadAgentRequests(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "active_watches" }, () => { 
+        loadWatching();
+        if (tabRef.current === "dashboard") loadDashboard(); 
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "agent_billing_requests" }, () => { 
+        loadAgentRequests(); 
+        if (tabRef.current === "dashboard") loadDashboard();
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [isAdmin, refreshRows, refreshCounts, refreshUpcomingRenewals, loadHistory, loadWatching, loadAgentRequests, loadDashboard, historyPage]);
+
+  // Real‑time refresh for dashboard every 3 seconds
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (tab === "dashboard") {
+      dashboardIntervalRef.current = setInterval(() => {
+        loadDashboard();
+      }, 3000);
+    } else {
+      if (dashboardIntervalRef.current) {
+        clearInterval(dashboardIntervalRef.current);
+        dashboardIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (dashboardIntervalRef.current) {
+        clearInterval(dashboardIntervalRef.current);
+        dashboardIntervalRef.current = null;
+      }
+    };
+  }, [isAdmin, tab, loadDashboard]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -422,7 +450,7 @@ export function AdminPage() {
 
             {/* ── DASHBOARD TAB ── */}
             {tab === "dashboard" && (
-              <div className="space-y-8 max-w-5xl">
+              <div className="space-y-8 max-w-7xl">
                 {dashLoading && (
                   <div className="text-muted-foreground text-sm">Loading dashboard…</div>
                 )}
@@ -441,7 +469,7 @@ export function AdminPage() {
                         </div>
                         <h1 className="text-2xl sm:text-3xl font-extrabold text-white mb-6">Overview</h1>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                           <DashCard
                             icon={<Users className="h-5 w-5 text-white/70" />}
                             label="Subscribers"
@@ -458,66 +486,37 @@ export function AdminPage() {
                             value={`TT$${dashStats.totalMonthlyRevenue.toLocaleString()}`}
                           />
                           <DashCard
+                            icon={<CalendarDays className="h-5 w-5 text-white/70" />}
+                            label="Est. Yearly Revenue"
+                            value={`TT$${dashStats.totalYearlyRevenue.toLocaleString()}`}
+                          />
+                          <DashCard
                             icon={<DollarSign className="h-5 w-5 text-white/70" />}
                             label="Your Income This Month"
                             value={`TT$${dashStats.adminMonthlyIncome.toLocaleString()}`}
                             highlight
                           />
+                          <DashCard
+                            icon={<DollarSign className="h-5 w-5 text-white/70" />}
+                            label="Total Income (All Time)"
+                            value={`TT$${dashStats.totalAdminIncome.toLocaleString()}`}
+                          />
+                          <DashCard
+                            icon={<Tv className="h-5 w-5 text-white/70" />}
+                            label="Live Watching Now"
+                            value={dashStats.liveWatchingCount.toString()}
+                          />
+                          <DashCard
+                            icon={<UserX className="h-5 w-5 text-white/70" />}
+                            label="Pending Subscribers"
+                            value={dashStats.pendingSubscribersCount.toString()}
+                          />
+                          <DashCard
+                            icon={<UserPlus className="h-5 w-5 text-white/70" />}
+                            label="Pending Requests"
+                            value={dashStats.pendingAgentRequestsCount.toString()}
+                          />
                         </div>
-                      </div>
-                    </div>
-
-
-                    {/* ── Payments received this month ── */}
-                    <div>
-                      <h2 className="text-base font-bold mb-3 flex items-center gap-2">
-                        <CalendarDays className="h-4 w-4 text-primary" />
-                        Payments Received This Month
-                        <span className="ml-1 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-bold text-primary">
-                          {dashStats.paymentsThisMonth.length}
-                        </span>
-                      </h2>
-                      <div className="overflow-x-auto rounded-xl border border-border">
-                        <table className="w-full text-sm">
-                          <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                            <tr>
-                              <th className="px-4 py-3">Customer</th>
-                              <th className="px-4 py-3">Plan</th>
-                              <th className="px-4 py-3">Total</th>
-                              <th className="px-4 py-3">Your Cut</th>
-                              <th className="px-4 py-3">Date</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {dashStats.paymentsThisMonth.length === 0 && (
-                              <tr>
-                                <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
-                                  No payments recorded this month yet.
-                                </td>
-                              </tr>
-                            )}
-                            {dashStats.paymentsThisMonth.map((p) => {
-                              const agentComm = (p as any).agent_commission ?? 0;
-                              const adminCut = (p as any).admin_amount ?? (p.amount - agentComm);
-                              return (
-                                <tr key={p.id} className="border-t border-border">
-                                  <td className="px-4 py-3">
-                                    <p className="font-medium">{p.full_name ?? "—"}</p>
-                                    <p className="text-xs text-muted-foreground">{p.email}</p>
-                                  </td>
-                                  <td className="px-4 py-3 capitalize text-muted-foreground">
-                                    {PLANS[p.plan as keyof typeof PLANS]?.name ?? p.plan}
-                                  </td>
-                                  <td className="px-4 py-3 font-semibold">TT${p.amount}</td>
-                                  <td className="px-4 py-3 font-bold text-primary">TT${adminCut}</td>
-                                  <td className="px-4 py-3 text-xs text-muted-foreground">
-                                    {new Date(p.approved_at).toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
                       </div>
                     </div>
                   </>
