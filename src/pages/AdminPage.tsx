@@ -602,8 +602,8 @@ export function AdminPage() {
                       return (
                         <div key={agent.id} className="rounded-xl border border-border bg-card overflow-hidden">
                           <div className="px-5 py-4">
-                            {/* Row 1: info (click to expand) + Suspend / Delete / Chevron */}
-                            <div className="flex items-center gap-2">
+                            {/* Row 1: agent info + monthly amount */}
+                            <div className="flex items-start gap-2">
                               <button
                                 onClick={() => setExpandedAgent(expanded ? null : agent.id)}
                                 className="flex-1 min-w-0 text-left"
@@ -615,35 +615,34 @@ export function AdminPage() {
                                   </span>
                                 </div>
                                 <p className="text-xs text-muted-foreground">{agent.email} {agent.phone ? `· ${agent.phone}` : ""}</p>
-                                <div className="mt-1.5 flex flex-wrap gap-4 text-xs">
-                                  <span className="text-green-400 font-semibold">This month: TT${agent.monthly_income}</span>
-                                </div>
                               </button>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <Btn
-                                  onClick={() => changeStatus({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser, "suspended")}
-                                  busy={busy}
-                                >
-                                  <Ban className="h-3.5 w-3.5" /> Suspend
-                                </Btn>
-                                <Btn
-                                  onClick={() => setConfirmDelete({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser)}
-                                  busy={busy}
-                                  variant="danger"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" /> Delete
-                                </Btn>
-                                <button
-                                  onClick={() => setExpandedAgent(expanded ? null : agent.id)}
-                                  className="rounded p-1 hover:bg-accent"
-                                  aria-label="Toggle customers"
-                                >
-                                  <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
-                                </button>
+                              <div className="shrink-0 text-right">
+                                <span className="text-green-400 font-semibold text-sm">TT${agent.monthly_income}</span>
+                                <p className="text-[10px] text-muted-foreground">This month</p>
                               </div>
+                              <button
+                                onClick={() => setExpandedAgent(expanded ? null : agent.id)}
+                                className="rounded p-1 hover:bg-accent shrink-0"
+                                aria-label="Toggle customers"
+                              >
+                                <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
+                              </button>
                             </div>
-                            {/* Row 2: Remove Agent button — full width so it never wraps off-screen */}
-                            <div className="mt-2 pt-2 border-t border-border/50">
+                            {/* Row 2: Buttons */}
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Btn
+                                onClick={() => changeStatus({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser, "suspended")}
+                                busy={busy}
+                              >
+                                <Ban className="h-3.5 w-3.5" /> Suspend
+                              </Btn>
+                              <Btn
+                                onClick={() => setConfirmDelete({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser)}
+                                busy={busy}
+                                variant="danger"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" /> Delete
+                              </Btn>
                               <Btn
                                 onClick={async () => { setBusy(true); try { await removeUserAgent(agent.id); await loadAgentRequests(); } finally { setBusy(false); } }}
                                 busy={busy}
