@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users, UserPlus, TrendingUp, Clock, CheckCircle, AlertCircle,
-  Check, Phone, Mail, Menu, ChevronDown,
+  Check, Phone, Mail, Menu, ChevronDown, LayoutDashboard, DollarSign,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
-import { PLANS, type PlanId } from "@/lib/supabase";
+import { PLANS, type PlanId, supabase } from "@/lib/supabase";
 import {
   fetchAgentCustomers, agentCreateCustomer, agentApproveBillingRequest,
   fetchAgentBillingRequests, fetchAgentSummary, fetchAgentUpcomingRenewals,
@@ -14,7 +14,7 @@ import {
   AGENT_COMMISSION, type AgentCustomer, type AgentBillingRequest,
 } from "@/lib/agent";
 
-type AgentTab = "create" | "pending" | "active" | "suspended" | "expelled" | "approvals" | "renewals";
+type AgentTab = "dashboard" | "create" | "pending" | "active" | "suspended" | "expelled" | "approvals" | "renewals";
 
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, "").slice(0, 7);
@@ -23,19 +23,20 @@ function formatPhone(raw: string): string {
 }
 
 const NAV_ITEMS: Array<{ id: AgentTab; label: string; icon: React.ReactNode }> = [
-  { id: "create",    label: "Create Customer", icon: <UserPlus    className="h-4 w-4 shrink-0" /> },
-  { id: "pending",   label: "Pending",         icon: <Clock       className="h-4 w-4 shrink-0" /> },
-  { id: "active",    label: "Active",          icon: <Users       className="h-4 w-4 shrink-0" /> },
-  { id: "suspended", label: "Suspended",       icon: <AlertCircle className="h-4 w-4 shrink-0" /> },
-  { id: "expelled",  label: "Expelled",        icon: <AlertCircle className="h-4 w-4 shrink-0" /> },
-  { id: "approvals", label: "Approvals",       icon: <CheckCircle className="h-4 w-4 shrink-0" /> },
-  { id: "renewals",  label: "Renewals Due",    icon: <Clock       className="h-4 w-4 shrink-0" /> },
+  { id: "dashboard", label: "Dashboard",       icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
+  { id: "create",    label: "Create Customer", icon: <UserPlus        className="h-4 w-4 shrink-0" /> },
+  { id: "pending",   label: "Pending",         icon: <Clock           className="h-4 w-4 shrink-0" /> },
+  { id: "active",    label: "Active",          icon: <Users           className="h-4 w-4 shrink-0" /> },
+  { id: "suspended", label: "Suspended",       icon: <AlertCircle     className="h-4 w-4 shrink-0" /> },
+  { id: "expelled",  label: "Expelled",        icon: <AlertCircle     className="h-4 w-4 shrink-0" /> },
+  { id: "approvals", label: "Approvals",       icon: <CheckCircle     className="h-4 w-4 shrink-0" /> },
+  { id: "renewals",  label: "Renewals Due",    icon: <Clock           className="h-4 w-4 shrink-0" /> },
 ];
 
 export function AgentPage() {
   const { user, profile, loading, isAgent, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<AgentTab>("create");
+  const [tab, setTab] = useState<AgentTab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [customers, setCustomers] = useState<AgentCustomer[]>([]);
   const [billingRequests, setBillingRequests] = useState<AgentBillingRequest[]>([]);
@@ -64,6 +65,9 @@ export function AgentPage() {
   const [payOpen, setPayOpen] = useState<string | null>(null);       // customer id
   const [payAmount, setPayAmount] = useState("");
   const [payError, setPayError] = useState("");
+  
+  // For realtime refresh
+  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
@@ -85,6 +89,39 @@ export function AgentPage() {
   }, [user]);
 
   useEffect(() => { if (user && (isAgent || isAdmin)) refresh(); }, [user, isAgent, isAdmin, refresh]);
+
+  // Realtime refresh every 1 second
+  useEffect(() => {
+    if (!user || (!isAgent && !isAdmin)) return;
+    
+    refreshIntervalRef.current = setInterval(() => {
+      refresh();
+    }, 1000);
+
+    return () => {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+    };
+  }, [user, isAgent, isAdmin, refresh]);
+
+  // Supabase realtime for changes to profiles and agent_billing_requests
+  useEffect(() => {
+    if (!user || (!isAgent && !isAdmin)) return;
+    const channel = supabase.channel('agent-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        refresh();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agent_billing_requests' }, () => {
+        refresh();
+      })
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, isAgent, isAdmin, refresh]);
 
   const showMsg = (text: string, type: "ok" | "err" = "ok") => {
     setMsg({ text, type });
@@ -294,13 +331,42 @@ export function AgentPage() {
               </div>
             )}
 
-            {/* Summary cards — mobile only */}
-            <div className="grid grid-cols-2 gap-3 mb-6 md:hidden">
-              <SummaryCard label="Commission" value={`TT$${summary.totalCommission}`} icon={<CheckCircle className="h-4 w-4 text-green-500" />} />
-              <SummaryCard label="Pending" value={`TT$${summary.pendingCollection}`} icon={<Clock className="h-4 w-4 text-yellow-500" />} />
-              <SummaryCard label="Owed to Admin" value={`TT$${summary.pendingAdminCut}`} icon={<AlertCircle className="h-4 w-4 text-orange-400" />} />
-              <SummaryCard label="Active" value={`${custActive.length}`} icon={<Users className="h-4 w-4 text-primary" />} />
-            </div>
+            {/* —— DASHBOARD TAB —— */}
+            {tab === "dashboard" && (
+              <div className="space-y-6">
+                <h2 className="text-xl font-extrabold">Dashboard</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <SummaryCard label="Total Commission" value={`TT$${summary.totalCommission}`} icon={<CheckCircle className="h-4 w-4 text-green-500" />} />
+                  <SummaryCard label="Pending Collection" value={`TT$${summary.pendingCollection}`} icon={<Clock className="h-4 w-4 text-yellow-500" />} />
+                  <SummaryCard label="Owed to Admin" value={`TT$${summary.pendingAdminCut}`} icon={<AlertCircle className="h-4 w-4 text-orange-400" />} />
+                  <SummaryCard label="Active Customers" value={`${custActive.length}`} icon={<Users className="h-4 w-4 text-primary" />} />
+                  <SummaryCard label="Pending Requests" value={`${pendingApprovals.length}`} icon={<CheckCircle className="h-4 w-4 text-yellow-500" />} />
+                  <SummaryCard label="Renewals Due" value={`${upcomingRenewals.length}`} icon={<Clock className="h-4 w-4 text-orange-400" />} />
+                </div>
+                
+                {/* Quick action buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => switchTab("create")} className="rounded-xl bg-[#c0001a] p-4 flex items-center gap-3 text-white font-semibold hover:bg-[#a30016] transition">
+                    <UserPlus className="h-5 w-5" />
+                    Create Customer
+                  </button>
+                  <button onClick={() => switchTab("approvals")} className="rounded-xl border border-border bg-card p-4 flex items-center gap-3 font-semibold hover:bg-accent transition">
+                    <CheckCircle className="h-5 w-5" />
+                    Pending Requests
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Summary cards — mobile only (only for non-dashboard tabs) */}
+            {tab !== "dashboard" && (
+              <div className="grid grid-cols-2 gap-3 mb-6 md:hidden">
+                <SummaryCard label="Commission" value={`TT$${summary.totalCommission}`} icon={<CheckCircle className="h-4 w-4 text-green-500" />} />
+                <SummaryCard label="Pending" value={`TT$${summary.pendingCollection}`} icon={<Clock className="h-4 w-4 text-yellow-500" />} />
+                <SummaryCard label="Owed to Admin" value={`TT$${summary.pendingAdminCut}`} icon={<AlertCircle className="h-4 w-4 text-orange-400" />} />
+                <SummaryCard label="Active" value={`${custActive.length}`} icon={<Users className="h-4 w-4 text-primary" />} />
+              </div>
+            )}
 
             {/* —— CREATE TAB —— */}
             {tab === "create" && (

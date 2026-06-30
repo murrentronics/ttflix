@@ -461,8 +461,8 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   let totalMonthlyRevenue = 0;
   let totalYearlyRevenue = 0;
   for (const sub of subList) {
-    const planId = sub.plan ?? "basic";
-    const planDef = PLANS[planId as PlanId];
+    const planId = (sub.plan || "basic") as PlanId;
+    const planDef = PLANS[planId];
     const price = planDef?.price ?? 0;
     if (planDef?.annual) {
       totalMonthlyRevenue += Math.round(price / 12);
