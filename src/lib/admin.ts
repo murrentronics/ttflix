@@ -14,12 +14,12 @@ export async function fetchUsersByStatus(status: UserStatus): Promise<AdminUser[
     .eq("status", status)
     .neq("email", ADMIN_EMAIL)
     .order("created_at", { ascending: false });
-  
+
   // For approved status, exclude agents
   if (status === "approved") {
     query = query.not("role", "eq", "agent");
   }
-  
+
   const { data, error } = await query;
   if (error) throw error;
   return (data as AdminUser[]) ?? [];
@@ -29,14 +29,13 @@ export async function countByStatus(status: UserStatus): Promise<number> {
   let query = supabase
     .from("profiles")
     .select("*", { count: "exact", head: true })
-    .eq("status", status)
-    .neq("email", ADMIN_EMAIL);
-  
+    .eq("status", status);
+
   // For approved status, exclude agents
   if (status === "approved") {
     query = query.not("role", "eq", "agent");
   }
-  
+
   const { count } = await query;
   return count ?? 0;
 }
@@ -125,9 +124,9 @@ export async function setUserRole(id: string, role: string | null) {
 
 /**
  * Promote a subscriber to agent:
- * - Sets role = 'agent'
+ * - Sets role = "agent"
  * - Clears subscription_expires_at, pending_plan, plan
- * - Sets status = 'approved' (agents are always active, no subscription needed)
+ * - Sets status = "approved" (agents are always active, no subscription needed)
  */
 export async function makeUserAgent(id: string) {
   const { error } = await supabase.from("profiles").update({
@@ -143,7 +142,7 @@ export async function makeUserAgent(id: string) {
  * Revert an agent back to a regular subscriber:
  * - Clears role (null = regular user)
  * - Restores basic plan with a fresh 30-day subscription
- * - Status stays 'approved' so they are immediately active
+ * - Status stays "approved" so they are immediately active
  */
 export async function removeUserAgent(id: string) {
   const now = new Date();
@@ -252,7 +251,7 @@ export async function adminRejectAgentRequest(requestId: string): Promise<void> 
   await supabase.from("agent_billing_requests").update({ status: "rejected" }).eq("id", requestId);
 }
 
-// ── Agent list with customer counts and monthly income ────────────────────────
+// ── Agent list with customer counts and monthly income ─────────────────────────
 export type AgentListItem = {
   id: string;
   full_name: string | null;
@@ -419,19 +418,14 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   // Active subscribers with their plans
   const { data: subs } = await supabase
     .from("profiles")
-    .select("id, plan, role, email, status")
+    .select("id, plan, role")
     .eq("status", "approved")
-    .neq("role", "agent")
-    .neq("email", ADMIN_EMAIL);
-
-  console.log("fetchDashboardStats subs:", subs);
+    .neq("role", "agent");
 
   // All payment history ever
   const { data: allPayments } = await supabase
     .from("payment_history")
     .select("*");
-
-  console.log("fetchDashboardStats allPayments:", allPayments);
 
   // Count agents
   const { count: agentCount } = await supabase
@@ -439,14 +433,12 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     .select("*", { count: "exact", head: true })
     .eq("role", "agent");
 
-  // Count live watching (last 30 seconds)
-  const staleDate = new Date(Date.now() - 30 * 1000).toISOString();
-  const { count: watchingCount, data: watchingData } = await supabase
+  // Count live watching (last 5 min)
+  const staleDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const { count: watchingCount } = await supabase
     .from("active_watches")
-    .select("*", { count: "exact" })
+    .select("*", { count: "exact", head: true })
     .gte("last_ping", staleDate);
-
-  console.log("fetchDashboardStats watchingData:", watchingData, "watchingCount:", watchingCount);
 
   // Count pending agent requests
   const { count: pendingRequestsCount } = await supabase
@@ -467,15 +459,8 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   let totalMonthlyRevenue = 0;
   let totalYearlyRevenue = 0;
   for (const sub of subList) {
-    // Safely get a valid PlanId
-    let planId: PlanId;
-    const rawPlan = sub.plan;
-    if (rawPlan && Object.keys(PLANS).includes(rawPlan)) {
-      planId = rawPlan as PlanId;
-    } else {
-      planId = "basic";
-    }
-    const planDef = PLANS[planId];
+    const planId = sub.plan ?? "basic";
+    const planDef = PLANS[planId as PlanId];
     const price = planDef?.price ?? 0;
     if (planDef?.annual) {
       totalMonthlyRevenue += Math.round(price / 12);
@@ -574,7 +559,6 @@ export async function fetchPendingUpgrades(): Promise<AdminUser[]> {
  *
  * Rules:
  *  - 5 days before expiry:  set status → "pending"  (admin sees it, collects cash)
- *  - On/after expiry date:  set status → "suspended" (midnight cutoff)
  *
  * Admin is always exempt.
  */

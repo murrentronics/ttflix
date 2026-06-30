@@ -240,21 +240,36 @@ export function AgentPage() {
       {/* Outer wrapper — starts below the fixed app navbar (h ≈ 56px = top-14) */}
       <div className="min-h-screen flex flex-col pt-14">
 
-        {/* —— Agent dashboard header — sticky below app navbar —— */}
-        <div className="sticky top-14 z-30 flex items-center gap-3 bg-[#c0001a] px-4 py-3 md:hidden shadow-md">
-          <button
-            onClick={() => setSidebarOpen((o) => !o)}
-            className="rounded p-1 text-white focus-visible:outline-none"
-            aria-label="Toggle menu"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-          <TrendingUp className="h-5 w-5 text-white" />
-          <span className="text-lg font-extrabold text-white">Agent Dashboard</span>
-          <span className="ml-auto text-sm font-semibold text-white/80">
-            {NAV_ITEMS.find((n) => n.id === tab)?.label}
-          </span>
-        </div>
+        {/* —— Agent dashboard header — sticky below app navbar —— ONLY ON DASHBOARD TAB —— */}
+        {tab === "dashboard" && (
+          <div className="sticky top-14 z-30 flex items-center gap-3 bg-[#c0001a] px-4 py-3 md:hidden shadow-md">
+            <button
+              onClick={() => setSidebarOpen((o) => !o)}
+              className="rounded p-1 text-white focus-visible:outline-none"
+              aria-label="Toggle menu"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+            <TrendingUp className="h-5 w-5 text-white" />
+            <span className="text-lg font-extrabold text-white">Agent Dashboard</span>
+          </div>
+        )}
+
+        {/* —— Agent non-dashboard header —— */}
+        {tab !== "dashboard" && (
+          <div className="sticky top-14 z-30 flex items-center gap-3 bg-card/95 px-4 py-3 md:hidden shadow-sm">
+            <button
+              onClick={() => setSidebarOpen((o) => !o)}
+              className="rounded p-1 text-foreground focus-visible:outline-none"
+              aria-label="Toggle menu"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+            <span className="ml-auto text-sm font-semibold text-foreground">
+              {NAV_ITEMS.find((n) => n.id === tab)?.label}
+            </span>
+          </div>
+        )}
 
         {/* —— Mobile sidebar overlay —— */}
         {sidebarOpen && (
@@ -358,15 +373,7 @@ export function AgentPage() {
               </div>
             )}
 
-            {/* Summary cards — mobile only (only for non-dashboard tabs) */}
-            {tab !== "dashboard" && (
-              <div className="grid grid-cols-2 gap-3 mb-6 md:hidden">
-                <SummaryCard label="Commission" value={`TT$${summary.totalCommission}`} icon={<CheckCircle className="h-4 w-4 text-green-500" />} />
-                <SummaryCard label="Pending" value={`TT$${summary.pendingCollection}`} icon={<Clock className="h-4 w-4 text-yellow-500" />} />
-                <SummaryCard label="Owed to Admin" value={`TT$${summary.pendingAdminCut}`} icon={<AlertCircle className="h-4 w-4 text-orange-400" />} />
-                <SummaryCard label="Active" value={`${custActive.length}`} icon={<Users className="h-4 w-4 text-primary" />} />
-              </div>
-            )}
+
 
             {/* —— CREATE TAB —— */}
             {tab === "create" && (
