@@ -12,7 +12,7 @@ import {
   fetchUsersByStatus, countByStatus, setUserStatus, setUserRole, makeUserAgent, removeUserAgent, deleteUserRecord,
   fetchPendingAgentBillingRequests, adminApproveAgentRequest, adminRejectAgentRequest,
   fetchAgentList, fetchAgentCustomerLinks, fetchDashboardStats, fetchPaymentHistory, adminCreateAgent,
-  fetchAgentCollections, clearAgentBalance,
+  fetchAgentCollections, clearAgentBalance, formatDueDate,
   type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin, type AgentListItem, type DashboardStats,
   type AgentCollectionItem,
 } from "@/lib/admin";
@@ -836,8 +836,7 @@ export function AdminPage() {
                           <div className="border-t border-border divide-y divide-border">
                             {agent.customers.length === 0 && <p className="px-5 py-4 text-sm text-muted-foreground">No customers linked yet.</p>}
                             {agent.customers.map((c: any) => {
-                              const rawExpiry = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
-                              const dueDate = rawExpiry ? new Date(rawExpiry.setUTCDate(rawExpiry.getUTCDate() - 1)) : null;
+                              const dueDate = c.subscription_expires_at ? formatDueDate(c.subscription_expires_at) : null;
                               return (
                                 <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-4 text-sm">
                                   <div className="min-w-0">
@@ -1164,8 +1163,7 @@ export function AdminPage() {
                   </div>
                 )}
                 {filteredTableRows.map((u) => {
-                  const rawExpiry = u.subscription_expires_at ? new Date(u.subscription_expires_at) : null;
-                  const dueDate = rawExpiry ? new Date(rawExpiry.setUTCDate(rawExpiry.getUTCDate() - 1)) : null;
+                  const dueDate = u.subscription_expires_at ? formatDueDate(u.subscription_expires_at) : null;
                   const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
                   const agentLink = agentCustomerLinks[u.id];
                   const expanded = expandedUser === u.id;

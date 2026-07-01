@@ -4,6 +4,7 @@ import { CreditCard, CheckCircle, CalendarDays } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { supabase, PLANS } from "@/lib/supabase";
+import { formatDueDate } from "@/lib/admin";
 
 export function BillingPage() {
   const { user, profile, refreshProfile } = useAuth();
@@ -96,7 +97,7 @@ export function BillingPage() {
                   <CalendarDays className="h-4 w-4" /> Next billing date
                 </span>
                 <span className="font-semibold">
-                  {new Date(new Date(profile.subscription_expires_at).setUTCDate(new Date(profile.subscription_expires_at).getUTCDate() - 1)).toLocaleDateString("en-TT", {
+                  {formatDueDate(profile.subscription_expires_at).toLocaleDateString("en-TT", {
                     day: "numeric", month: "long", year: "numeric",
                   })}
                 </span>

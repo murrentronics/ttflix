@@ -4,7 +4,7 @@ import { Check, Monitor, CreditCard, AlertCircle, ChevronDown, ChevronUp, X, Bri
 import { useAuth } from "@/lib/auth";
 import { supabase, PLANS, type PlanId } from "@/lib/supabase";
 import { AppShell } from "@/components/AppShell";
-import { requestPlanUpgrade } from "@/lib/admin";
+import { requestPlanUpgrade, formatDueDate } from "@/lib/admin";
 
 const PW_RULES = [
   { key: "length",  label: "At least 8 characters",       test: (v: string) => v.length >= 8 },
@@ -303,7 +303,7 @@ export function AccountPage() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Next billing date</span>
                     <span className="font-medium">
-                      {new Date(new Date(profile.subscription_expires_at).setUTCDate(new Date(profile.subscription_expires_at).getUTCDate() - 1)).toLocaleDateString("en-TT", {
+                      {formatDueDate(profile.subscription_expires_at).toLocaleDateString("en-TT", {
                         day: "numeric", month: "long", year: "numeric"
                       })}
                     </span>

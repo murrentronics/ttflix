@@ -103,7 +103,7 @@ export function WatchPage() {
   const totalSeasonsRef = useRef<number>(1);
   const episodeListRef = useRef<{ episode_number: number; name: string }[]>([]);
 
-  // Fetch episode list whenever season changes so we know the last episode number
+  // Fetch episode list whenever show OR season changes so we always have the right episode list
   useEffect(() => {
     if (type !== "tv") return;
     setNextEp(null);
@@ -115,14 +115,14 @@ export function WatchPage() {
       totalSeasonsRef.current = d.number_of_seasons ?? 1;
     }).catch(() => {});
 
-    getSeasonEpisodes({ data: { id: tmdbId, season: currentEpisodeRef.current.season } })
+    getSeasonEpisodes({ data: { id: tmdbId, season } })
       .then((eps: { episode_number: number; name: string }[]) => {
         episodeListRef.current = eps;
         computeNextEp();
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tmdbId, type]);
+  }, [tmdbId, type, season]);
 
   const computeNextEp = useCallback(() => {
     const { season: curS, episode: curEp } = currentEpisodeRef.current;
@@ -285,9 +285,10 @@ export function WatchPage() {
       user_id: user.id, profile_id: effectiveProfile.id, tmdb_id: tmdbId, media_type: type,
       title, poster_path: poster || null, backdrop_path: backdrop || null,
       watched_seconds: 10, duration_seconds: safeDuration,
-      season: type === "tv" ? season : null, episode: type === "tv" ? episode : null,
+      season: type === "tv" ? currentEpisodeRef.current.season : null,
+      episode: type === "tv" ? currentEpisodeRef.current.episode : null,
     });
-  }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop, season, episode]);
+  }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop]);
 
   // Dismiss loader after 1s — but wait for kids check first if on a kids profile
   useEffect(() => {
@@ -356,8 +357,11 @@ export function WatchPage() {
           if (d?.episode) currentEpisodeRef.current.episode = Number(d.episode);
           progressRef.current = { watched: 0, duration: 0, hasPostMessage: false };
           savedInitial.current = false;
+          watchStartRef.current = Date.now();
           setShowNextBanner(false);
           nextBannerShownRef.current = false;
+          // Immediately save the new episode to DB so "Continue Playing" updates right away
+          persistRef.current(10, 0);
           // Re-fetch episode list for the new season if it changed
           if (d?.season) {
             getSeasonEpisodes({ data: { id: tmdbId, season: Number(d.season) } })

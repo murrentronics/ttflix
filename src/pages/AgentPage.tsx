@@ -8,6 +8,7 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { PLANS, type PlanId, supabase } from "@/lib/supabase";
+import { formatDueDate } from "@/lib/admin";
 import {
   fetchAgentCustomers, agentCreateCustomer,
   fetchAgentBillingRequests, fetchAgentSummary, fetchAgentUpcomingRenewals,
@@ -117,6 +118,9 @@ export function AgentPage() {
         refresh();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'agent_billing_requests' }, () => {
+        refresh();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agent_balance' }, () => {
         refresh();
       })
       .subscribe();
@@ -365,6 +369,11 @@ export function AgentPage() {
                   <SummaryCard label="Owed to Admin" value={`TT$${summary.pendingAdminCut}`} icon={<AlertCircle className="h-4 w-4 text-orange-400" />} />
                   <SummaryCard label="Active Customers" value={`${custActive.length}`} icon={<Users className="h-4 w-4 text-primary" />} />
                   <SummaryCard label="Renewals Due" value={`${upcomingRenewals.length}`} icon={<Clock className="h-4 w-4 text-orange-400" />} />
+                  <SummaryCard
+                    label="Total Due This Renewal"
+                    value={`TT$${upcomingRenewals.reduce((sum, c) => sum + (PLANS[c.plan as PlanId]?.price ?? 0), 0).toLocaleString()}`}
+                    icon={<TrendingUp className="h-4 w-4 text-primary" />}
+                  />
                 </div>
                 
                 {/* Quick action buttons */}
@@ -500,8 +509,7 @@ export function AgentPage() {
                     </div>
                   )}
                   {list.map((c) => {
-                    const rawExpiry = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
-                    const dueDate = rawExpiry ? new Date(Date.UTC(rawExpiry.getUTCFullYear(), rawExpiry.getUTCMonth(), rawExpiry.getUTCDate() - 1)) : null;
+                    const dueDate = c.subscription_expires_at ? formatDueDate(c.subscription_expires_at) : null;
                     const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
                     const isDueSoon = daysLeft !== null && daysLeft <= 5 && daysLeft >= 0;
                     const comm = AGENT_COMMISSION[c.plan as PlanId];
@@ -664,8 +672,7 @@ export function AgentPage() {
                         </div>
                       )}
                       {filteredRenewals.map((c) => {
-                  const rawExpiry = new Date(c.subscription_expires_at!);
-                  const dueDate = new Date(Date.UTC(rawExpiry.getUTCFullYear(), rawExpiry.getUTCMonth(), rawExpiry.getUTCDate() - 1));
+                  const dueDate = formatDueDate(c.subscription_expires_at!);
                   const daysLeft = Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                   const comm = AGENT_COMMISSION[c.plan as PlanId];
                   const alreadyRequested = billingRequests.some(

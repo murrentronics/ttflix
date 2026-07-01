@@ -411,13 +411,24 @@ export async function fetchAgentSummary(agentId: string) {
 
   const pendingCollection = (pendingAdmin ?? []).reduce((s: number, r: any) => s + (r.amount ?? 0), 0);
   const pendingAgentCut = (pendingAdmin ?? []).reduce((s: number, r: any) => s + (r.agent_commission ?? 0), 0);
-  const pendingAdminCut = (pendingAdmin ?? []).reduce((s: number, r: any) => s + (r.admin_amount ?? 0), 0);
+
+  // "Owed to Admin" = persistent running balance from agent_balance table.
+  // This ONLY resets when admin clicks "Clear Balance" on the Collections page —
+  // NOT when billing requests are approved. This way the agent always knows what
+  // they still owe admin even after approvals have been processed.
+  const { data: balanceRow } = await supabase
+    .from("agent_balance")
+    .select("balance")
+    .eq("agent_id", agentId)
+    .maybeSingle();
+
+  const owedToAdmin = (balanceRow as any)?.balance ?? 0;
 
   return {
     totalCommission,
     totalAdminAmount,
     pendingCollection,
     pendingAgentCut,
-    pendingAdminCut,
+    pendingAdminCut: owedToAdmin,  // renamed for UI compatibility — now uses persistent balance
   };
 }
