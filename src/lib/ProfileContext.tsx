@@ -47,7 +47,17 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         return;
       }
     }
-    setProfileSelected(false);
+    // No saved profile — auto-select the default (or first) profile so the user
+    // never gets stuck on the profile picker after a session restore (e.g. agent
+    // creating a customer briefly signs in as the new user then restores).
+    const defaultProfile = list.find((p) => p.is_default) ?? list[0] ?? null;
+    if (defaultProfile) {
+      setActiveProfileState(defaultProfile);
+      setProfileSelected(true);
+      localStorage.setItem(STORAGE_KEY, defaultProfile.id);
+    } else {
+      setProfileSelected(false);
+    }
   }, [user, authProfile]);
 
   useEffect(() => {

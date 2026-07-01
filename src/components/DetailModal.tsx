@@ -205,7 +205,7 @@ export function DetailModal() {
                       const title = data?.title ?? current.title ?? "";
                       const s = watchProgress.season ?? 1;
                       const ep = watchProgress.episode ?? 1;
-                      navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=${ep}&startOver=1`);
+                      navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=${ep}`);
                     }}
                     className={`flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 ${focusStyle}`}
                   >

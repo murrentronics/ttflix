@@ -180,10 +180,6 @@ export function AgentPage() {
     setCreating(true);
     creatingCustomerRef.current = true;
     try {
-      // Save agent's profile key before — the brief sign-in as the new customer
-      // can wipe profileSelected, causing a redirect to the profile picker
-      const savedProfileKey = localStorage.getItem("ttflix_active_profile");
-
       const { proRata } = calcProRata(createPlan);
       await agentCreateCustomer(user.id, profile!.email, agentPassword, {
         email: createEmail.toLowerCase().trim(),
@@ -192,10 +188,6 @@ export function AgentPage() {
         plan: createPlan,
         proRataAmount: proRata,
       });
-
-      // Restore immediately so ProfileContext re-resolves the saved profile
-      if (savedProfileKey) localStorage.setItem("ttflix_active_profile", savedProfileKey);
-
       setCreateEmail(""); setCreateName(""); setCreatePhone("");
       setCreatePlan("basic"); setAgentPassword("");
       await refresh();

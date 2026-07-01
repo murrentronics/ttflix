@@ -419,10 +419,25 @@ export async function adminApproveAgentRequest(requestId: string): Promise<void>
 }
 
 export async function adminRejectAgentRequest(requestId: string): Promise<void> {
-  // First, delete any payment history that might have been created for this request
+  // Fetch the request to check type and get the customer_id
+  const { data: req } = await supabase
+    .from("agent_billing_requests")
+    .select("customer_id, request_type")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  // Delete any payment history that might have been created for this request
   await supabase.from("payment_history").delete().eq("agent_billing_request_id", requestId);
-  // Then mark the request as rejected
+
+  // Mark the request as rejected
   await supabase.from("agent_billing_requests").update({ status: "rejected" }).eq("id", requestId);
+
+  // For new subscriptions — delete the customer entirely (they were never activated)
+  if (req?.request_type === "new_subscription" && req?.customer_id) {
+    // Remove agent link then delete the profile (cascades to auth user via DB)
+    await supabase.from("agent_customers").delete().eq("customer_id", req.customer_id);
+    await deleteUserRecord(req.customer_id);
+  }
 }
 
 // ── Agent list with customer counts and monthly income ─────────────────────────

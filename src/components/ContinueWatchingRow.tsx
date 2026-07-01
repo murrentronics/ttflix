@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
-import { fetchContinueWatching, removeProgress, resetProgress, type WatchProgress } from "@/lib/continue-watching";
+import { fetchContinueWatching, removeProgress, type WatchProgress } from "@/lib/continue-watching";
 import { img } from "@/lib/tmdb";
 import { ResumeModal } from "./ResumeModal";
 import { navigateVertical } from "@/lib/tv-navigation";
@@ -58,27 +58,17 @@ export function ContinueWatchingRow() {
     if (prompt?.tmdb_id === item.tmdb_id) setPrompt(null);
   };
 
-  const playUrl = (item: WatchProgress, s: number, ep: number, startOver = false) =>
-    `/watch/${item.media_type}/${item.tmdb_id}?title=${encodeURIComponent(item.title)}&poster=${encodeURIComponent(item.poster_path ?? "")}&backdrop=${encodeURIComponent(item.backdrop_path ?? "")}&season=${s}&episode=${ep}${startOver ? "&startOver=1" : ""}`;
+  const playUrl = (item: WatchProgress, s: number, ep: number) =>
+    `/watch/${item.media_type}/${item.tmdb_id}?title=${encodeURIComponent(item.title)}&poster=${encodeURIComponent(item.poster_path ?? "")}&backdrop=${encodeURIComponent(item.backdrop_path ?? "")}&season=${s}&episode=${ep}`;
 
   const handleContinue = (item: WatchProgress) => {
     setPrompt(null);
     navigate(playUrl(item, item.season ?? 1, item.episode ?? 1));
   };
 
-  const handleStartOver = async (item: WatchProgress) => {
-    setPrompt(null);
-    // Reset progress in DB so item leaves Continue Watching after this play
-    if (user && effectiveProfile) {
-      await resetProgress(user.id, effectiveProfile.id, item.tmdb_id, item.media_type);
-      setItems((prev) => prev.filter((i) => i.tmdb_id !== item.tmdb_id || i.media_type !== item.media_type));
-    }
-    navigate(playUrl(item, item.media_type === "tv" ? 1 : 1, 1, true));
-  };
-
   const handlePlayEpisode = (item: WatchProgress, season: number, episode: number) => {
     setPrompt(null);
-    navigate(playUrl(item, season, episode, true));
+    navigate(playUrl(item, season, episode));
   };
   return (
     <>
@@ -144,7 +134,7 @@ export function ContinueWatchingRow() {
       <ResumeModal
         item={prompt}
         onContinue={handleContinue}
-        onStartOver={handleStartOver}
+        onStartOver={() => {}}
         onPlayEpisode={handlePlayEpisode}
         onClose={() => setPrompt(null)}
       />

@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.MotionEvent;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -323,6 +324,67 @@ public class PlayerActivity extends Activity {
             playerWebView.destroy();
             playerWebView = null;
         }
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (playerWebView == null) return super.dispatchKeyEvent(event);
+
+        int keyCode = event.getKeyCode();
+        int action  = event.getAction();
+
+        // Show exit button on any remote interaction
+        if (action == KeyEvent.ACTION_UP) showExitButton();
+
+        // Back button — exit player
+        if (keyCode == KeyEvent.KEYCODE_BACK ||
+            keyCode == KeyEvent.KEYCODE_ESCAPE) {
+            if (action == KeyEvent.ACTION_UP) onBackPressed();
+            return true;
+        }
+
+        // Map D-pad and media keys to JavaScript KeyboardEvents so Videasy
+        // can respond to them (seek, play/pause, volume).
+        String jsKey = null;
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:              jsKey = "ArrowLeft";  break;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:             jsKey = "ArrowRight"; break;
+            case KeyEvent.KEYCODE_DPAD_UP:                jsKey = "ArrowUp";    break;
+            case KeyEvent.KEYCODE_DPAD_DOWN:              jsKey = "ArrowDown";  break;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:           jsKey = "Enter";      break;
+            case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case KeyEvent.KEYCODE_MEDIA_PLAY:
+            case KeyEvent.KEYCODE_MEDIA_PAUSE:            jsKey = " ";          break; // Space = play/pause
+            case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+            case KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD:     jsKey = "ArrowRight"; break;
+            case KeyEvent.KEYCODE_MEDIA_REWIND:
+            case KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD:    jsKey = "ArrowLeft";  break;
+        }
+
+        if (jsKey != null) {
+            final String eventType = (action == KeyEvent.ACTION_DOWN) ? "keydown" : "keyup";
+            final String key = jsKey;
+            playerWebView.evaluateJavascript(
+                "(function(){" +
+                "  var el = document.activeElement || document.body;" +
+                "  var e = new KeyboardEvent('" + eventType + "', {" +
+                "    key: '" + key + "'," +
+                "    code: '" + key + "'," +
+                "    bubbles: true," +
+                "    cancelable: true" +
+                "  });" +
+                "  el.dispatchEvent(e);" +
+                "  document.dispatchEvent(e);" +
+                "  window.dispatchEvent(e);" +
+                "})()",
+                null
+            );
+            return true;
+        }
+
+        return super.dispatchKeyEvent(event);
     }
 
     @Override
