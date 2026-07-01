@@ -17,8 +17,8 @@ export function Landing() {
           <div className="mx-auto max-w-3xl px-4 py-24 text-center sm:py-36">
             <h1 className="text-balance text-4xl font-extrabold leading-tight sm:text-6xl">Unlimited movies, TV shows & cartoons.</h1>
             <p className="mt-4 text-xl">Watch anywhere. Cancel anytime.</p>
-            <p className="mt-6 text-base text-foreground/80">Ready to watch? Create your account to start streaming.<br /><span className="text-sm text-muted-foreground">Available in Trinidad & Tobago.</span></p>
-            <Link to="/auth?mode=signup" className="mt-6 inline-block rounded-md bg-primary px-8 py-4 text-lg font-bold text-primary-foreground shadow-[var(--shadow-red)] transition hover:bg-primary/85">Get Started</Link>
+            <p className="mt-6 text-base text-foreground/80">Already a subscriber? Sign in below.<br /><span className="text-sm text-muted-foreground">New to TTFlix? Contact a TTFlix agent to create your account.</span></p>
+            <Link to="/auth" className="mt-6 inline-block rounded-md bg-primary px-8 py-4 text-lg font-bold text-primary-foreground shadow-[var(--shadow-red)] transition hover:bg-primary/85">Sign In</Link>
           </div>
         </div>
       </div>
@@ -49,7 +49,7 @@ export function Landing() {
                 <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> {plan.quality}</li>
                 <li className="flex items-center gap-2"><Check className="h-4 w-4 text-primary" /> Unlimited movies, TV & cartoons</li>
               </ul>
-              <Link to="/auth?mode=signup" className="mt-7 rounded-md bg-primary py-3 text-center font-semibold text-primary-foreground transition hover:bg-primary/85">Choose {plan.name}</Link>
+              <Link to="/auth" className="mt-7 rounded-md bg-primary py-3 text-center font-semibold text-primary-foreground transition hover:bg-primary/85">Sign In</Link>
             </div>
           ))}
         </div>

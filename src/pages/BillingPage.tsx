@@ -19,10 +19,10 @@ export function BillingPage() {
             <CreditCard className="h-7 w-7 text-primary" />
             <h1 className="text-3xl font-extrabold">Subscribe to TTFlix</h1>
           </div>
-          <p className="text-muted-foreground">Create an account to get started.</p>
-          <Link to="/auth?mode=signup"
+          <p className="text-muted-foreground">Contact a TTFlix agent to create your account.</p>
+          <Link to="/auth"
             className="inline-block rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85">
-            Create Account
+            Sign In
           </Link>
         </div>
       </AppShell>

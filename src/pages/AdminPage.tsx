@@ -11,7 +11,7 @@ import { supabase, STATUS_LABELS, PLANS, type UserStatus } from "@/lib/supabase"
 import {
   fetchUsersByStatus, countByStatus, setUserStatus, setUserRole, makeUserAgent, removeUserAgent, deleteUserRecord,
   fetchPendingAgentBillingRequests, adminApproveAgentRequest, adminRejectAgentRequest,
-  fetchAgentList, fetchAgentCustomerLinks, fetchDashboardStats, fetchPaymentHistory,
+  fetchAgentList, fetchAgentCustomerLinks, fetchDashboardStats, fetchPaymentHistory, adminCreateAgent,
   type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin, type AgentListItem, type DashboardStats,
 } from "@/lib/admin";
 import {
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const STATUS_TABS: UserStatus[] = ["pending", "approved", "suspended", "expelled"];
-type AdminTab = UserStatus | "billing" | "history" | "watching" | "agents" | "dashboard";
+type AdminTab = UserStatus | "billing" | "history" | "watching" | "agents" | "dashboard" | "create-agent";
 const PAGE_SIZE = 100;
 
 type NavItem = { id: AdminTab; label: string; icon: React.ReactNode };
@@ -51,6 +51,14 @@ export function AdminPage() {
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
   const [dashLoading, setDashLoading] = useState(false);
+  // Create Agent form state
+  const [agentEmail, setAgentEmail] = useState("");
+  const [agentName, setAgentName] = useState("");
+  const [agentPhone, setAgentPhone] = useState("");
+  const [agentPassword, setAgentPassword] = useState("");
+  const [agentConfirm, setAgentConfirm] = useState("");
+  const [agentMsg, setAgentMsg] = useState<{ text: string; type: "ok" | "err" } | null>(null);
+  const [creatingAgent, setCreatingAgent] = useState(false);
   const dashboardIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const watchingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const tabRef = useRef(tab);
@@ -302,15 +310,16 @@ export function AdminPage() {
 
   // ── Nav items with badge counts ────────────────────────────────────────────
   const NAV_ITEMS: NavItem[] = [
-    { id: "dashboard", label: "Dashboard",          icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
-    { id: "pending",   label: STATUS_LABELS["pending"],   icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
-    { id: "approved",  label: STATUS_LABELS["approved"],  icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
-    { id: "suspended", label: STATUS_LABELS["suspended"], icon: <Ban className="h-4 w-4 shrink-0" /> },
-    { id: "expelled",  label: STATUS_LABELS["expelled"],  icon: <UserX className="h-4 w-4 shrink-0" /> },
-    { id: "billing",   label: "Renewals Due",             icon: <CalendarDays className="h-4 w-4 shrink-0" /> },
-    { id: "history",   label: "Payment History",          icon: <Receipt className="h-4 w-4 shrink-0" /> },
-    { id: "watching",  label: "Watching Now",             icon: <Tv className="h-4 w-4 shrink-0" /> },
-    { id: "agents",    label: "Agents & Requests",      icon: <Briefcase className="h-4 w-4 shrink-0" /> },
+    { id: "dashboard",     label: "Dashboard",          icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
+    { id: "create-agent",  label: "Create Agent",       icon: <UserPlus className="h-4 w-4 shrink-0" /> },
+    { id: "pending",       label: "Pending Subs",       icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
+    { id: "agents",        label: "Pending Requests",   icon: <Briefcase className="h-4 w-4 shrink-0" /> },
+    { id: "approved",      label: STATUS_LABELS["approved"],  icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
+    { id: "suspended",     label: STATUS_LABELS["suspended"], icon: <Ban className="h-4 w-4 shrink-0" /> },
+    { id: "expelled",      label: STATUS_LABELS["expelled"],  icon: <UserX className="h-4 w-4 shrink-0" /> },
+    { id: "billing",       label: "Renewals Due",             icon: <CalendarDays className="h-4 w-4 shrink-0" /> },
+    { id: "history",       label: "Payment History",          icon: <Receipt className="h-4 w-4 shrink-0" /> },
+    { id: "watching",      label: "Watching Now",             icon: <Tv className="h-4 w-4 shrink-0" /> },
   ];
 
   const badges: Partial<Record<AdminTab, number>> = {
@@ -402,7 +411,7 @@ export function AdminPage() {
             {/* Sidebar summary */}
             <div className="px-4 py-4 space-y-1.5 border-t border-black/30">
               <p className="text-xs font-bold text-white/60 uppercase tracking-wide">Summary</p>
-              <SidebarStat label="Total subscribers" value={`${Math.max(0, counts.approved - agentList.length)}`} />
+              <SidebarStat label="Total subscribers" value={`${counts.approved}`} />
               <SidebarStat label="Total agents" value={`${agentList.length}`} />
               <SidebarStat label="Pending approval" value={`${counts.pending}`} />
               <SidebarStat label="Watching now" value={`${watchingCount}`} />
@@ -412,8 +421,8 @@ export function AdminPage() {
           {/* ── Main content ── */}
           <main className="flex-1 min-w-0 px-4 py-6 sm:px-6 overflow-y-auto">
 
-            {/* Search bar — hidden on dashboard */}
-            {tab !== "dashboard" && (
+            {/* Search bar — hidden on dashboard and create-agent */}
+            {tab !== "dashboard" && tab !== "create-agent" && (
             <div className="relative max-w-sm mb-6">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -432,8 +441,8 @@ export function AdminPage() {
             </div>
             )}
 
-            {/* Refresh / Live indicator row — hidden on dashboard */}
-            {tab !== "dashboard" && (
+            {/* Refresh / Live indicator row — hidden on dashboard and create-agent */}
+            {tab !== "dashboard" && tab !== "create-agent" && (
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold">{currentLabel}</h2>
               {tab === "watching" ? (
@@ -532,6 +541,142 @@ export function AdminPage() {
                     </div>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* ── CREATE AGENT TAB ── */}
+            {tab === "create-agent" && (
+              <div className="max-w-lg">
+                <div className="rounded-2xl bg-gradient-to-br from-[#c0001a] via-[#8b0013] to-[#1a0005] p-5 sm:p-6 mb-6 shadow-[0_8px_40px_oklch(0.55_0.22_27/0.35)]">
+                  <div className="flex items-center gap-2 mb-1">
+                    <UserPlus className="h-5 w-5 text-white/80" />
+                    <span className="text-xs font-semibold text-white/80 uppercase tracking-widest">Admin Only</span>
+                  </div>
+                  <h1 className="text-xl font-extrabold text-white">Create New Agent</h1>
+                  <p className="mt-1 text-sm text-white/70">
+                    Creates a login account with the Agent role. No plan or subscription — agents manage customers, not subscriptions.
+                  </p>
+                </div>
+
+                {agentMsg && (
+                  <div className={`mb-5 rounded-md px-4 py-3 text-sm font-medium ${agentMsg.type === "ok" ? "bg-primary/15 text-primary" : "bg-destructive/15 text-destructive"}`}>
+                    {agentMsg.text}
+                  </div>
+                )}
+
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setAgentMsg(null);
+                    const digits = agentPhone.replace(/\D/g, "");
+                    if (digits.length !== 7) {
+                      setAgentMsg({ text: "Phone must be exactly 7 digits.", type: "err" });
+                      return;
+                    }
+                    if (agentPassword.length < 8) {
+                      setAgentMsg({ text: "Password must be at least 8 characters.", type: "err" });
+                      return;
+                    }
+                    if (agentPassword !== agentConfirm) {
+                      setAgentMsg({ text: "Passwords do not match.", type: "err" });
+                      return;
+                    }
+                    setCreatingAgent(true);
+                    try {
+                      await adminCreateAgent({
+                        email: agentEmail.toLowerCase().trim(),
+                        password: agentPassword,
+                        fullName: agentName.trim(),
+                        phone: agentPhone,
+                      });
+                      setAgentMsg({ text: `Agent account created for ${agentName.trim()}. They can now log in.`, type: "ok" });
+                      setAgentEmail(""); setAgentName(""); setAgentPhone("");
+                      setAgentPassword(""); setAgentConfirm("");
+                      // Refresh agent list so sidebar count updates
+                      await loadAgentRequests();
+                    } catch (err: any) {
+                      setAgentMsg({ text: err?.message ?? "Failed to create agent.", type: "err" });
+                    } finally {
+                      setCreatingAgent(false);
+                    }
+                  }}
+                  className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-4"
+                >
+                  <AgentField label="Full Name">
+                    <input
+                      required
+                      value={agentName}
+                      onChange={(e) => setAgentName(e.target.value)}
+                      placeholder="e.g. John Smith"
+                      className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm outline-none focus:border-primary"
+                    />
+                  </AgentField>
+
+                  <AgentField label="Email Address">
+                    <input
+                      type="email"
+                      required
+                      value={agentEmail}
+                      onChange={(e) => setAgentEmail(e.target.value)}
+                      placeholder="agent@example.com"
+                      className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm outline-none focus:border-primary"
+                    />
+                  </AgentField>
+
+                  <AgentField label="Phone (7 digits)">
+                    <input
+                      type="tel"
+                      required
+                      value={agentPhone}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, "").slice(0, 7);
+                        const formatted = digits.length > 3 ? `${digits.slice(0, 3)}-${digits.slice(3)}` : digits;
+                        setAgentPhone(formatted);
+                      }}
+                      placeholder="000-0000"
+                      maxLength={8}
+                      inputMode="numeric"
+                      className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm outline-none focus:border-primary"
+                    />
+                  </AgentField>
+
+                  <AgentField label="Temporary Password">
+                    <input
+                      type="password"
+                      required
+                      value={agentPassword}
+                      onChange={(e) => setAgentPassword(e.target.value)}
+                      placeholder="Min. 8 characters"
+                      className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm outline-none focus:border-primary"
+                    />
+                  </AgentField>
+
+                  <AgentField label="Confirm Password">
+                    <input
+                      type="password"
+                      required
+                      value={agentConfirm}
+                      onChange={(e) => setAgentConfirm(e.target.value)}
+                      placeholder="Re-enter password"
+                      className="w-full rounded-md border border-border bg-input px-3 py-2 text-sm outline-none focus:border-primary"
+                    />
+                    {agentConfirm.length > 0 && agentPassword !== agentConfirm && (
+                      <p className="mt-1 text-xs text-destructive">Passwords do not match.</p>
+                    )}
+                  </AgentField>
+
+                  <div className="rounded-md bg-yellow-500/10 border border-yellow-500/25 px-3 py-2.5 text-xs text-yellow-400 leading-relaxed">
+                    <span className="font-bold">Reminder:</span> Share the temporary password with the agent and ask them to change it after first login via Account → Change Password.
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={creatingAgent}
+                    className="w-full rounded-md bg-[#c0001a] py-3 font-bold text-white hover:bg-[#a30016] disabled:opacity-60 transition"
+                  >
+                    {creatingAgent ? "Creating…" : "Create Agent Account"}
+                  </button>
+                </form>
               </div>
             )}
 
@@ -805,7 +950,7 @@ export function AdminPage() {
             )}
 
             {/* ── USER / RENEWALS ACCORDION (pending, approved, suspended, expelled, billing) ── */}
-            {tab !== "history" && tab !== "agents" && tab !== "watching" && tab !== "dashboard" && (
+            {tab !== "history" && tab !== "agents" && tab !== "watching" && tab !== "dashboard" && tab !== "create-agent" && (
               <div className="space-y-3 max-w-2xl">
                 {tab === "billing" && (
                   <p className="text-sm text-muted-foreground">
@@ -959,6 +1104,15 @@ function DashCard({ icon, label, value, highlight }: {
     <div className={`rounded-xl p-4 space-y-1 ${highlight ? "bg-white/15 ring-1 ring-white/30" : "bg-black/25"}`}>
       <div className="flex items-center gap-1.5 text-white/70">{icon}<span className="text-xs font-semibold">{label}</span></div>
       <p className={`text-xl font-extrabold ${highlight ? "text-white" : "text-white/90"}`}>{value}</p>
+    </div>
+  );
+}
+
+function AgentField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm font-medium">{label}</label>
+      {children}
     </div>
   );
 }

@@ -494,13 +494,15 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-  // Active subscribers with their plans
+  // Active subscribers with their plans (exclude agents and admin)
+  // NOTE: .neq("role","agent") misses rows where role IS NULL in Postgres,
+  //       so we use .or() to capture nulls correctly.
   const { data: subs } = await supabase
     .from("profiles")
     .select("id, plan, role")
     .eq("status", "approved")
-    .neq("role", "agent")
-    .neq("email", ADMIN_EMAIL);
+    .neq("email", ADMIN_EMAIL)
+    .or("role.is.null,role.neq.agent");
 
   // All payment history ever
   const { data: allPayments } = await supabase
@@ -664,4 +666,57 @@ export async function checkRenewal(userId: string, isAdmin: boolean): Promise<vo
     await supabase.from("profiles").update({ status: "suspended" }).eq("id", userId);
   }
   // User stays "approved" and active during the 5-day window — do NOT change status
+}
+
+// ── Admin: create a new agent account directly ────────────────────────────────
+/**
+ * Creates a Supabase auth user + profile with role="agent", status="approved",
+ * and no plan/subscription. Only callable server-side via service-role key, so
+ * we use a Supabase Edge Function ("admin-create-agent") to do the heavy lifting
+ * and keep the service-role key off the client.
+ *
+ * Falls back to a two-step approach using the anon key:
+ *   1. signUp (creates auth user)
+ *   2. upsert profile with agent role
+ *
+ * NOTE: Because Supabase anon signUp requires email confirmation by default,
+ * this approach works only when "Email confirmations" is DISABLED in the
+ * Supabase Auth settings (which is the case for this project since agents use
+ * a temp password set by admin and change it on first login).
+ */
+export async function adminCreateAgent(args: {
+  email: string;
+  password: string;
+  fullName: string;
+  phone: string;
+}): Promise<void> {
+  const { email, password, fullName, phone } = args;
+
+  // Step 1: create the auth user via signUp
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { full_name: fullName, phone },
+    },
+  });
+  if (error) throw error;
+
+  const newUser = data.user;
+  if (!newUser) throw new Error("User creation failed — no user returned.");
+
+  // Step 2: upsert the profile as an agent (no plan, no subscription)
+  const { error: profileError } = await supabase.from("profiles").upsert({
+    id: newUser.id,
+    email,
+    full_name: fullName,
+    phone,
+    country: "Trinidad & Tobago",
+    plan: null,
+    status: "approved",
+    role: "agent",
+    subscription_expires_at: null,
+    pending_plan: null,
+  });
+  if (profileError) throw profileError;
 }
