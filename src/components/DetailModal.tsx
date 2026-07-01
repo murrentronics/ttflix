@@ -13,7 +13,9 @@ import { fetchProgressForTitle, type WatchProgress } from "@/lib/continue-watchi
 export function DetailModal() {
   const { current, close } = useDetail();
   const { user, profile, isAdmin } = useAuth();
-  const { activeProfile } = useProfile();
+  const { activeProfile, profiles } = useProfile();
+  // Fall back to first profile if activeProfile not yet selected (e.g. right after session restore)
+  const effectiveProfile = activeProfile ?? profiles[0] ?? null;
   const navigate = useNavigate();
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
@@ -26,9 +28,9 @@ export function DetailModal() {
   const [watchProgress, setWatchProgress] = useState<WatchProgress | null>(null);
 
   useEffect(() => {
-    if (!current || !user || !activeProfile) { setWatchProgress(null); return; }
-    fetchProgressForTitle(user.id, activeProfile.id, current.id, current.mediaType).then(setWatchProgress);
-  }, [current?.id, current?.mediaType, user?.id, activeProfile?.id]);
+    if (!current || !user || !effectiveProfile) { setWatchProgress(null); return; }
+    fetchProgressForTitle(user.id, effectiveProfile.id, current.id, current.mediaType).then(setWatchProgress);
+  }, [current?.id, current?.mediaType, user?.id, effectiveProfile?.id]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["details", current?.mediaType, current?.id],
@@ -203,7 +205,7 @@ export function DetailModal() {
                       const title = data?.title ?? current.title ?? "";
                       const s = watchProgress.season ?? 1;
                       const ep = watchProgress.episode ?? 1;
-                      navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=${ep}`);
+                      navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=${ep}&startOver=1`);
                     }}
                     className={`flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 ${focusStyle}`}
                   >

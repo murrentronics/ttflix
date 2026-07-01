@@ -14,9 +14,9 @@ import type { Profile } from "./auth";
 function calcExpiry(startDate: Date, isAnnual: boolean): Date {
   const expiry = new Date(startDate);
   if (isAnnual) {
-    expiry.setFullYear(expiry.getFullYear() + 1);
+    expiry.setUTCFullYear(expiry.getUTCFullYear() + 1);
   } else {
-    expiry.setMonth(expiry.getMonth() + 1);
+    expiry.setUTCMonth(expiry.getUTCMonth() + 1);
   }
   // Set to the 2nd of that month at 00:00:00 UTC — gives the full 1st for collection
   expiry.setUTCDate(2);
@@ -123,10 +123,19 @@ export async function setUserStatus(id: string, status: UserStatus) {
       .from("agent_billing_requests")
       .select("*")
       .eq("customer_id", id)
-      .eq("status", "pending_admin")
+      .in("status", ["pending_admin", "approved"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    // If the billing request was already approved by adminApproveAgentRequest,
+    // that function already wrote the payment_history row and updated the profile.
+    // Skip everything here to prevent a duplicate record.
+    if ((billingRequest as any)?.status === "approved") {
+      const { error } = await supabase.from("profiles").update(patch).eq("id", id);
+      if (error) throw error;
+      return;
+    }
 
     const plan = ((prof as any)?.pending_plan ?? (prof as any)?.plan ?? "basic") as PlanId;
     const planDef = PLANS[plan];

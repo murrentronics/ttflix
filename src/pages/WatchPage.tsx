@@ -98,6 +98,8 @@ export function WatchPage() {
 
   // ── Next episode state ──────────────────────────────────────────────────────
   const [nextEp, setNextEp] = useState<{ season: number; episode: number; name: string } | null>(null);
+  const nextEpRef = useRef(nextEp);
+  useEffect(() => { nextEpRef.current = nextEp; }, [nextEp]);
   const [showNextBanner, setShowNextBanner] = useState(false);
   const nextBannerShownRef = useRef(false);
   const totalSeasonsRef = useRef<number>(1);
@@ -111,16 +113,16 @@ export function WatchPage() {
     nextBannerShownRef.current = false;
     episodeListRef.current = [];
 
-    getDetails({ data: { id: tmdbId, mediaType: "tv" } }).then((d) => {
-      totalSeasonsRef.current = d.number_of_seasons ?? 1;
-    }).catch(() => {});
-
-    getSeasonEpisodes({ data: { id: tmdbId, season } })
-      .then((eps: { episode_number: number; name: string }[]) => {
-        episodeListRef.current = eps;
-        computeNextEp();
-      })
-      .catch(() => {});
+    // Fetch both in parallel — compute next ep only after BOTH resolve so
+    // totalSeasonsRef is correct when checking season boundaries.
+    Promise.all([
+      getDetails({ data: { id: tmdbId, mediaType: "tv" } })
+        .then((d) => { totalSeasonsRef.current = d.number_of_seasons ?? 1; })
+        .catch(() => {}),
+      getSeasonEpisodes({ data: { id: tmdbId, season } })
+        .then((eps: { episode_number: number; name: string }[]) => { episodeListRef.current = eps; })
+        .catch(() => {}),
+    ]).then(() => computeNextEp());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, season]);
 
@@ -361,7 +363,7 @@ export function WatchPage() {
           setShowNextBanner(false);
           nextBannerShownRef.current = false;
           // Immediately save the new episode to DB so "Continue Playing" updates right away
-          persistRef.current(10, 0);
+          persistRef.current(10, progressRef.current.duration);
           // Re-fetch episode list for the new season if it changed
           if (d?.season) {
             getSeasonEpisodes({ data: { id: tmdbId, season: Number(d.season) } })
@@ -383,7 +385,7 @@ export function WatchPage() {
             saveInitial();
           }
           // Show "Up Next" banner in the last 60s or last 8% of the episode
-          if (type === "tv" && nextEp && !nextBannerShownRef.current && newDuration > 0) {
+          if (type === "tv" && nextEpRef.current && !nextBannerShownRef.current && newDuration > 0) {
             const remaining = newDuration - d.timestamp;
             const pct = d.timestamp / newDuration;
             if (remaining <= 60 || pct >= 0.92) {
@@ -399,16 +401,38 @@ export function WatchPage() {
   }, [triggerExplosion, saveInitial, providerIndex, providers]);
 
   // When src changes, force iframe reload — skip if kids blocked
+  // If startOver=1, wipe Videasy's localStorage for this title before loading
+  // so it doesn't resume from where it left off independently of our DB.
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
-    if (kidsBlockedRef.current) return; // never load blocked content
+    if (kidsBlockedRef.current) return;
     progressRef.current.hasPostMessage = false;
     playerStartedRef.current = false;
-    iframe.src = "about:blank";
-    const t = setTimeout(() => { if (iframeRef.current) iframeRef.current.src = src; }, 50);
-    return () => clearTimeout(t);
-  }, [src]);
+
+    if (startOver) {
+      // Load blank page first so we're in a same-origin context to run JS
+      iframe.src = "about:blank";
+      const wipe = () => {
+        try {
+          const id = String(tmdbId);
+          [localStorage, sessionStorage].forEach((store) => {
+            Object.keys(store).forEach((k) => {
+              if (k.includes(id)) store.removeItem(k);
+            });
+          });
+        } catch { /* sandboxed iframe — ignore */ }
+        if (iframeRef.current) iframeRef.current.src = src;
+      };
+      // Give the blank page time to settle, then wipe and load
+      const t = setTimeout(wipe, 80);
+      return () => clearTimeout(t);
+    } else {
+      iframe.src = "about:blank";
+      const t = setTimeout(() => { if (iframeRef.current) iframeRef.current.src = src; }, 50);
+      return () => clearTimeout(t);
+    }
+  }, [src]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const persistRef = useRef(persist);
   useEffect(() => { persistRef.current = persist; }, [persist]);
@@ -609,10 +633,10 @@ export function WatchPage() {
               data-tv-card
               aria-label={`Next episode S${nextEp.season} E${nextEp.episode}`}
               onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goNextEpisode(); } }}
-              className={`absolute bottom-6 right-4 z-40 flex items-center gap-2 rounded-full border-2 border-white/40 bg-black/80 px-5 py-3 text-sm font-bold text-white backdrop-blur-sm transition
+              className={`absolute bottom-6 right-4 z-40 flex items-center gap-2 rounded-full border-2 border-white/40 bg-black/80 px-5 py-3 text-sm font-bold text-white backdrop-blur-sm transition-opacity
                 hover:border-white hover:bg-white hover:text-black
                 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
-                ${exitVisible ? "opacity-100" : "opacity-20"}`}
+                ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
               <SkipForward className="h-5 w-5 shrink-0" />
               Next Episode
@@ -624,7 +648,8 @@ export function WatchPage() {
             <div
               role="dialog"
               aria-label="Up next episode"
-              className="absolute right-4 top-4 z-40 w-64 rounded-xl border border-white/20 bg-black/90 p-4 shadow-2xl backdrop-blur-md sm:w-72"
+              className={`absolute right-4 top-4 z-40 w-64 rounded-xl border border-white/20 bg-black/90 p-4 shadow-2xl backdrop-blur-md sm:w-72 transition-opacity
+                ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
               <p className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">Up Next</p>
               <p className="text-sm font-bold text-white leading-tight line-clamp-2 mb-3">

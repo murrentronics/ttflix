@@ -21,7 +21,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-const STATUS_TABS: UserStatus[] = ["pending", "approved", "suspended", "expelled"];
+const STATUS_TABS: UserStatus[] = ["approved", "suspended", "expelled"];
 type AdminTab = UserStatus | "billing" | "history" | "watching" | "agent-requests" | "agent-list" | "dashboard" | "create-agent" | "collections";
 const PAGE_SIZE = 100;
 
@@ -77,7 +77,9 @@ export function AdminPage() {
 
   const refreshCounts = useCallback(async () => {
     const entries = await Promise.all(
-      STATUS_TABS.map(async (s) => [s, await countByStatus(s)] as const)
+      (["pending", "approved", "suspended", "expelled"] as UserStatus[]).map(
+        async (s) => [s, await countByStatus(s)] as const
+      )
     );
     setCounts(Object.fromEntries(entries) as Record<UserStatus, number>);
   }, []);
@@ -158,6 +160,8 @@ export function AdminPage() {
     refreshUpcomingRenewals();
     // Always refresh agent request count so the sidebar badge stays current
     loadAgentRequests();
+    // Always load collections silently so the badge count is current
+    loadCollections(true);
     if (tab === "dashboard") { loadDashboard(); }
     else if (tab === "billing") { /* loaded above */ }
     else if (tab === "history") { setHistoryPage(1); loadHistory(1); }
@@ -180,7 +184,7 @@ export function AdminPage() {
     const channel = supabase.channel("admin-profiles")
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
         refreshUpcomingRenewals();
-        if (tabRef.current !== "billing" && tabRef.current !== "history" && tabRef.current !== "watching" && tabRef.current !== "agent-requests" && tabRef.current !== "agent-list" && tabRef.current !== "dashboard")
+        if (tabRef.current !== "billing" && tabRef.current !== "history" && tabRef.current !== "watching" && tabRef.current !== "agent-requests" && tabRef.current !== "agent-list" && tabRef.current !== "dashboard" && tabRef.current !== "collections")
           refreshRows(tabRef.current as UserStatus);
         refreshCounts();
       })
@@ -270,7 +274,6 @@ export function AdminPage() {
     try {
       await adminApproveAgentRequest(req.id);
       await Promise.all([loadAgentRequests(), refreshCounts()]);
-      if (tabRef.current === "pending") await refreshRows("pending");
     } finally { setBusy(false); }
   };
 
@@ -336,7 +339,6 @@ export function AdminPage() {
   const NAV_ITEMS: NavItem[] = [
     { id: "dashboard",       label: "Dashboard",          icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
     { id: "create-agent",    label: "Create Agent",       icon: <UserPlus className="h-4 w-4 shrink-0" /> },
-    { id: "pending",         label: "Pending Subs",       icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
     { id: "agent-requests",  label: "Pending Requests",   icon: <Briefcase className="h-4 w-4 shrink-0" /> },
     { id: "agent-list",      label: "Agents",             icon: <Users className="h-4 w-4 shrink-0" /> },
     { id: "collections",     label: "Collections",        icon: <Wallet className="h-4 w-4 shrink-0" /> },
@@ -349,7 +351,6 @@ export function AdminPage() {
   ];
 
   const badges: Partial<Record<AdminTab, number>> = {
-    pending:          counts.pending,
     approved:         counts.approved,
     suspended:        counts.suspended,
     expelled:         counts.expelled,
@@ -443,7 +444,6 @@ export function AdminPage() {
               <p className="text-xs font-bold text-white/60 uppercase tracking-wide">Summary</p>
               <SidebarStat label="Total subscribers" value={`${counts.approved}`} />
               <SidebarStat label="Total agents" value={`${agentList.length}`} />
-              <SidebarStat label="Pending approval" value={`${counts.pending}`} />
               <SidebarStat label="Watching now" value={`${watchingCount}`} />
             </div>
           </aside>
@@ -1056,13 +1056,13 @@ export function AdminPage() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Total collected: </span>
-                      <span className="font-bold text-primary">
+                      <span className="font-bold text-green-400">
                         TT${filteredHistory.reduce((sum, p) => sum + (p.amount ?? 0), 0).toLocaleString()}
                       </span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Admin cut: </span>
-                      <span className="font-bold text-green-400">
+                      <span className="font-bold text-primary">
                         TT${filteredHistory.reduce((sum, p) => sum + ((p as any).admin_amount ?? p.amount ?? 0), 0).toLocaleString()}
                       </span>
                     </div>
@@ -1187,7 +1187,7 @@ export function AdminPage() {
                               <span className="rounded-full bg-primary/15 px-2 py-0.5 text-primary">
                                 {PLANS[u.plan as keyof typeof PLANS]?.name ?? u.plan} · TT${PLANS[u.plan as keyof typeof PLANS]?.price ?? "?"}/{PLANS[u.plan as keyof typeof PLANS]?.annual ? "yr" : "mo"}
                               </span>
-                              {tab !== "pending" && dueDate && (
+                              {dueDate && (
                                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                                   tab === "billing" && daysLeft !== null && daysLeft <= 1
                                     ? "bg-destructive/15 text-destructive"
@@ -1212,7 +1212,7 @@ export function AdminPage() {
                       {expanded && (
                         <div className="border-t border-border px-4 pb-4 pt-3">
                           <div className="flex flex-wrap gap-2">
-                            {(tab === "pending" || tab === "billing") && (
+                            {tab === "billing" && (
                               <Btn onClick={() => changeStatus(u, "approved")} busy={busy} variant="primary">
                                 <ShieldCheck className="h-3.5 w-3.5" /> Approve
                               </Btn>
@@ -1232,7 +1232,7 @@ export function AdminPage() {
                                 <ShieldCheck className="h-3.5 w-3.5" /> Reactivate
                               </Btn>
                             )}
-                            {(tab === "suspended" || tab === "pending" || tab === "billing") && (
+                            {tab === "suspended" && (
                               <Btn onClick={() => changeStatus(u, "expelled")} busy={busy}>
                                 <UserX className="h-3.5 w-3.5" /> Expel
                               </Btn>
