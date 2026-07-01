@@ -270,3 +270,57 @@ WHERE
     SELECT 1 FROM public.agent_customers ac
     WHERE ac.customer_id = p.id
   );
+
+-- 17) Agent Collections — persistent running balance per agent
+--
+-- This table keeps a cumulative balance of what each agent owes admin.
+-- It ONLY resets when admin manually clicks "Clear Balance" after collecting cash.
+-- Rows are never auto-deleted — one row per agent, upserted as approvals happen.
+
+CREATE TABLE IF NOT EXISTS public.agent_balance (
+  agent_id    uuid PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+  balance     integer NOT NULL DEFAULT 0,   -- TT$ owed to admin (never negative)
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.agent_balance ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE ON public.agent_balance TO authenticated;
+
+DROP POLICY IF EXISTS "agent_balance select" ON public.agent_balance;
+CREATE POLICY "agent_balance select" ON public.agent_balance FOR SELECT TO authenticated
+  USING (agent_id = auth.uid() OR public.is_admin());
+
+DROP POLICY IF EXISTS "agent_balance update" ON public.agent_balance;
+CREATE POLICY "agent_balance update" ON public.agent_balance FOR UPDATE TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "agent_balance insert" ON public.agent_balance;
+CREATE POLICY "agent_balance insert" ON public.agent_balance FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin() OR agent_id = auth.uid());
+
+-- Realtime so Collections page updates live
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.agent_balance;
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- Backfill: seed agent_balance from all existing approved billing requests
+-- (sum of admin_amount per agent, minus what has already been recorded in agent_payments)
+INSERT INTO public.agent_balance (agent_id, balance, updated_at)
+SELECT
+  abr.agent_id,
+  GREATEST(0,
+    COALESCE(SUM(abr.admin_amount), 0)
+    - COALESCE((
+        SELECT SUM(ap.amount)
+        FROM public.agent_payments ap
+        WHERE ap.agent_id = abr.agent_id
+      ), 0)
+  ) AS balance,
+  now()
+FROM public.agent_billing_requests abr
+WHERE abr.status = 'approved'
+GROUP BY abr.agent_id
+ON CONFLICT (agent_id) DO UPDATE
+  SET balance = EXCLUDED.balance, updated_at = now();

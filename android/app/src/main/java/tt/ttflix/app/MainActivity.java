@@ -55,6 +55,21 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    /** Exposed to JavaScript as window.AndroidDial — opens the native phone dialer */
+    public class DialBridge {
+        @JavascriptInterface
+        public void call(String number) {
+            // Strip everything except digits and leading +
+            String cleaned = number.replaceAll("[^\\d+]", "");
+            runOnUiThread(() -> {
+                Intent dialIntent = new Intent(Intent.ACTION_DIAL,
+                    android.net.Uri.parse("tel:" + cleaned));
+                dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(dialIntent);
+            });
+        }
+    }
+
     /** Exposed to JavaScript as window.AndroidPlayer — launches PlayerActivity */
     public class PlayerBridge {        @JavascriptInterface
         public void open(String url) {
@@ -183,6 +198,9 @@ public class MainActivity extends BridgeActivity {
                 }
             });
 
+            // Register dial bridge so JS can call window.AndroidDial.call(number)
+            getBridge().getWebView().addJavascriptInterface(new DialBridge(), "AndroidDial");
+
             getBridge().getWebView().setWebViewClient(new com.getcapacitor.BridgeWebViewClient(getBridge()) {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -192,6 +210,14 @@ public class MainActivity extends BridgeActivity {
                     }
                     if (url.contains("videasy.net")) {
                         return false;
+                    }
+                    // Handle tel: links — open the native dialer
+                    if (url.startsWith("tel:")) {
+                        Intent dialIntent = new Intent(Intent.ACTION_DIAL,
+                            android.net.Uri.parse(url));
+                        dialIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(dialIntent);
+                        return true;
                     }
                     return true;
                 }

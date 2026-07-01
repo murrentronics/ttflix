@@ -399,6 +399,9 @@ export async function adminApproveAgentRequest(requestId: string): Promise<void>
     status: "approved",
     admin_approved_at: now.toISOString(),
   }).eq("id", requestId);
+
+  // 5) Add admin_amount to the agent's running balance (Collections page)
+  await incrementAgentBalance(req.agent_id, req.admin_amount);
 }
 
 export async function adminRejectAgentRequest(requestId: string): Promise<void> {
@@ -555,6 +558,147 @@ export async function recordAgentPayment(agentId: string, amount: number, notes?
     notes: notes ?? null,
   });
   if (error) throw error;
+}
+
+// ── Agent Collections — persistent balance tracking ───────────────────────────
+
+export type AgentCollectionItem = {
+  agent_id: string;
+  full_name: string | null;
+  email: string;
+  phone: string | null;
+  status: string;
+  balance: number;          // current running balance owed to admin (TT$)
+  updated_at: string;
+  // breakdown for the current month
+  this_month_admin: number; // admin_amount approved this calendar month
+  all_time_owed: number;    // total admin_amount across all approved requests
+  customer_count: number;
+};
+
+export async function fetchAgentCollections(): Promise<AgentCollectionItem[]> {
+  // 1. All agent profiles
+  const { data: agents, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, phone, status")
+    .eq("role", "agent")
+    .order("full_name", { ascending: true });
+  if (error) throw error;
+  if (!agents || agents.length === 0) return [];
+
+  const agentIds = (agents as any[]).map((a) => a.id);
+
+  // 2. Persistent balances
+  const { data: balances } = await supabase
+    .from("agent_balance")
+    .select("agent_id, balance, updated_at")
+    .in("agent_id", agentIds);
+
+  const balanceMap: Record<string, { balance: number; updated_at: string }> = {};
+  for (const b of (balances ?? []) as any[]) {
+    balanceMap[b.agent_id] = { balance: b.balance ?? 0, updated_at: b.updated_at };
+  }
+
+  // 3. All-time approved admin amounts per agent
+  const { data: allApproved } = await supabase
+    .from("agent_billing_requests")
+    .select("agent_id, admin_amount")
+    .eq("status", "approved")
+    .in("agent_id", agentIds);
+
+  const allTimeMap: Record<string, number> = {};
+  for (const r of (allApproved ?? []) as any[]) {
+    allTimeMap[r.agent_id] = (allTimeMap[r.agent_id] ?? 0) + (r.admin_amount ?? 0);
+  }
+
+  // 4. This month's approved admin amounts
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+  const { data: monthApproved } = await supabase
+    .from("agent_billing_requests")
+    .select("agent_id, admin_amount")
+    .eq("status", "approved")
+    .gte("admin_approved_at", monthStart)
+    .in("agent_id", agentIds);
+
+  const monthMap: Record<string, number> = {};
+  for (const r of (monthApproved ?? []) as any[]) {
+    monthMap[r.agent_id] = (monthMap[r.agent_id] ?? 0) + (r.admin_amount ?? 0);
+  }
+
+  // 5. Customer counts
+  const { data: links } = await supabase
+    .from("agent_customers")
+    .select("agent_id")
+    .in("agent_id", agentIds);
+
+  const countMap: Record<string, number> = {};
+  for (const l of (links ?? []) as any[]) {
+    countMap[l.agent_id] = (countMap[l.agent_id] ?? 0) + 1;
+  }
+
+  return (agents as any[]).map((a) => ({
+    agent_id: a.id,
+    full_name: a.full_name ?? null,
+    email: a.email,
+    phone: a.phone ?? null,
+    status: a.status ?? "approved",
+    balance: balanceMap[a.id]?.balance ?? 0,
+    updated_at: balanceMap[a.id]?.updated_at ?? new Date().toISOString(),
+    this_month_admin: monthMap[a.id] ?? 0,
+    all_time_owed: allTimeMap[a.id] ?? 0,
+    customer_count: countMap[a.id] ?? 0,
+  }));
+}
+
+/**
+ * Add an approved billing request's admin_amount to the agent's running balance.
+ * Called automatically when admin approves a billing request.
+ */
+export async function incrementAgentBalance(agentId: string, adminAmount: number): Promise<void> {
+  // Upsert: create row if missing, otherwise add to existing balance
+  const { data: existing } = await supabase
+    .from("agent_balance")
+    .select("balance")
+    .eq("agent_id", agentId)
+    .maybeSingle();
+
+  const newBalance = ((existing as any)?.balance ?? 0) + adminAmount;
+
+  const { error } = await supabase
+    .from("agent_balance")
+    .upsert({ agent_id: agentId, balance: newBalance, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+/**
+ * Clear an agent's balance — admin calls this after physically collecting cash.
+ * Records the cleared amount in agent_payments for audit trail.
+ */
+export async function clearAgentBalance(agentId: string, notes?: string): Promise<void> {
+  // Get current balance first
+  const { data: row } = await supabase
+    .from("agent_balance")
+    .select("balance")
+    .eq("agent_id", agentId)
+    .maybeSingle();
+
+  const amount = (row as any)?.balance ?? 0;
+  if (amount <= 0) return; // nothing to clear
+
+  // Record the payment in the audit log
+  const { error: payErr } = await supabase.from("agent_payments").insert({
+    agent_id: agentId,
+    amount,
+    notes: notes ?? `Balance cleared by admin on ${new Date().toLocaleDateString("en-TT")}`,
+  });
+  if (payErr) throw payErr;
+
+  // Zero out the balance
+  const { error: balErr } = await supabase
+    .from("agent_balance")
+    .update({ balance: 0, updated_at: new Date().toISOString() })
+    .eq("agent_id", agentId);
+  if (balErr) throw balErr;
 }
 
 // ── Dashboard summary stats ───────────────────────────────────────────────────
