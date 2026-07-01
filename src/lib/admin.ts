@@ -1,6 +1,40 @@
 import { supabase, PLANS, type UserStatus, ADMIN_EMAIL, type PlanId } from "./supabase";
 import type { Profile } from "./auth";
 
+/**
+ * Calculate subscription expiry dates.
+ *
+ * Display date (shown to users/admin): last day of the subscription month at 23:59:59 local.
+ * Actual expiry stored in DB: midnight on the 2nd of the following month (00:00:00 UTC).
+ *
+ * This gives admin the full 1st of the month to collect cash before anyone gets suspended.
+ *
+ * For annual plans, expiry is midnight on the 2nd day of the month one year later.
+ */
+function calcExpiry(startDate: Date, isAnnual: boolean): Date {
+  const expiry = new Date(startDate);
+  if (isAnnual) {
+    expiry.setFullYear(expiry.getFullYear() + 1);
+  } else {
+    expiry.setMonth(expiry.getMonth() + 1);
+  }
+  // Set to the 2nd of that month at 00:00:00 UTC — gives the full 1st for collection
+  expiry.setUTCDate(2);
+  expiry.setUTCHours(0, 0, 0, 0);
+  return expiry;
+}
+
+/**
+ * Format subscription_expires_at for display.
+ * Shows the last day of the month (the DB stores the 2nd of next month as the cutoff).
+ */
+export function formatDueDate(expiresAt: string): Date {
+  const d = new Date(expiresAt);
+  // Subtract 1 day to get the last day of the subscription month
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d;
+}
+
 export type AdminUser = Profile & {
   status: UserStatus;
   subscription_expires_at: string | null;
@@ -58,12 +92,19 @@ export async function countByStatus(status: UserStatus): Promise<number> {
 export async function setUserStatus(id: string, status: UserStatus) {
   const patch: Record<string, unknown> = { status };
   if (status === "approved") {
-    // Fetch current profile including pending_plan and subscription_expires_at
+    // Fetch current profile including role, pending_plan and subscription_expires_at
     const { data: prof } = await supabase
       .from("profiles")
-      .select("plan, pending_plan, subscription_expires_at")
+      .select("role, plan, pending_plan, subscription_expires_at")
       .eq("id", id)
       .maybeSingle();
+
+    // Agents don't have subscriptions — skip payment record entirely
+    if ((prof as any)?.role === "agent") {
+      const { error } = await supabase.from("profiles").update(patch).eq("id", id);
+      if (error) throw error;
+      return;
+    }
 
     // Check if user has an agent
     const { data: agentCustomerLink } = await supabase
@@ -98,9 +139,7 @@ export async function setUserStatus(id: string, status: UserStatus) {
     }
 
     const periodStart = startDate.toISOString();
-    const periodEnd = new Date(startDate);
-    if (isAnnual) periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-    else periodEnd.setMonth(periodEnd.getMonth() + 1);
+    const periodEnd = calcExpiry(startDate, isAnnual);
 
     patch.subscription_expires_at = periodEnd.toISOString();
     if ((prof as any)?.pending_plan) {
@@ -245,8 +284,7 @@ export async function makeUserAgent(id: string) {
  */
 export async function removeUserAgent(id: string) {
   const now = new Date();
-  const periodEnd = new Date(now);
-  periodEnd.setMonth(periodEnd.getMonth() + 1);
+  const periodEnd = calcExpiry(now, false);
 
   const { error } = await supabase.from("profiles").update({
     role: null,
@@ -332,9 +370,7 @@ export async function adminApproveAgentRequest(requestId: string): Promise<void>
   }
 
   const periodStart = startDate.toISOString();
-  const periodEnd = new Date(startDate);
-  if (isAnnual) periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-  else periodEnd.setMonth(periodEnd.getMonth() + 1);
+  const periodEnd = calcExpiry(startDate, isAnnual);
 
   // 2) Activate/extend customer
   await supabase.from("profiles").update({
@@ -645,9 +681,7 @@ export async function approvePlanUpgrade(userId: string) {
   const amount = newPlan === "premium" ? 100 : 50;
   const now = new Date();
   const periodStart = now.toISOString();
-  const nextMonth = new Date(now);
-  nextMonth.setMonth(nextMonth.getMonth() + 1);
-  const periodEnd = nextMonth.toISOString();
+  const periodEnd = calcExpiry(now, false).toISOString();
 
   await supabase.from("profiles").update({
     plan: newPlan,

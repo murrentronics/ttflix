@@ -12,6 +12,63 @@ export const AGENT_COMMISSION: Record<PlanId, { agent: number; admin: number; to
   premium_annual:  { agent: 300, admin: 450, total: 750 },
 };
 
+/**
+ * Calculate the pro-rata (first month partial) amount for a new monthly subscriber.
+ *
+ * Logic:
+ *  - Annual plans: always full price (no pro-rata)
+ *  - Monthly plans: charge for the remaining days in the current month,
+ *    from the signup day up to and including the last day of the month.
+ *    Rounded to the nearest dollar (no cents).
+ *
+ * Example: Basic TT$60, signup on the 15th of a 30-day month:
+ *   remaining days = 30 - 15 + 1 = 16
+ *   daily rate = 60 / 30 = 2.00
+ *   pro-rata = 16 × 2.00 = 32 → rounded = TT$32
+ *
+ * The MINIMUM charged is TT$1 (avoid TT$0 for late-month signups).
+ */
+export function calcProRata(plan: PlanId, signupDate: Date = new Date()): {
+  proRata: number;
+  isProRata: boolean;
+  daysRemaining: number;
+  daysInMonth: number;
+} {
+  const comm = AGENT_COMMISSION[plan];
+  const fullPrice = comm.total;
+  const isAnnual = PLANS[plan].annual;
+
+  if (isAnnual) {
+    return { proRata: fullPrice, isProRata: false, daysRemaining: 0, daysInMonth: 0 };
+  }
+
+  const year = signupDate.getFullYear();
+  const month = signupDate.getMonth();
+  const day = signupDate.getDate();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysRemaining = daysInMonth - day + 1; // inclusive of today
+
+  // If signing up on day 1, charge full price
+  if (day === 1) {
+    return { proRata: fullPrice, isProRata: false, daysRemaining, daysInMonth };
+  }
+
+  const dailyRate = fullPrice / daysInMonth;
+  const proRata = Math.max(1, Math.round(dailyRate * daysRemaining));
+  return { proRata, isProRata: proRata !== fullPrice, daysRemaining, daysInMonth };
+}
+
+/**
+ * Pro-rata commission split — keep the agent/admin ratio the same as full price.
+ */
+export function calcProRataCommission(plan: PlanId, proRataTotal: number): { agent: number; admin: number } {
+  const comm = AGENT_COMMISSION[plan];
+  const ratio = comm.agent / comm.total;
+  const agent = Math.round(ratio * proRataTotal);
+  const admin = proRataTotal - agent;
+  return { agent, admin };
+}
+
 export type AgentCustomer = {
   id: string;           // profiles.id
   email: string;
@@ -80,6 +137,7 @@ export async function agentCreateCustomer(
     fullName: string;
     phone: string;
     plan: PlanId;
+    proRataAmount?: number; // optional override — defaults to calcProRata
   }
 ): Promise<{ userId: string }> {
   const TEMP_PASSWORD = "123456";
@@ -137,16 +195,19 @@ export async function agentCreateCustomer(
   });
   if (linkErr) throw linkErr;
 
-  // 6. Create billing request directly at pending_admin — cash collected at signup
-  const commission = AGENT_COMMISSION[data.plan];
+  // 6. Create billing request — use pro-rata amount for first month (monthly plans)
+  const { proRata } = data.proRataAmount
+    ? { proRata: data.proRataAmount }
+    : calcProRata(data.plan);
+  const { agent: agentCut, admin: adminCut } = calcProRataCommission(data.plan, proRata);
   const now = new Date().toISOString();
   await supabase.from("agent_billing_requests").insert({
     agent_id: agentId,
     customer_id: newUser.id,
     plan: data.plan,
-    amount: commission.total,
-    agent_commission: commission.agent,
-    admin_amount: commission.admin,
+    amount: proRata,
+    agent_commission: agentCut,
+    admin_amount: adminCut,
     request_type: "new_subscription",
     status: "pending_admin",
     agent_approved_at: now,

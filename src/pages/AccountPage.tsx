@@ -303,7 +303,7 @@ export function AccountPage() {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Next billing date</span>
                     <span className="font-medium">
-                      {new Date(profile.subscription_expires_at).toLocaleDateString("en-TT", {
+                      {new Date(new Date(profile.subscription_expires_at).setUTCDate(new Date(profile.subscription_expires_at).getUTCDate() - 1)).toLocaleDateString("en-TT", {
                         day: "numeric", month: "long", year: "numeric"
                       })}
                     </span>

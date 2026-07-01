@@ -252,6 +252,7 @@ export function WatchPage() {
     savedInitial.current = false;
     progressRef.current = { watched: 0, duration: 0, hasPostMessage: false };
     watchStartRef.current = Date.now();
+    durationReadyRef.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentKey]);
 
@@ -296,7 +297,6 @@ export function WatchPage() {
     }
     // On kids profile: wait for check to complete then either block or dismiss
     const t = setTimeout(() => {
-      // If check is done, fire immediately; otherwise poll until it is
       if (kidsCheckDoneRef.current) {
         triggerExplosion();
         return;
@@ -307,11 +307,12 @@ export function WatchPage() {
           triggerExplosion();
         }
       }, 100);
-      // Hard cap at 6s total
       setTimeout(() => { clearInterval(poll); triggerExplosion(); }, 6000);
-    }, 1000); // give the API 1s head start before we start polling
+    }, 1000);
     return () => clearTimeout(t);
-  }, [triggerExplosion, isKidsProfile]);
+  // contentKey ensures the timer re-fires on every new episode/movie navigation
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerExplosion, isKidsProfile, contentKey]);
 
   const persist = useCallback(async (watched: number, duration: number) => {
     if (!user || !effectiveProfile || watched < 10) return;
@@ -400,7 +401,6 @@ export function WatchPage() {
     if (kidsBlockedRef.current) return; // never load blocked content
     progressRef.current.hasPostMessage = false;
     playerStartedRef.current = false;
-    lastHeartbeatRef.current = 0;
     iframe.src = "about:blank";
     const t = setTimeout(() => { if (iframeRef.current) iframeRef.current.src = src; }, 50);
     return () => clearTimeout(t);

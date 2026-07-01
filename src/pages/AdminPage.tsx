@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Trash2, Ban, UserX, ShieldCheck, RefreshCw, CalendarDays, Receipt,
+  Trash2, Ban, UserX, ShieldCheck, CalendarDays, Receipt,
   ChevronLeft, ChevronRight, Tv, Search, X, Briefcase, ChevronDown, Menu,
   LayoutDashboard, TrendingUp, Users, DollarSign, UserPlus, Phone,
 } from "lucide-react";
@@ -449,7 +449,7 @@ export function AdminPage() {
             {tab !== "dashboard" && tab !== "create-agent" && (
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold">{currentLabel}</h2>
-              {tab === "watching" ? (
+              {tab === "watching" && (
                 <span className="flex items-center gap-1.5 text-xs text-green-400">
                   <span className="relative flex h-2 w-2">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
@@ -457,18 +457,7 @@ export function AdminPage() {
                   </span>
                   Live
                 </span>
-              ) : tab !== "agents" ? (
-                <button
-                  onClick={() => {
-                    if (tab === "billing") refreshUpcomingRenewals();
-                    else if (tab === "history") loadHistory(historyPage);
-                    else refreshRows(tab as UserStatus);
-                  }}
-                  className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-                >
-                  <RefreshCw className="h-4 w-4" /> Refresh
-                </button>
-              ) : null}
+              )}
             </div>
             )}
 
@@ -712,7 +701,7 @@ export function AdminPage() {
                           <div className="grid grid-cols-3 gap-2 mb-3">
                             <div className="rounded-lg bg-muted/60 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p><p className="text-sm font-extrabold text-foreground">TT${group.totalAmount}</p></div>
                             <div className="rounded-lg bg-green-500/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Agent cut</p><p className="text-sm font-extrabold text-green-400">TT${group.totalAgentCut}</p></div>
-                            <div className="rounded-lg bg-primary/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Your portion</p><p className="text-sm font-extrabold text-primary">TT${group.totalAdminCut}</p></div>
+                            <div className="rounded-lg bg-primary/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Admin cut</p><p className="text-sm font-extrabold text-primary">TT${group.totalAdminCut}</p></div>
                           </div>
                           <button onClick={() => setExpandedAgent(expanded ? null : group.agent_id)} className="flex w-full items-center justify-center py-1 text-muted-foreground hover:text-foreground transition-colors" aria-label={expanded ? "Collapse" : "Expand"}>
                             <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`} />
@@ -812,7 +801,8 @@ export function AdminPage() {
                           <div className="border-t border-border divide-y divide-border">
                             {agent.customers.length === 0 && <p className="px-5 py-4 text-sm text-muted-foreground">No customers linked yet.</p>}
                             {agent.customers.map((c: any) => {
-                              const dueDate = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
+                              const rawExpiry = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
+                              const dueDate = rawExpiry ? new Date(rawExpiry.setUTCDate(rawExpiry.getUTCDate() - 1)) : null;
                               return (
                                 <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-4 text-sm">
                                   <div className="min-w-0">
@@ -915,7 +905,7 @@ export function AdminPage() {
                       </span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Your portion: </span>
+                      <span className="text-muted-foreground">Admin cut: </span>
                       <span className="font-bold text-green-400">
                         TT${filteredHistory.reduce((sum, p) => sum + ((p as any).admin_amount ?? p.amount ?? 0), 0).toLocaleString()}
                       </span>
@@ -1000,7 +990,7 @@ export function AdminPage() {
             )}
 
             {/* ── USER / RENEWALS ACCORDION (pending, approved, suspended, expelled, billing) ── */}
-            {tab !== "history" && tab !== "agents" && tab !== "watching" && tab !== "dashboard" && tab !== "create-agent" && (
+            {tab !== "history" && tab !== "agents" && tab !== "agent-requests" && tab !== "agent-list" && tab !== "watching" && tab !== "dashboard" && tab !== "create-agent" && (
               <div className="space-y-3 max-w-2xl">
                 {tab === "billing" && (
                   <p className="text-sm text-muted-foreground">
@@ -1017,7 +1007,8 @@ export function AdminPage() {
                   </div>
                 )}
                 {filteredTableRows.map((u) => {
-                  const dueDate = u.subscription_expires_at ? new Date(u.subscription_expires_at) : null;
+                  const rawExpiry = u.subscription_expires_at ? new Date(u.subscription_expires_at) : null;
+                  const dueDate = rawExpiry ? new Date(rawExpiry.setUTCDate(rawExpiry.getUTCDate() - 1)) : null;
                   const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
                   const agentLink = agentCustomerLinks[u.id];
                   const expanded = expandedUser === u.id;

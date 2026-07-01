@@ -240,3 +240,33 @@ WHERE id NOT IN (
 -- Step 2: Prevent future duplicates at DB level
 CREATE UNIQUE INDEX IF NOT EXISTS payment_history_user_period_unique
   ON public.payment_history (user_id, period_start);
+
+-- 16) Assign unlinked users to the default agent (boy@gmail.com)
+--
+-- This links every existing user who has NO agent assigned to the agent
+-- with email boy@gmail.com. Safe to run multiple times — the WHERE NOT EXISTS
+-- guard prevents duplicate links.
+--
+-- Run this in Supabase: SQL Editor → New query → Run
+
+INSERT INTO public.agent_customers (agent_id, customer_id)
+SELECT
+  a.id   AS agent_id,
+  p.id   AS customer_id
+FROM public.profiles p
+-- Resolve the default agent once
+CROSS JOIN (
+  SELECT id FROM public.profiles
+  WHERE email = 'boy@gmail.com'
+    AND role  = 'agent'
+  LIMIT 1
+) a
+WHERE
+  -- Only real subscriber accounts (skip agents and admin)
+  p.role IS DISTINCT FROM 'agent'
+  AND p.email <> 'kellymarshall2026@gmail.com'
+  -- Only users not already linked to any agent
+  AND NOT EXISTS (
+    SELECT 1 FROM public.agent_customers ac
+    WHERE ac.customer_id = p.id
+  );

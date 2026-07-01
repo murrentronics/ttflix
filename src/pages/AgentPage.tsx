@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Users, UserPlus, TrendingUp, Clock, CheckCircle, AlertCircle,
   Check, Phone, Mail, Menu, ChevronDown, LayoutDashboard,
-  Search, X,
+  Search, X, BookOpen,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
@@ -12,10 +12,11 @@ import {
   fetchAgentCustomers, agentCreateCustomer,
   fetchAgentBillingRequests, fetchAgentSummary, fetchAgentUpcomingRenewals,
   agentRequestRenewal, agentPayAndSubmitRenewal, fetchCustomerPaymentHistory,
-  AGENT_COMMISSION, type AgentCustomer, type AgentBillingRequest,
+  AGENT_COMMISSION, calcProRata, calcProRataCommission,
+  type AgentCustomer, type AgentBillingRequest,
 } from "@/lib/agent";
 
-type AgentTab = "dashboard" | "create" | "pending" | "active" | "suspended" | "expelled" | "renewals";
+type AgentTab = "dashboard" | "create" | "pending" | "active" | "suspended" | "expelled" | "renewals" | "instructions";
 
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, "").slice(0, 7);
@@ -24,13 +25,14 @@ function formatPhone(raw: string): string {
 }
 
 const NAV_ITEMS: Array<{ id: AgentTab; label: string; icon: React.ReactNode }> = [
-  { id: "dashboard", label: "Dashboard",       icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
-  { id: "create",    label: "Create Customer", icon: <UserPlus        className="h-4 w-4 shrink-0" /> },
-  { id: "pending",   label: "Pending",         icon: <Clock           className="h-4 w-4 shrink-0" /> },
-  { id: "active",    label: "Active",          icon: <Users           className="h-4 w-4 shrink-0" /> },
-  { id: "suspended", label: "Suspended",       icon: <AlertCircle     className="h-4 w-4 shrink-0" /> },
-  { id: "expelled",  label: "Expelled",        icon: <AlertCircle     className="h-4 w-4 shrink-0" /> },
-  { id: "renewals",  label: "Renewals Due",    icon: <Clock           className="h-4 w-4 shrink-0" /> },
+  { id: "dashboard",    label: "Dashboard",       icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
+  { id: "create",       label: "Create Customer", icon: <UserPlus        className="h-4 w-4 shrink-0" /> },
+  { id: "pending",      label: "Pending",         icon: <Clock           className="h-4 w-4 shrink-0" /> },
+  { id: "active",       label: "Active",          icon: <Users           className="h-4 w-4 shrink-0" /> },
+  { id: "suspended",    label: "Suspended",       icon: <AlertCircle     className="h-4 w-4 shrink-0" /> },
+  { id: "expelled",     label: "Expelled",        icon: <AlertCircle     className="h-4 w-4 shrink-0" /> },
+  { id: "renewals",     label: "Renewals Due",    icon: <Clock           className="h-4 w-4 shrink-0" /> },
+  { id: "instructions", label: "Instructions",    icon: <BookOpen        className="h-4 w-4 shrink-0" /> },
 ];
 
 export function AgentPage() {
@@ -171,17 +173,18 @@ export function AgentPage() {
     if (!agentPassword) { showMsg("Enter your password to keep your session.", "err"); return; }
     setCreating(true);
     try {
+      const { proRata } = calcProRata(createPlan);
       await agentCreateCustomer(user.id, profile!.email, agentPassword, {
         email: createEmail.toLowerCase().trim(),
         fullName: createName.trim(),
         phone: createPhone,
         plan: createPlan,
+        proRataAmount: proRata,
       });
       setCreateEmail(""); setCreateName(""); setCreatePhone("");
       setCreatePlan("basic"); setAgentPassword("");
       await refresh();
       showMsg("Customer created and sent to admin for activation.");
-      // Auto-navigate to pending tab so agent sees the new record
       switchTab("pending");
     } catch (err: any) {
       showMsg(err?.message ?? "Failed to create customer.", "err");
@@ -406,6 +409,7 @@ export function AgentPage() {
                     <div className="grid grid-cols-2 gap-2">
                       {Object.values(PLANS).map((p) => {
                         const comm = AGENT_COMMISSION[p.id as PlanId];
+                        const { proRata, isProRata } = calcProRata(p.id as PlanId);
                         return (
                           <button type="button" key={p.id} onClick={() => setCreatePlan(p.id as PlanId)}
                             className={`rounded-lg border p-3 text-left transition ${createPlan === p.id ? "border-primary bg-primary/10" : "border-border"}`}>
@@ -420,6 +424,31 @@ export function AgentPage() {
                         );
                       })}
                     </div>
+                    {/* Pro-rata callout for the selected plan */}
+                    {(() => {
+                      const { proRata, isProRata, daysRemaining, daysInMonth } = calcProRata(createPlan);
+                      const { agent, admin } = calcProRataCommission(createPlan, proRata);
+                      const isAnnual = PLANS[createPlan]?.annual;
+                      return (
+                        <div className={`mt-3 rounded-lg px-4 py-3 text-sm border ${isProRata ? "bg-yellow-500/10 border-yellow-500/30" : "bg-primary/10 border-primary/25"}`}>
+                          <p className="font-bold text-foreground mb-1">
+                            💰 Collect from customer today: <span className="text-primary">TT${proRata}</span>
+                          </p>
+                          {isAnnual ? (
+                            <p className="text-xs text-muted-foreground">Annual plan — full price, no pro-rata.</p>
+                          ) : isProRata ? (
+                            <p className="text-xs text-muted-foreground">
+                              Pro-rata: {daysRemaining} of {daysInMonth} days remaining this month.
+                              You keep <span className="text-green-400 font-semibold">TT${agent}</span>, give admin <span className="font-semibold text-foreground">TT${admin}</span>.
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              Signing up on day 1 — full month charge.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </FormField>
                   <FormField label="Your Password (keeps you signed in)">
                     <input type="password" required value={agentPassword} onChange={(e) => setAgentPassword(e.target.value)}
@@ -471,7 +500,8 @@ export function AgentPage() {
                     </div>
                   )}
                   {list.map((c) => {
-                    const dueDate = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
+                    const rawExpiry = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
+                    const dueDate = rawExpiry ? new Date(Date.UTC(rawExpiry.getUTCFullYear(), rawExpiry.getUTCMonth(), rawExpiry.getUTCDate() - 1)) : null;
                     const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
                     const isDueSoon = daysLeft !== null && daysLeft <= 5 && daysLeft >= 0;
                     const comm = AGENT_COMMISSION[c.plan as PlanId];
@@ -634,7 +664,8 @@ export function AgentPage() {
                         </div>
                       )}
                       {filteredRenewals.map((c) => {
-                  const dueDate = new Date(c.subscription_expires_at!);
+                  const rawExpiry = new Date(c.subscription_expires_at!);
+                  const dueDate = new Date(Date.UTC(rawExpiry.getUTCFullYear(), rawExpiry.getUTCMonth(), rawExpiry.getUTCDate() - 1));
                   const daysLeft = Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                   const comm = AGENT_COMMISSION[c.plan as PlanId];
                   const alreadyRequested = billingRequests.some(
@@ -681,11 +712,114 @@ export function AgentPage() {
               </div>
             )}
 
+            {/* —— INSTRUCTIONS TAB —— */}
+            {tab === "instructions" && (
+              <div className="max-w-2xl space-y-6">
+                <div className="rounded-2xl bg-gradient-to-br from-[#c0001a] via-[#8b0013] to-[#1a0005] p-6 shadow-lg">
+                  <div className="flex items-center gap-2 mb-1">
+                    <BookOpen className="h-5 w-5 text-white/80" />
+                    <span className="text-xs font-bold text-white/70 uppercase tracking-widest">Agent Guide</span>
+                  </div>
+                  <h1 className="text-2xl font-extrabold text-white">How TTFlix Agents Work</h1>
+                  <p className="mt-1 text-sm text-white/70">Everything you need to know to sign up and manage your customers.</p>
+                </div>
+
+                {/* Section 1 — Your Role */}
+                <InstructionSection title="Your Role as an Agent">
+                  <p>As a TTFlix Agent you are responsible for:</p>
+                  <ul className="list-disc pl-5 space-y-1 text-sm text-muted-foreground">
+                    <li>Signing up new customers and collecting their first payment</li>
+                    <li>Collecting monthly renewal payments from your customers</li>
+                    <li>Submitting payments to admin for account activation</li>
+                    <li>Keeping your customers informed about their due dates</li>
+                  </ul>
+                </InstructionSection>
+
+                {/* Section 2 — Payment Structure */}
+                <InstructionSection title="Payment Structure">
+                  <p className="text-sm text-muted-foreground mb-3">All payments are collected in <span className="font-bold text-foreground">TT dollars, cash only</span>. You keep your commission and hand the admin portion to admin.</p>
+                  <div className="grid grid-cols-1 gap-2">
+                    {Object.values(PLANS).map((p) => {
+                      const comm = AGENT_COMMISSION[p.id as PlanId];
+                      return (
+                        <div key={p.id} className="rounded-lg border border-border bg-card/60 px-4 py-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold">{p.name}</span>
+                            <span className="font-extrabold text-primary">TT${p.price}/{p.annual ? "yr" : "mo"}</span>
+                          </div>
+                          <div className="flex gap-4 text-xs">
+                            <span className="text-green-400 font-semibold">You keep: TT${comm.agent}</span>
+                            <span className="text-muted-foreground">Give admin: TT${comm.admin}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </InstructionSection>
+
+                {/* Section 3 — Pro-Rata (First Month) */}
+                <InstructionSection title="First Month Pro-Rata Pricing">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Monthly plan customers only pay for the <span className="font-bold text-foreground">remaining days of the month</span> when they sign up — not the full month. Annual plans always charge full price.
+                  </p>
+                  <div className="rounded-lg bg-primary/10 border border-primary/25 px-4 py-3 text-sm space-y-2">
+                    <p className="font-bold text-foreground">How to calculate:</p>
+                    <ol className="list-decimal pl-5 space-y-1 text-muted-foreground">
+                      <li>Find out how many days are left in the month (including today)</li>
+                      <li>Divide the full plan price by the total days in the month</li>
+                      <li>Multiply by the days remaining — round to nearest dollar</li>
+                    </ol>
+                    <div className="mt-3 rounded-md bg-card border border-border px-3 py-2 text-xs text-muted-foreground">
+                      <span className="font-bold text-foreground">Example:</span> Standard plan TT$60, signing up on the 15th of a 30-day month<br />
+                      Remaining days = 30 − 15 + 1 = <span className="font-bold text-foreground">16 days</span><br />
+                      Daily rate = TT$60 ÷ 30 = <span className="font-bold text-foreground">TT$2.00/day</span><br />
+                      First payment = 16 × TT$2.00 = <span className="font-bold text-primary">TT$32</span>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    The <span className="font-bold text-foreground">Create Customer</span> tab calculates this automatically for you — just check the amount shown before collecting.
+                  </p>
+                </InstructionSection>
+
+                {/* Section 4 — Due Dates & Renewals */}
+                <InstructionSection title="Due Dates &amp; Renewals">
+                  <ul className="list-disc pl-5 space-y-2 text-sm text-muted-foreground">
+                    <li>All monthly subscriptions renew on the <span className="font-bold text-foreground">1st of every month</span>.</li>
+                    <li>Tell your customers their payment is due on the <span className="font-bold text-foreground">last day of the month</span>.</li>
+                    <li>You have the <span className="font-bold text-foreground">entire 1st of the month</span> to collect and submit renewals before any account is suspended.</li>
+                    <li>Accounts that are not renewed by midnight on the 1st are automatically suspended.</li>
+                    <li>Use the <span className="font-bold text-foreground">Renewals Due</span> tab to see who is coming up for renewal and submit requests.</li>
+                  </ul>
+                </InstructionSection>
+
+                {/* Section 5 — Step by Step */}
+                <InstructionSection title="Step-by-Step: Signing Up a New Customer">
+                  <ol className="list-decimal pl-5 space-y-2 text-sm text-muted-foreground">
+                    <li>Go to <span className="font-bold text-foreground">Create Customer</span> and fill in their details.</li>
+                    <li>Select their plan — the <span className="font-bold text-foreground">first payment amount is shown automatically</span> (pro-rata for monthly plans).</li>
+                    <li>Collect the cash from the customer before submitting.</li>
+                    <li>Enter your password and tap <span className="font-bold text-foreground">Create Customer Account</span>.</li>
+                    <li>The request goes to admin — account activates within <span className="font-bold text-foreground">6 hours</span>.</li>
+                    <li>Your customer's temp password is <span className="font-mono font-bold text-foreground">123456</span> — they must change it after first login.</li>
+                  </ol>
+                </InstructionSection>
+
+                {/* Section 6 — What to Tell Customers */}
+                <InstructionSection title="What to Tell Your Customers">
+                  <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-2">
+                    <p className="font-bold text-foreground">Script you can use:</p>
+                    <p className="text-muted-foreground italic">
+                      "Your TTFlix subscription renews on the 1st of every month. Your payment of TT$[amount] is due by the last day of the month. If payment is not received by midnight on the 1st, your account will be suspended until payment is collected. Once I receive your payment and submit it, your account is reactivated within a few hours."
+                    </p>
+                  </div>
+                </InstructionSection>
+              </div>
+            )}
+
           </main>
         </div>
       </div>
 
-      {/* Fixed bottom pay modal */}
       {payOpen && (() => {
         const c = customers.find(cust => cust.id === payOpen)!;
         const comm = AGENT_COMMISSION[c.plan as PlanId];
@@ -761,6 +895,15 @@ function FormField({ label, children }: { label: string; children: React.ReactNo
     <div>
       <label className="mb-1.5 block text-sm font-medium">{label}</label>
       {children}
+    </div>
+  );
+}
+
+function InstructionSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-5 space-y-3">
+      <h2 className="text-base font-bold text-foreground">{title}</h2>
+      <div className="text-sm text-muted-foreground leading-relaxed space-y-2">{children}</div>
     </div>
   );
 }
