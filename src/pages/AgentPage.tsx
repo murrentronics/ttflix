@@ -73,9 +73,11 @@ export function AgentPage() {
   // For realtime refresh
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const creatingCustomerRef = useRef(false);
+
   useEffect(() => {
     if (!loading && !user) navigate("/auth");
-    if (!loading && user && !isAgent && !isAdmin) navigate("/");
+    if (!loading && user && !isAgent && !isAdmin && !creatingCustomerRef.current) navigate("/");
   }, [loading, user, isAgent, isAdmin, navigate]);
 
   const refresh = useCallback(async () => {
@@ -176,7 +178,12 @@ export function AgentPage() {
     if (digits.length !== 7) { showMsg("Phone must be 7 digits.", "err"); return; }
     if (!agentPassword) { showMsg("Enter your password to keep your session.", "err"); return; }
     setCreating(true);
+    creatingCustomerRef.current = true;
     try {
+      // Save agent's profile key before — the brief sign-in as the new customer
+      // can wipe profileSelected, causing a redirect to the profile picker
+      const savedProfileKey = localStorage.getItem("ttflix_active_profile");
+
       const { proRata } = calcProRata(createPlan);
       await agentCreateCustomer(user.id, profile!.email, agentPassword, {
         email: createEmail.toLowerCase().trim(),
@@ -185,6 +192,10 @@ export function AgentPage() {
         plan: createPlan,
         proRataAmount: proRata,
       });
+
+      // Restore immediately so ProfileContext re-resolves the saved profile
+      if (savedProfileKey) localStorage.setItem("ttflix_active_profile", savedProfileKey);
+
       setCreateEmail(""); setCreateName(""); setCreatePhone("");
       setCreatePlan("basic"); setAgentPassword("");
       await refresh();
@@ -192,7 +203,10 @@ export function AgentPage() {
       switchTab("pending");
     } catch (err: any) {
       showMsg(err?.message ?? "Failed to create customer.", "err");
-    } finally { setCreating(false); }
+    } finally {
+      setCreating(false);
+      creatingCustomerRef.current = false;
+    }
   };
 
   const handleRequestRenewal = async (customer: AgentCustomer) => {
@@ -850,6 +864,11 @@ export function AgentPage() {
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold text-muted-foreground">Plan</p>
                   <p className="text-sm font-semibold">{PLANS[c.plan as PlanId]?.name}</p>
+                </div>
+                {/* Amount to collect — big and prominent */}
+                <div className="rounded-xl bg-[#c0001a]/10 border border-[#c0001a]/30 px-4 py-3 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-foreground">Collect from customer</p>
+                  <p className="text-3xl font-extrabold text-[#c0001a]">TT${planPrice}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold shrink-0">TT$</span>

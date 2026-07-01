@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Check, Monitor, CreditCard, AlertCircle, ChevronDown, ChevronUp, X, Briefcase } from "lucide-react";
+import { Check, Monitor, CreditCard, AlertCircle, ChevronDown, ChevronUp, X, Briefcase, Receipt } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { supabase, PLANS, type PlanId } from "@/lib/supabase";
 import { AppShell } from "@/components/AppShell";
@@ -320,6 +320,18 @@ export function AccountPage() {
                   Your subscription has lapsed. Please contact your admin to renew.
                 </p>
               )}
+
+              {/* Payment History link */}
+              <Link
+                to="/payment-history"
+                className="mt-4 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm font-semibold hover:bg-accent transition"
+              >
+                <div className="flex items-center gap-2">
+                  <Receipt className="h-4 w-4 text-primary" />
+                  Payment History
+                </div>
+                <span className="text-xs text-muted-foreground">View all →</span>
+              </Link>
             </section>
 
             {/* Screens section */}

@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { HomePage } from "./pages/HomePage";
 import { AuthPage } from "./pages/AuthPage";
@@ -15,6 +14,7 @@ import { WatchPage } from "./pages/WatchPage";
 import { ProfilePickerPage } from "./pages/ProfilePickerPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { PaymentHistoryPage } from "./pages/PaymentHistoryPage";
 import { TTFlixLoader } from "./components/TTFlixLoader";
 import { useAuth } from "./lib/auth";
 
@@ -47,6 +47,7 @@ export function AppRoutes() {
           <Route path="/agent" element={<AgentPage />} />
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/watch/:mediaType/:id" element={<WatchPage />} />
+          <Route path="/payment-history" element={<PaymentHistoryPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Routes>

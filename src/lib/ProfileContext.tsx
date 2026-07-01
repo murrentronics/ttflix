@@ -53,12 +53,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!loading && user && authProfile) {
       const currentUserId = user.id;
-      if (lastUserIdRef.current !== currentUserId) {
-        // Only reset if it's a different user
+      if (lastUserIdRef.current !== null && lastUserIdRef.current !== currentUserId) {
+        // A different user was signed in — only reset if we're settling on this new user
+        // (not a transient intermediate state during agent customer creation)
         setupDoneRef.current = false;
-        localStorage.removeItem(STORAGE_KEY);
-        lastUserIdRef.current = currentUserId;
+        // Don't clear localStorage here — let refreshProfiles decide based on saved ID
       }
+      lastUserIdRef.current = currentUserId;
       refreshProfiles();
     }
     if (!user) {
