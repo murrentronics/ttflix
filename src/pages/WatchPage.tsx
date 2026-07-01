@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { X } from "lucide-react";
+import { X, SkipForward } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { getProviders, type Provider } from "@/lib/stream";
@@ -78,6 +78,61 @@ export function WatchPage() {
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc] = useState(() => providers[0].url);
   const providerSignalRef = useRef(false);
+
+  // ── Next episode state ──────────────────────────────────────────────────────
+  const [nextEp, setNextEp] = useState<{ season: number; episode: number; name: string } | null>(null);
+  const [showNextBanner, setShowNextBanner] = useState(false);
+  const nextBannerShownRef = useRef(false);
+  const totalSeasonsRef = useRef<number>(1);
+  const episodeListRef = useRef<{ episode_number: number; name: string }[]>([]);
+
+  // Fetch episode list whenever season changes so we know the last episode number
+  useEffect(() => {
+    if (type !== "tv") return;
+    setNextEp(null);
+    setShowNextBanner(false);
+    nextBannerShownRef.current = false;
+    episodeListRef.current = [];
+
+    getDetails({ data: { id: tmdbId, mediaType: "tv" } }).then((d) => {
+      totalSeasonsRef.current = d.number_of_seasons ?? 1;
+    }).catch(() => {});
+
+    getSeasonEpisodes({ data: { id: tmdbId, season: currentEpisodeRef.current.season } })
+      .then((eps: { episode_number: number; name: string }[]) => {
+        episodeListRef.current = eps;
+        computeNextEp();
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tmdbId, type]);
+
+  const computeNextEp = useCallback(() => {
+    const { season: curS, episode: curEp } = currentEpisodeRef.current;
+    const eps = episodeListRef.current;
+    if (!eps.length) return;
+    const nextInSeason = eps.find((e) => e.episode_number === curEp + 1);
+    if (nextInSeason) {
+      setNextEp({ season: curS, episode: nextInSeason.episode_number, name: nextInSeason.name });
+    } else if (curS < totalSeasonsRef.current) {
+      // Last episode of season — next is S+1 E1
+      setNextEp({ season: curS + 1, episode: 1, name: `Season ${curS + 1} Episode 1` });
+    } else {
+      setNextEp(null); // last episode of series
+    }
+  }, []);
+
+  const goNextEpisode = useCallback(() => {
+    if (!nextEp) return;
+    const wallClockWatched = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+    const duration = progressRef.current.duration;
+    const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClockWatched;
+    const watched = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
+    if (user && watched > 10) persistRef.current(watched, duration);
+    navigate(
+      `/watch/${type}/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&startOver=1`
+    );
+  }, [nextEp, navigate, type, tmdbId, title, poster, backdrop, user]);
 
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -273,6 +328,18 @@ export function WatchPage() {
           if (d?.episode) currentEpisodeRef.current.episode = Number(d.episode);
           progressRef.current = { watched: 0, duration: 0, hasPostMessage: false };
           savedInitial.current = false;
+          setShowNextBanner(false);
+          nextBannerShownRef.current = false;
+          // Re-fetch episode list for the new season if it changed
+          if (d?.season) {
+            getSeasonEpisodes({ data: { id: tmdbId, season: Number(d.season) } })
+              .then((eps: { episode_number: number; name: string }[]) => {
+                episodeListRef.current = eps;
+                computeNextEp();
+              }).catch(() => {});
+          } else {
+            computeNextEp();
+          }
         }
         if (d?.timestamp !== undefined && d?.duration !== undefined) {
           const newDuration = d.duration > 0 ? d.duration : progressRef.current.duration;
@@ -284,6 +351,15 @@ export function WatchPage() {
             lastHeartbeatRef.current = Date.now();
             triggerExplosion();
             saveInitial();
+          }
+          // Show "Up Next" banner in the last 60s or last 8% of the episode
+          if (type === "tv" && nextEp && !nextBannerShownRef.current && newDuration > 0) {
+            const remaining = newDuration - d.timestamp;
+            const pct = d.timestamp / newDuration;
+            if (remaining <= 60 || pct >= 0.92) {
+              nextBannerShownRef.current = true;
+              setShowNextBanner(true);
+            }
           }
         }
       } catch { }
@@ -393,7 +469,6 @@ export function WatchPage() {
   // When PlayerActivity closes (androidresume fires), save progress then go home
   useEffect(() => {
     const onResume = () => {
-      // Save current progress before navigating away
       const wallClockWatched = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
       const duration = progressRef.current.duration;
       const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClockWatched;
@@ -404,6 +479,22 @@ export function WatchPage() {
     window.addEventListener("androidresume", onResume);
     return () => window.removeEventListener("androidresume", onResume);
   }, [navigate, user]);
+
+  // TV remote Back / GoBack key — exit player
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "GoBack" || e.key === "Back" || e.key === "BrowserBack") {
+        e.preventDefault();
+        navigate("/");
+      }
+      // If Up Next banner is visible, Arrow keys should not escape to the iframe
+      if (showNextBanner && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [navigate, showNextBanner]);
 
   useEffect(() => {
     const android = (window as any).AndroidOrientation;
@@ -432,7 +523,11 @@ export function WatchPage() {
   );
 
   return (
-    <div className="fixed inset-0 bg-black">
+    <div
+      className="fixed inset-0 bg-black"
+      onMouseMove={showExit}
+      onTouchStart={showExit}
+    >
       <TTFlixLoader
         key={loaderKey}
         explode={false}
@@ -449,8 +544,101 @@ export function WatchPage() {
           <p className="text-sm text-white/70 max-w-xs">
             This title is rated <span className="font-bold text-primary">{kidsBlockedRating}</span> and cannot be played on a Kids profile.
           </p>
-          <button onClick={() => navigate("/")} className="rounded-full bg-primary px-8 py-3 text-sm font-bold text-white">Go Back</button>
+          <button
+            autoFocus
+            onClick={() => navigate("/")}
+            className="rounded-full bg-primary px-8 py-3 text-sm font-bold text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+          >
+            Go Back
+          </button>
         </div>
+      )}
+
+      {!loaderVisible && !kidsBlocked && (
+        <>
+          {/* ── TOP-LEFT: Exit button ── */}
+          <button
+            onClick={() => navigate("/")}
+            tabIndex={0}
+            data-tv-card
+            aria-label="Exit player"
+            className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
+              hover:bg-black/90
+              focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
+              ${exitVisible ? "opacity-100" : "opacity-0"}
+            `}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
+          >
+            <X className="h-6 w-6" />
+          </button>
+
+          {/* ── BOTTOM-RIGHT: Next Episode button (TV only, always in DOM for D-pad focus) ── */}
+          {type === "tv" && nextEp && (
+            <button
+              onClick={goNextEpisode}
+              tabIndex={0}
+              data-tv-card
+              aria-label={`Next episode: S${nextEp.season} E${nextEp.episode}`}
+              className={`absolute bottom-6 right-4 z-40 flex items-center gap-2 rounded-full border-2 border-white/40 bg-black/80 px-5 py-3 text-sm font-bold text-white backdrop-blur-sm transition
+                hover:border-white hover:bg-white hover:text-black
+                focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
+                ${exitVisible ? "opacity-100" : "opacity-20"}
+              `}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goNextEpisode(); } }}
+            >
+              <SkipForward className="h-5 w-5 shrink-0" />
+              Next Episode
+            </button>
+          )}
+
+          {/* ── TOP-RIGHT: Up Next banner (auto-shows near end, away from all other buttons) ── */}
+          {showNextBanner && nextEp && (
+            <div
+              role="dialog"
+              aria-label="Up next episode"
+              className="absolute right-4 top-4 z-40 w-64 rounded-xl border border-white/20 bg-black/90 p-4 shadow-2xl backdrop-blur-md sm:w-72"
+            >
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/50 mb-1">Up Next</p>
+              <p className="text-sm font-bold text-white leading-tight line-clamp-2 mb-3">
+                S{nextEp.season} E{nextEp.episode} · {nextEp.name}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={goNextEpisode}
+                  tabIndex={0}
+                  data-tv-card
+                  autoFocus
+                  aria-label="Play next episode"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground transition
+                    hover:bg-primary/85
+                    focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goNextEpisode(); }
+                    if (e.key === "ArrowRight") { e.preventDefault(); (e.currentTarget.nextElementSibling as HTMLElement)?.focus(); }
+                  }}
+                >
+                  <SkipForward className="h-4 w-4 shrink-0" /> Play
+                </button>
+                <button
+                  onClick={() => { setShowNextBanner(false); nextBannerShownRef.current = true; }}
+                  tabIndex={0}
+                  data-tv-card
+                  aria-label="Dismiss up next"
+                  className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-white/70 transition
+                    hover:bg-white/10
+                    focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowNextBanner(false); nextBannerShownRef.current = true; }
+                    if (e.key === "ArrowLeft") { e.preventDefault(); (e.currentTarget.previousElementSibling as HTMLElement)?.focus(); }
+                    if (e.key === "ArrowDown") { e.preventDefault(); document.querySelector<HTMLElement>("[data-tv-exit]")?.focus(); }
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

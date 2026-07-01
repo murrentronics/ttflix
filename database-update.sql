@@ -203,3 +203,24 @@ set
   pending_plan = null,
   plan = null
 where role = 'agent';
+
+-- 13) Fix payment_history RLS so admin can always read ALL rows
+-- The previous policy relied on a profiles join which can silently drop rows.
+-- This explicit policy guarantees admin sees everything.
+
+drop policy if exists "payment_history select" on public.payment_history;
+create policy "payment_history select" on public.payment_history for select to authenticated
+  using (user_id = auth.uid() or public.is_admin());
+
+-- Also ensure the insert policy allows admin and agents (via service path)
+drop policy if exists "payment_history insert" on public.payment_history;
+create policy "payment_history insert" on public.payment_history for insert to authenticated
+  with check (public.is_admin());
+
+-- 14) Ensure agent_billing_request_id column exists on payment_history
+alter table public.payment_history
+  add column if not exists agent_billing_request_id uuid references public.agent_billing_requests(id) on delete set null;
+
+create index if not exists idx_payment_history_agent_billing_request_id
+  on public.payment_history (agent_billing_request_id)
+  where agent_billing_request_id is not null;

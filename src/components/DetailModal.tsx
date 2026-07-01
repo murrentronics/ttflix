@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { X, Play, Plus, Check, Star, Lock, ChevronDown } from "lucide-react";
+import { X, Play, Plus, Check, Star, Lock, ChevronDown, CheckCircle2 } from "lucide-react";
 import { useDetail } from "./DetailContext";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { getDetails, getSeasonEpisodes, type TmdbItem } from "@/lib/tmdb.functions.app";
 import { img, year } from "@/lib/tmdb";
 import { MovieCard } from "./MovieCard";
+import { fetchProgressForTitle, type WatchProgress } from "@/lib/continue-watching";
 
 export function DetailModal() {
   const { current, close } = useDetail();
@@ -20,6 +21,14 @@ export function DetailModal() {
   const modalRef = useRef<HTMLDivElement>(null);
 
   const canWatch = isAdmin || (!!user && profile?.status === "approved");
+
+  // Watch progress for this title (drives the "Continue" button + episode badges)
+  const [watchProgress, setWatchProgress] = useState<WatchProgress | null>(null);
+
+  useEffect(() => {
+    if (!current || !user || !activeProfile) { setWatchProgress(null); return; }
+    fetchProgressForTitle(user.id, activeProfile.id, current.id, current.mediaType).then(setWatchProgress);
+  }, [current?.id, current?.mediaType, user?.id, activeProfile?.id]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["details", current?.mediaType, current?.id],
@@ -181,6 +190,40 @@ export function DetailModal() {
                   <Lock className="h-5 w-5" />
                   Not for Kids
                 </div>
+              ) : watchProgress && watchProgress.watched_seconds >= 5 ? (
+                // Has in-progress watch — show "Continue" + separate "Play from Start"
+                <>
+                  <button
+                    onClick={() => {
+                      if (isBlockedForKids) return;
+                      close();
+                      if (!canWatch) { navigate("/"); return; }
+                      const poster = data?.poster_path ?? "";
+                      const backdrop = data?.backdrop_path ?? "";
+                      const title = data?.title ?? current.title ?? "";
+                      const s = watchProgress.season ?? 1;
+                      const ep = watchProgress.episode ?? 1;
+                      navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=${ep}`);
+                    }}
+                    className={`flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 ${focusStyle}`}
+                  >
+                    {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
+                    {canWatch
+                      ? isTv
+                        ? `Continue S${watchProgress.season} E${watchProgress.episode}`
+                        : "Continue"
+                      : "Unlock"}
+                  </button>
+                  {canWatch && (
+                    <button
+                      onClick={() => handlePlay(isTv ? 1 : 1, 1)}
+                      className={`flex items-center gap-2 rounded-md border border-border bg-secondary px-5 py-2.5 font-semibold transition hover:bg-accent ${focusStyle}`}
+                    >
+                      <Play className="h-4 w-4" />
+                      Play from Start
+                    </button>
+                  )}
+                </>
               ) : (
                 <button
                   onClick={() => handlePlay(isTv ? selectedSeason : 1, 1)}
@@ -242,7 +285,23 @@ export function DetailModal() {
                   <div className="py-4 text-center text-sm text-muted-foreground">Loading episodes…</div>
                 ) : (
                   <div className="space-y-2">
-                    {(episodes ?? []).map((ep: { episode_number: number; name: string; overview?: string; still_path?: string | null; runtime?: number | null }) => (
+                    {(episodes ?? []).map((ep: { episode_number: number; name: string; overview?: string; still_path?: string | null; runtime?: number | null }) => {
+                      // Determine episode watch state for badge display
+                      const isCurrent =
+                        watchProgress &&
+                        watchProgress.season === selectedSeason &&
+                        watchProgress.episode === ep.episode_number;
+                      const isWatched =
+                        watchProgress &&
+                        watchProgress.season === selectedSeason &&
+                        watchProgress.episode != null &&
+                        ep.episode_number < watchProgress.episode;
+                      const progressPct =
+                        isCurrent && watchProgress!.duration_seconds > 0
+                          ? Math.min(100, (watchProgress!.watched_seconds / watchProgress!.duration_seconds) * 100)
+                          : 0;
+
+                      return (
                       <button
                         key={ep.episode_number}
                         onClick={() => { if (!isBlockedForKids) handlePlay(selectedSeason, ep.episode_number); }}
@@ -266,9 +325,26 @@ export function DetailModal() {
                               </div>
                             )}
                           </div>
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition hover:bg-black/40">
-                            <Play className="h-5 w-5 fill-white opacity-0 drop-shadow transition group-hover:opacity-100" />
-                          </div>
+                          {/* Watched overlay */}
+                          {isWatched && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                              <CheckCircle2 className="h-7 w-7 text-primary drop-shadow" />
+                            </div>
+                          )}
+                          {/* Continue badge */}
+                          {isCurrent && (
+                            <div className="absolute inset-x-0 bottom-0">
+                              <div className="h-1 bg-muted/50">
+                                <div className="h-full bg-primary transition-all" style={{ width: `${progressPct}%` }} />
+                              </div>
+                            </div>
+                          )}
+                          {/* Play hover overlay */}
+                          {!isWatched && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition hover:bg-black/40">
+                              <Play className="h-5 w-5 fill-white opacity-0 drop-shadow transition group-hover:opacity-100" />
+                            </div>
+                          )}
                         </div>
 
                         {/* Episode info */}
@@ -281,9 +357,16 @@ export function DetailModal() {
                           {ep.overview && (
                             <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{ep.overview}</p>
                           )}
+                          {isCurrent && (
+                            <p className="mt-1 text-xs font-semibold text-primary">Continue watching</p>
+                          )}
+                          {isWatched && (
+                            <p className="mt-1 text-xs text-muted-foreground">Watched</p>
+                          )}
                         </div>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

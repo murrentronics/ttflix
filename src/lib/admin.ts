@@ -143,30 +143,59 @@ export type PaymentRecord = {
   amount: number;
   period_start: string;
   period_end: string;
+  agent_id?: string | null;
+  agent_commission?: number | null;
+  admin_amount?: number | null;
+  agent_billing_request_id?: string | null;
   // joined from profiles
   full_name?: string | null;
   email?: string;
   phone?: string | null;
+  // joined agent profile
+  agent_name?: string | null;
+  agent_email?: string | null;
 };
 
 export async function fetchPaymentHistory(page = 1, pageSize = 100): Promise<{ data: PaymentRecord[], count: number }> {
-  // Join payment_history with profiles to get user info
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
+
+  // Step 1: fetch payment_history rows (no join — avoid RLS-dropping rows for deleted profiles)
   const { data, count, error } = await supabase
     .from("payment_history")
-    .select("*, profiles(full_name, email, phone)", { count: "exact" })
+    .select("*", { count: "exact" })
     .order("approved_at", { ascending: false })
     .range(from, to);
+
   if (error) throw error;
+  const rows = (data ?? []) as any[];
+  if (rows.length === 0) return { data: [], count: 0 };
+
+  // Step 2: collect unique user_ids and agent_ids, then bulk-fetch profiles
+  const userIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
+  const agentIds = [...new Set(rows.map((r) => r.agent_id).filter(Boolean))];
+  const allIds = [...new Set([...userIds, ...agentIds])];
+
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, full_name, email, phone")
+    .in("id", allIds);
+
+  const profileMap: Record<string, { full_name: string | null; email: string; phone: string | null }> = {};
+  for (const p of (profiles ?? []) as any[]) {
+    profileMap[p.id] = { full_name: p.full_name ?? null, email: p.email ?? "—", phone: p.phone ?? null };
+  }
+
   return {
-    data: ((data ?? []) as any[]).map((r) => ({
+    data: rows.map((r) => ({
       ...r,
-      full_name: r.profiles?.full_name ?? null,
-      email: r.profiles?.email ?? "—",
-      phone: r.profiles?.phone ?? null,
+      full_name: profileMap[r.user_id]?.full_name ?? null,
+      email: profileMap[r.user_id]?.email ?? "—",
+      phone: profileMap[r.user_id]?.phone ?? null,
+      agent_name: r.agent_id ? (profileMap[r.agent_id]?.full_name ?? null) : null,
+      agent_email: r.agent_id ? (profileMap[r.agent_id]?.email ?? null) : null,
     })),
-    count: count ?? 0
+    count: count ?? 0,
   };
 }
 
@@ -234,6 +263,7 @@ export type AgentBillingRequestAdmin = {
   // joined
   agent_name?: string | null;
   agent_email?: string;
+  agent_phone?: string | null;
   customer_name?: string | null;
   customer_email?: string;
   customer_phone?: string | null;
@@ -244,7 +274,7 @@ export async function fetchPendingAgentBillingRequests(): Promise<AgentBillingRe
     .from("agent_billing_requests")
     .select(`
       *,
-      agent:profiles!agent_billing_requests_agent_id_fkey(full_name, email),
+      agent:profiles!agent_billing_requests_agent_id_fkey(full_name, email, phone),
       customer:profiles!agent_billing_requests_customer_id_fkey(full_name, email, phone)
     `)
     .eq("status", "pending_admin")
@@ -254,6 +284,7 @@ export async function fetchPendingAgentBillingRequests(): Promise<AgentBillingRe
     ...r,
     agent_name: r.agent?.full_name ?? null,
     agent_email: r.agent?.email ?? "",
+    agent_phone: r.agent?.phone ?? null,
     customer_name: r.customer?.full_name ?? null,
     customer_email: r.customer?.email ?? "",
     customer_phone: r.customer?.phone ?? null,
@@ -686,16 +717,22 @@ export async function checkRenewal(userId: string, isAdmin: boolean): Promise<vo
  */
 export async function adminCreateAgent(args: {
   email: string;
-  password: string;
   fullName: string;
   phone: string;
+  adminEmail: string;
+  adminPassword: string;
 }): Promise<void> {
-  const { email, password, fullName, phone } = args;
+  const { email, fullName, phone, adminEmail, adminPassword } = args;
+  const TEMP_PASSWORD = "123456";
 
-  // Step 1: create the auth user via signUp
+  // Step 1: save the admin's current session so we can restore it after signUp
+  const { data: sessionData } = await supabase.auth.getSession();
+  const adminSession = sessionData.session;
+
+  // Step 2: create the auth user (this signs us in as the new agent)
   const { data, error } = await supabase.auth.signUp({
     email,
-    password,
+    password: TEMP_PASSWORD,
     options: {
       data: { full_name: fullName, phone },
     },
@@ -705,7 +742,7 @@ export async function adminCreateAgent(args: {
   const newUser = data.user;
   if (!newUser) throw new Error("User creation failed — no user returned.");
 
-  // Step 2: upsert the profile as an agent (no plan, no subscription)
+  // Step 3: upsert the profile as an agent while briefly signed in as them
   const { error: profileError } = await supabase.from("profiles").upsert({
     id: newUser.id,
     email,
@@ -719,4 +756,14 @@ export async function adminCreateAgent(args: {
     pending_plan: null,
   });
   if (profileError) throw profileError;
+
+  // Step 4: restore admin session
+  if (adminSession?.access_token && adminSession?.refresh_token) {
+    await supabase.auth.setSession({
+      access_token: adminSession.access_token,
+      refresh_token: adminSession.refresh_token,
+    });
+  } else {
+    await supabase.auth.signInWithPassword({ email: adminEmail, password: adminPassword });
+  }
 }

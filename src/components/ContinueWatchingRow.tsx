@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
-import { fetchContinueWatching, removeProgress, type WatchProgress } from "@/lib/continue-watching";
+import { fetchContinueWatching, removeProgress, resetProgress, type WatchProgress } from "@/lib/continue-watching";
 import { img } from "@/lib/tmdb";
 import { ResumeModal } from "./ResumeModal";
 import { navigateVertical } from "@/lib/tv-navigation";
@@ -66,9 +66,14 @@ export function ContinueWatchingRow() {
     navigate(playUrl(item, item.season ?? 1, item.episode ?? 1));
   };
 
-  const handleStartOver = (item: WatchProgress) => {
+  const handleStartOver = async (item: WatchProgress) => {
     setPrompt(null);
-    navigate(playUrl(item, 1, 1, true));
+    // Reset progress in DB so item leaves Continue Watching after this play
+    if (user && effectiveProfile) {
+      await resetProgress(user.id, effectiveProfile.id, item.tmdb_id, item.media_type);
+      setItems((prev) => prev.filter((i) => i.tmdb_id !== item.tmdb_id || i.media_type !== item.media_type));
+    }
+    navigate(playUrl(item, item.media_type === "tv" ? 1 : 1, 1, true));
   };
 
   const handlePlayEpisode = (item: WatchProgress, season: number, episode: number) => {
@@ -115,9 +120,6 @@ export function ContinueWatchingRow() {
 
                 <div className="mt-1.5 px-0.5">
                   <p className="line-clamp-1 text-xs font-semibold text-foreground leading-tight">{item.title}</p>
-                  {item.media_type === "tv" && item.season != null && (
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">S{item.season} · E{item.episode}</p>
-                  )}
                 </div>
 
                 <button

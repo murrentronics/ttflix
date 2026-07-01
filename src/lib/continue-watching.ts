@@ -51,3 +51,32 @@ export async function removeProgress(userId: string, profileId: string, tmdbId: 
     .eq("tmdb_id", tmdbId)
     .eq("media_type", mediaType);
 }
+
+/** Reset progress to 0 so the item disappears from Continue Watching on next load */
+export async function resetProgress(userId: string, profileId: string, tmdbId: number, mediaType: string) {
+  await supabase
+    .from("watch_progress")
+    .update({ watched_seconds: 0, updated_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("profile_id", profileId)
+    .eq("tmdb_id", tmdbId)
+    .eq("media_type", mediaType);
+}
+
+/** Fetch a single progress row for a specific title — used by DetailModal */
+export async function fetchProgressForTitle(
+  userId: string,
+  profileId: string,
+  tmdbId: number,
+  mediaType: string,
+): Promise<WatchProgress | null> {
+  const { data } = await supabase
+    .from("watch_progress")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("profile_id", profileId)
+    .eq("tmdb_id", tmdbId)
+    .eq("media_type", mediaType)
+    .maybeSingle();
+  return (data as WatchProgress) ?? null;
+}

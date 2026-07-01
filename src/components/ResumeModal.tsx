@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { X, Play, ChevronDown } from "lucide-react";
+import { X, Play, ChevronDown, RotateCcw } from "lucide-react";
 import { img } from "@/lib/tmdb";
 import { getSeasonEpisodes, getDetails } from "@/lib/tmdb.functions.app";
 import type { WatchProgress } from "@/lib/continue-watching";
@@ -13,7 +13,7 @@ type Props = {
   onClose: () => void;
 };
 
-export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props) {
+export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onClose }: Props) {
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -117,7 +117,7 @@ export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props)
         <div className="space-y-4 p-5">
           <h2 className="text-xl font-extrabold">{item.title}</h2>
 
-          {/* Continue button only */}
+          {/* Continue button */}
           <button
             onClick={() => onContinue(item)}
             className="flex w-full items-center justify-center gap-2 rounded-md bg-primary px-6 py-3 font-semibold text-primary-foreground transition hover:bg-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card"
@@ -126,6 +126,15 @@ export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props)
             {item.media_type === "tv" && item.season != null
               ? `Continue — S${item.season} E${item.episode}`
               : "Continue Watching"}
+          </button>
+
+          {/* Start Over button */}
+          <button
+            onClick={() => onStartOver(item)}
+            className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-secondary px-6 py-3 font-semibold text-foreground transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Start Over
           </button>
 
           {/* Episode picker — TV only */}
