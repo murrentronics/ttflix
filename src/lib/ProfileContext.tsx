@@ -19,15 +19,14 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [activeProfile, setActiveProfileState] = useState<UserProfile | null>(null);
   const [profileSelected, setProfileSelected] = useState(false);
-  // Track whether we've done the first-time setup for this user already
   const setupDoneRef = useRef(false);
+  const lastUserIdRef = useRef<string | null>(null);
 
   const refreshProfiles = useCallback(async () => {
     if (!user || !authProfile) return;
 
     let list: UserProfile[];
     if (!setupDoneRef.current) {
-      // First load — run ensureDefaultProfiles to create default+kids if missing
       setupDoneRef.current = true;
       list = await ensureDefaultProfiles(
         user.id,
@@ -35,12 +34,10 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         authProfile.plan
       );
     } else {
-      // Subsequent refreshes (after edit/delete) — just fetch, never create
       list = await fetchProfiles(user.id);
     }
     setProfiles(list);
 
-    // Restore last active profile from storage
     const savedId = localStorage.getItem(STORAGE_KEY);
     if (savedId) {
       const found = list.find((p) => p.id === savedId);
@@ -55,9 +52,13 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loading && user && authProfile) {
-      // Clear saved profile storage for this user (switching to a new user)
-      localStorage.removeItem(STORAGE_KEY);
-      setupDoneRef.current = false;
+      const currentUserId = user.id;
+      if (lastUserIdRef.current !== currentUserId) {
+        // Only reset if it's a different user
+        setupDoneRef.current = false;
+        localStorage.removeItem(STORAGE_KEY);
+        lastUserIdRef.current = currentUserId;
+      }
       refreshProfiles();
     }
     if (!user) {
@@ -66,6 +67,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       setActiveProfileState(null);
       setProfileSelected(false);
       setupDoneRef.current = false;
+      lastUserIdRef.current = null;
     }
   }, [user, authProfile, loading, refreshProfiles]);
 
