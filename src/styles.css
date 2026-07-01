@@ -95,6 +95,8 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     scrollbar-width: none;
+    overscroll-behavior: none;
+    min-height: 100dvh;
   }
 }
 

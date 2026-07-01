@@ -7,6 +7,7 @@ import { ProfileProvider } from "./lib/ProfileContext";
 import { DetailProvider } from "./components/DetailContext";
 import { DetailModal } from "./components/DetailModal";
 import { AppRoutes } from "./AppRoutes";
+import { ScrollToTop } from "./components/ScrollToTop";
 import { UpdateChecker } from "./components/UpdateChecker";
 import "./styles.css";
 
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
           <ProfileProvider>
             <DetailProvider>
               <AppRoutes />
+              <ScrollToTop />
               <DetailModal />
               <UpdateChecker />
             </DetailProvider>
