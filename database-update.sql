@@ -224,3 +224,19 @@ alter table public.payment_history
 create index if not exists idx_payment_history_agent_billing_request_id
   on public.payment_history (agent_billing_request_id)
   where agent_billing_request_id is not null;
+
+-- 15) Fix duplicate payment_history records
+-- Two code paths were both inserting records for agent-brokered customers:
+-- adminApproveAgentRequest() + setUserStatus() firing for the same user.
+
+-- Step 1: Remove duplicates — keep the earliest record per user+period_start
+DELETE FROM public.payment_history
+WHERE id NOT IN (
+  SELECT DISTINCT ON (user_id, period_start) id
+  FROM public.payment_history
+  ORDER BY user_id, period_start, approved_at ASC
+);
+
+-- Step 2: Prevent future duplicates at DB level
+CREATE UNIQUE INDEX IF NOT EXISTS payment_history_user_period_unique
+  ON public.payment_history (user_id, period_start);

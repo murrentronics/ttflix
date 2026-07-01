@@ -737,12 +737,10 @@ export function AdminPage() {
                         return (
                           <div key={group.agent_id} className="rounded-xl border border-orange-400/40 bg-card overflow-hidden">
                             {/* ── Agent header card ── */}
-                            <button
-                              onClick={() => setExpandedAgent(expanded ? null : group.agent_id)}
-                              className="w-full text-left px-5 py-4 hover:bg-orange-400/5 transition-colors"
-                            >
+                            <div className="px-5 pt-4 pb-3">
                               <div className="flex items-start gap-3">
                                 <div className="flex-1 min-w-0">
+                                  {/* Row 1: name + customer count + call button */}
                                   <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <Briefcase className="h-4 w-4 text-orange-400 shrink-0" />
@@ -754,17 +752,17 @@ export function AdminPage() {
                                     {group.agent_phone && (
                                       <a
                                         href={`tel:${group.agent_phone.replace(/\D/g, "")}`}
-                                        onClick={(e) => e.stopPropagation()}
                                         aria-label={`Call ${group.agent_name ?? "agent"}`}
-                                        className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-green-500 bg-green-500/10 text-green-400 transition hover:bg-green-500 hover:text-white"
+                                        className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-green-500 bg-green-500/10 text-green-400 transition hover:bg-green-500 hover:text-white active:scale-95"
                                       >
                                         <Phone className="h-4 w-4" />
                                       </a>
                                     )}
                                   </div>
+                                  {/* Row 2: email */}
                                   <p className="text-xs text-muted-foreground mb-3">{group.agent_email}</p>
-                                  {/* Summary totals */}
-                                  <div className="grid grid-cols-3 gap-2">
+                                  {/* Row 3: Summary totals */}
+                                  <div className="grid grid-cols-3 gap-2 mb-3">
                                     <div className="rounded-lg bg-muted/60 px-3 py-2 text-center">
                                       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
                                       <p className="text-sm font-extrabold text-foreground">TT${group.totalAmount}</p>
@@ -778,23 +776,17 @@ export function AdminPage() {
                                       <p className="text-sm font-extrabold text-primary">TT${group.totalAdminCut}</p>
                                     </div>
                                   </div>
-                                  {/* Call Agent button */}
-                                  {group.agent_phone && (
-                                    <a
-                                      href={`tel:${group.agent_phone.replace(/\D/g, "")}`}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="mt-3 inline-flex items-center gap-2 rounded-lg border-2 border-green-500 bg-green-500/10 px-4 py-2 text-sm font-bold text-green-400 transition hover:bg-green-500 hover:text-white"
-                                    >
-                                      <span className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-green-400 bg-white/10 transition group-hover:border-white">
-                                        <Phone className="h-3.5 w-3.5" />
-                                      </span>
-                                      Call Agent · {group.agent_phone}
-                                    </a>
-                                  )}
                                 </div>
-                                <ChevronDown className={`h-5 w-5 text-muted-foreground shrink-0 mt-1 transition-transform ${expanded ? "rotate-180" : ""}`} />
                               </div>
-                            </button>
+                              {/* Row 4: Chevron toggle — bottom center */}
+                              <button
+                                onClick={() => setExpandedAgent(expanded ? null : group.agent_id)}
+                                className="flex w-full items-center justify-center py-1 text-muted-foreground hover:text-foreground transition-colors"
+                                aria-label={expanded ? "Collapse" : "Expand requests"}
+                              >
+                                <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                              </button>
+                            </div>
 
                             {/* ── Accordion: list of customer requests ── */}
                             {expanded && (
@@ -1069,6 +1061,8 @@ export function AdminPage() {
                               <span>
                                 <span className="font-semibold text-foreground">Approved: </span>
                                 {new Date(p.approved_at).toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
+                                {" "}
+                                {new Date(p.approved_at).toLocaleTimeString("en-TT", { hour: "2-digit", minute: "2-digit" })}
                               </span>
                             </div>
                           </div>

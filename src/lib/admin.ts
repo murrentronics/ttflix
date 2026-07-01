@@ -129,7 +129,18 @@ export async function setUserStatus(id: string, status: UserStatus) {
       paymentRecord.agent_billing_request_id = billingRequest.id;
     }
 
-    await supabase.from("payment_history").insert(paymentRecord);
+    // Only insert if no payment record already covers this period for this user.
+    // This prevents duplicates when adminApproveAgentRequest() already wrote the
+    // record and the admin also clicks Approve on the same user in Pending Subs.
+    const { count: existingCount } = await supabase
+      .from("payment_history")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", id)
+      .eq("period_start", periodStart);
+
+    if ((existingCount ?? 0) === 0) {
+      await supabase.from("payment_history").insert(paymentRecord);
+    }
   }
   const { error } = await supabase.from("profiles").update(patch).eq("id", id);
   if (error) throw error;
@@ -767,3 +778,18 @@ export async function adminCreateAgent(args: {
     await supabase.auth.signInWithPassword({ email: adminEmail, password: adminPassword });
   }
 }
+
+// NOTE: Run the following in Supabase SQL Editor to prevent duplicate
+// payment_history rows at the database level and clean up any existing ones:
+//
+// -- Remove duplicate rows, keeping only the earliest per user+period_start
+// DELETE FROM public.payment_history
+// WHERE id NOT IN (
+//   SELECT DISTINCT ON (user_id, period_start) id
+//   FROM public.payment_history
+//   ORDER BY user_id, period_start, approved_at ASC
+// );
+//
+// -- Add unique constraint so duplicates are impossible going forward
+// CREATE UNIQUE INDEX IF NOT EXISTS payment_history_user_period_unique
+//   ON public.payment_history (user_id, period_start);

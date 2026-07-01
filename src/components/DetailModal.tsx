@@ -286,16 +286,32 @@ export function DetailModal() {
                 ) : (
                   <div className="space-y-2">
                     {(episodes ?? []).map((ep: { episode_number: number; name: string; overview?: string; still_path?: string | null; runtime?: number | null }) => {
-                      // Determine episode watch state for badge display
+                      // Determine episode watch state for badge display.
+                      // DB stores one row per title (most recent episode watched).
+                      // Logic:
+                      //   - All episodes in seasons BEFORE the saved season → watched
+                      //   - In the saved season: episodes BEFORE saved episode → watched
+                      //   - The saved episode itself → isCurrent (progress bar)
+                      //   - Everything after → unwatched
+                      const savedSeason = watchProgress?.season ?? null;
+                      const savedEpisode = watchProgress?.episode ?? null;
+                      const hasProgress = !!watchProgress && watchProgress.watched_seconds >= 5;
+
                       const isCurrent =
-                        watchProgress &&
-                        watchProgress.season === selectedSeason &&
-                        watchProgress.episode === ep.episode_number;
+                        hasProgress &&
+                        savedSeason === selectedSeason &&
+                        savedEpisode === ep.episode_number;
+
                       const isWatched =
-                        watchProgress &&
-                        watchProgress.season === selectedSeason &&
-                        watchProgress.episode != null &&
-                        ep.episode_number < watchProgress.episode;
+                        hasProgress &&
+                        savedSeason != null &&
+                        (
+                          // All episodes in fully-completed previous seasons
+                          selectedSeason < savedSeason ||
+                          // Episodes before current position in the same season
+                          (selectedSeason === savedSeason && savedEpisode != null && ep.episode_number < savedEpisode)
+                        );
+
                       const progressPct =
                         isCurrent && watchProgress!.duration_seconds > 0
                           ? Math.min(100, (watchProgress!.watched_seconds / watchProgress!.duration_seconds) * 100)

@@ -224,7 +224,9 @@ export function WatchPage() {
     fetchDuration();
   }, [tmdbId, type, season, episode]);
 
-  const triggerExplosion = useCallback(() => setExplodeLoader(true), []);
+  const triggerExplosion = useCallback(() => {
+    setExplodeLoader(true);
+  }, []);
   const onLoaderDone = useCallback(() => setLoaderVisible(false), []);
   const savedInitial = useRef(false);
 
@@ -345,10 +347,8 @@ export function WatchPage() {
           const newDuration = d.duration > 0 ? d.duration : progressRef.current.duration;
           progressRef.current = { watched: d.timestamp, duration: newDuration, hasPostMessage: true };
           providerSignalRef.current = true;
-          lastHeartbeatRef.current = Date.now(); // keep watchdog alive
           if (!playerStartedRef.current) {
             playerStartedRef.current = true;
-            lastHeartbeatRef.current = Date.now();
             triggerExplosion();
             saveInitial();
           }
@@ -384,25 +384,11 @@ export function WatchPage() {
   const persistRef = useRef(persist);
   useEffect(() => { persistRef.current = persist; }, [persist]);
 
-  // ── Crash watchdog ───────────────────────────────────────────────────────────
-  // Once Videasy fires its first postMessage (player started), track a heartbeat.
-  // Every time a postMessage comes in, update lastHeartbeatRef.
-  // If 10s pass with no heartbeat after the player started → reload.
-  const lastHeartbeatRef = useRef<number>(0);
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      // Only watch after player has actually started sending messages
-      if (!playerStartedRef.current) return;
-      if (lastHeartbeatRef.current === 0) return;
-      if (document.visibilityState === "hidden") return;
-      const elapsed = Date.now() - lastHeartbeatRef.current;
-      if (elapsed > 10_000) {
-        window.location.reload();
-      }
-    }, 5_000);
-    return () => clearInterval(t);
-  }, []);
+  // ── Crash watchdog REMOVED ─────────────────────────────────────────────────
+  // The watchdog was calling window.location.reload() on any brief pause in
+  // postMessages (e.g. user clicking play on the Videasy UI), causing the
+  // "acts weird and reloads" bug. Progress is saved on interval + beforeunload
+  // which is sufficient.
 
   useEffect(() => {
     if (!user) return;
@@ -528,15 +514,28 @@ export function WatchPage() {
       onMouseMove={showExit}
       onTouchStart={showExit}
     >
+      {/* ── Loader overlay ── */}
       <TTFlixLoader
         key={loaderKey}
-        explode={false}
+        explode={explodeLoader}
         persistent={true}
         backdrop={backdrop || poster}
-        onDone={() => {}}
+        onDone={onLoaderDone}
       />
 
-      {/* Kids blocked — shown on top of loader after check completes */}
+      {/* ── Iframe player (web) — rendered under loader, always present ── */}
+      {!kidsBlocked && (
+        <iframe
+          ref={iframeRef}
+          src={src}
+          className="absolute inset-0 h-full w-full border-0"
+          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+          allowFullScreen
+          title={title || "TTFlix Player"}
+        />
+      )}
+
+      {/* ── Kids blocked ── */}
       {kidsBlocked && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center px-6 text-center gap-6">
           <div className="text-6xl">🔒</div>
@@ -554,44 +553,43 @@ export function WatchPage() {
         </div>
       )}
 
+      {/* ── Overlay controls (shown once loader clears) ── */}
       {!loaderVisible && !kidsBlocked && (
         <>
-          {/* ── TOP-LEFT: Exit button ── */}
+          {/* TOP-LEFT: Exit */}
           <button
             onClick={() => navigate("/")}
             tabIndex={0}
             data-tv-card
             aria-label="Exit player"
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
             className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
               hover:bg-black/90
               focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
-              ${exitVisible ? "opacity-100" : "opacity-0"}
-            `}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
+              ${exitVisible ? "opacity-100" : "opacity-0"}`}
           >
             <X className="h-6 w-6" />
           </button>
 
-          {/* ── BOTTOM-RIGHT: Next Episode button (TV only, always in DOM for D-pad focus) ── */}
+          {/* BOTTOM-RIGHT: Next Episode (TV only) */}
           {type === "tv" && nextEp && (
             <button
               onClick={goNextEpisode}
               tabIndex={0}
               data-tv-card
-              aria-label={`Next episode: S${nextEp.season} E${nextEp.episode}`}
+              aria-label={`Next episode S${nextEp.season} E${nextEp.episode}`}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goNextEpisode(); } }}
               className={`absolute bottom-6 right-4 z-40 flex items-center gap-2 rounded-full border-2 border-white/40 bg-black/80 px-5 py-3 text-sm font-bold text-white backdrop-blur-sm transition
                 hover:border-white hover:bg-white hover:text-black
                 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
-                ${exitVisible ? "opacity-100" : "opacity-20"}
-              `}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goNextEpisode(); } }}
+                ${exitVisible ? "opacity-100" : "opacity-20"}`}
             >
               <SkipForward className="h-5 w-5 shrink-0" />
               Next Episode
             </button>
           )}
 
-          {/* ── TOP-RIGHT: Up Next banner (auto-shows near end, away from all other buttons) ── */}
+          {/* TOP-RIGHT: Up Next banner (near end of episode) */}
           {showNextBanner && nextEp && (
             <div
               role="dialog"
@@ -609,13 +607,13 @@ export function WatchPage() {
                   data-tv-card
                   autoFocus
                   aria-label="Play next episode"
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground transition
-                    hover:bg-primary/85
-                    focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-1 focus-visible:ring-offset-black"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goNextEpisode(); }
                     if (e.key === "ArrowRight") { e.preventDefault(); (e.currentTarget.nextElementSibling as HTMLElement)?.focus(); }
                   }}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground transition
+                    hover:bg-primary/85
+                    focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-1 focus-visible:ring-offset-black"
                 >
                   <SkipForward className="h-4 w-4 shrink-0" /> Play
                 </button>
@@ -623,15 +621,14 @@ export function WatchPage() {
                   onClick={() => { setShowNextBanner(false); nextBannerShownRef.current = true; }}
                   tabIndex={0}
                   data-tv-card
-                  aria-label="Dismiss up next"
-                  className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-white/70 transition
-                    hover:bg-white/10
-                    focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-1 focus-visible:ring-offset-black"
+                  aria-label="Dismiss"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowNextBanner(false); nextBannerShownRef.current = true; }
                     if (e.key === "ArrowLeft") { e.preventDefault(); (e.currentTarget.previousElementSibling as HTMLElement)?.focus(); }
-                    if (e.key === "ArrowDown") { e.preventDefault(); document.querySelector<HTMLElement>("[data-tv-exit]")?.focus(); }
                   }}
+                  className="rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-white/70 transition
+                    hover:bg-white/10
+                    focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-1 focus-visible:ring-offset-black"
                 >
                   Dismiss
                 </button>
