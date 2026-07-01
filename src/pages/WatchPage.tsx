@@ -48,6 +48,9 @@ export function WatchPage() {
 
   const type = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
+
+  // Key that changes any time the target content changes — forces full state reset
+  const contentKey = `${type}-${tmdbId}-${season}-${episode}`;
   const stillLoading = loading || profileLoading;
   const canWatch = isAdmin || (!!user && profile?.status === "approved");
   const isKidsProfile = activeProfile?.is_kids ?? false;
@@ -74,10 +77,24 @@ export function WatchPage() {
 
   const currentEpisodeRef = useRef({ season, episode });
 
+  // Keep currentEpisodeRef in sync with route params
+  useEffect(() => {
+    currentEpisodeRef.current = { season, episode };
+  }, [season, episode]);
+
   const providers = getProviders(type, tmdbId, season, episode);
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc] = useState(() => providers[0].url);
   const providerSignalRef = useRef(false);
+
+  // When content changes, reset provider to first and update src
+  useEffect(() => {
+    const fresh = getProviders(type, tmdbId, season, episode);
+    setProviderIndex(0);
+    setSrc(fresh[0].url);
+    providerSignalRef.current = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentKey]);
 
   // ── Next episode state ──────────────────────────────────────────────────────
   const [nextEp, setNextEp] = useState<{ season: number; episode: number; name: string } | null>(null);
@@ -201,10 +218,6 @@ export function WatchPage() {
   const durationReadyRef = useRef(false);
   useEffect(() => {
     durationReadyRef.current = false;
-    progressRef.current = { watched: 0, duration: 0, hasPostMessage: false };
-    watchStartRef.current = Date.now();
-    savedInitial.current = false;
-    playerStartedRef.current = false;
 
     async function fetchDuration() {
       try {
@@ -229,6 +242,18 @@ export function WatchPage() {
   }, []);
   const onLoaderDone = useCallback(() => setLoaderVisible(false), []);
   const savedInitial = useRef(false);
+
+  // Reset loader + player state on every new content load
+  useEffect(() => {
+    setLoaderVisible(true);
+    setExplodeLoader(false);
+    setLoaderKey((k) => k + 1);
+    playerStartedRef.current = false;
+    savedInitial.current = false;
+    progressRef.current = { watched: 0, duration: 0, hasPostMessage: false };
+    watchStartRef.current = Date.now();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentKey]);
 
   const saveInitial = useCallback(async () => {
     if (savedInitial.current || !user || !effectiveProfile || !title) return;
@@ -420,7 +445,8 @@ export function WatchPage() {
   const playerLaunchedRef = useRef(false);
   useEffect(() => {
     playerLaunchedRef.current = false;
-  }, [tmdbId, season, episode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contentKey]);
 
   useEffect(() => {
     if (stillLoading || !canWatch || !!screenError) return;

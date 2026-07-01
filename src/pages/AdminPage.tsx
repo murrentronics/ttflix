@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const STATUS_TABS: UserStatus[] = ["pending", "approved", "suspended", "expelled"];
-type AdminTab = UserStatus | "billing" | "history" | "watching" | "agents" | "dashboard" | "create-agent";
+type AdminTab = UserStatus | "billing" | "history" | "watching" | "agent-requests" | "agent-list" | "dashboard" | "create-agent";
 const PAGE_SIZE = 100;
 
 type NavItem = { id: AdminTab; label: string; icon: React.ReactNode };
@@ -46,8 +46,8 @@ export function AdminPage() {
   const [agentRequestCount, setAgentRequestCount] = useState(0);
   const [agentList, setAgentList] = useState<AgentListItem[]>([]);
   const [agentCustomerLinks, setAgentCustomerLinks] = useState<Record<string, { agent_id: string; agent_name: string | null; agent_email: string }>>({});
-  const [agentSubTab, setAgentSubTab] = useState<"requests" | "list">("requests");
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [agentListSubTab, setAgentListSubTab] = useState<"active" | "suspended">("active");
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [dashStats, setDashStats] = useState<DashboardStats | null>(null);
   const [dashLoading, setDashLoading] = useState(false);
@@ -144,7 +144,7 @@ export function AdminPage() {
     else if (tab === "billing") { /* loaded above */ }
     else if (tab === "history") { setHistoryPage(1); loadHistory(1); }
     else if (tab === "watching") loadWatching();
-    else if (tab === "agents") { /* loadAgentRequests already called above */ }
+    else if (tab === "agent-requests" || tab === "agent-list") { /* loadAgentRequests already called above */ }
     else {
       refreshRows(tab as UserStatus);
       fetchAgentCustomerLinks().then(setAgentCustomerLinks);
@@ -161,7 +161,7 @@ export function AdminPage() {
     const channel = supabase.channel("admin-profiles")
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
         refreshUpcomingRenewals();
-        if (tabRef.current !== "billing" && tabRef.current !== "history" && tabRef.current !== "watching" && tabRef.current !== "agents" && tabRef.current !== "dashboard")
+        if (tabRef.current !== "billing" && tabRef.current !== "history" && tabRef.current !== "watching" && tabRef.current !== "agent-requests" && tabRef.current !== "agent-list" && tabRef.current !== "dashboard")
           refreshRows(tabRef.current as UserStatus);
         refreshCounts();
       })
@@ -236,6 +236,7 @@ export function AdminPage() {
     try {
       await setUserStatus(u.id, status);
       if (tab === "billing") await refreshUpcomingRenewals();
+      else if (tab === "agent-requests" || tab === "agent-list") await loadAgentRequests();
       else if (tab !== "history") await refreshRows(tab as UserStatus);
       await refreshCounts();
     } finally { setBusy(false); }
@@ -265,6 +266,7 @@ export function AdminPage() {
       await deleteUserRecord(confirmDelete.id);
       setConfirmDelete(null);
       if (tab === "billing") await refreshUpcomingRenewals();
+      else if (tab === "agent-requests" || tab === "agent-list") await loadAgentRequests();
       else if (tab !== "history") await refreshRows(tab as UserStatus);
       await refreshCounts();
     } finally { setBusy(false); }
@@ -309,26 +311,28 @@ export function AdminPage() {
 
   // ── Nav items with badge counts ────────────────────────────────────────────
   const NAV_ITEMS: NavItem[] = [
-    { id: "dashboard",     label: "Dashboard",          icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
-    { id: "create-agent",  label: "Create Agent",       icon: <UserPlus className="h-4 w-4 shrink-0" /> },
-    { id: "pending",       label: "Pending Subs",       icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
-    { id: "agents",        label: "Pending Requests",   icon: <Briefcase className="h-4 w-4 shrink-0" /> },
-    { id: "approved",      label: STATUS_LABELS["approved"],  icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
-    { id: "suspended",     label: STATUS_LABELS["suspended"], icon: <Ban className="h-4 w-4 shrink-0" /> },
-    { id: "expelled",      label: STATUS_LABELS["expelled"],  icon: <UserX className="h-4 w-4 shrink-0" /> },
-    { id: "billing",       label: "Renewals Due",             icon: <CalendarDays className="h-4 w-4 shrink-0" /> },
-    { id: "history",       label: "Payment History",          icon: <Receipt className="h-4 w-4 shrink-0" /> },
-    { id: "watching",      label: "Watching Now",             icon: <Tv className="h-4 w-4 shrink-0" /> },
+    { id: "dashboard",       label: "Dashboard",          icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
+    { id: "create-agent",    label: "Create Agent",       icon: <UserPlus className="h-4 w-4 shrink-0" /> },
+    { id: "pending",         label: "Pending Subs",       icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
+    { id: "agent-requests",  label: "Pending Requests",   icon: <Briefcase className="h-4 w-4 shrink-0" /> },
+    { id: "agent-list",      label: "Agents",             icon: <Users className="h-4 w-4 shrink-0" /> },
+    { id: "approved",        label: STATUS_LABELS["approved"],  icon: <ShieldCheck className="h-4 w-4 shrink-0" /> },
+    { id: "suspended",       label: STATUS_LABELS["suspended"], icon: <Ban className="h-4 w-4 shrink-0" /> },
+    { id: "expelled",        label: STATUS_LABELS["expelled"],  icon: <UserX className="h-4 w-4 shrink-0" /> },
+    { id: "billing",         label: "Renewals Due",             icon: <CalendarDays className="h-4 w-4 shrink-0" /> },
+    { id: "history",         label: "Payment History",          icon: <Receipt className="h-4 w-4 shrink-0" /> },
+    { id: "watching",        label: "Watching Now",             icon: <Tv className="h-4 w-4 shrink-0" /> },
   ];
 
   const badges: Partial<Record<AdminTab, number>> = {
-    pending:  counts.pending,
-    approved: counts.approved,
-    suspended: counts.suspended,
-    expelled: counts.expelled,
-    billing:  renewalCount,
-    watching: watchingCount,
-    agents:   agentRequestCount,
+    pending:          counts.pending,
+    approved:         counts.approved,
+    suspended:        counts.suspended,
+    expelled:         counts.expelled,
+    billing:          renewalCount,
+    watching:         watchingCount,
+    "agent-requests": agentRequestCount,
+    "agent-list":     agentList.length,
   };
 
   const currentLabel = NAV_ITEMS.find((n) => n.id === tab)?.label ?? "";
@@ -380,10 +384,11 @@ export function AdminPage() {
                 const badge = badges[item.id] ?? 0;
                 const active = tab === item.id;
                 const badgeColor =
-                  item.id === "pending"  ? "bg-primary" :
-                  item.id === "billing"  ? "bg-yellow-500 text-black" :
-                  item.id === "watching" ? "bg-green-500 text-black" :
-                  item.id === "agents"   ? "bg-orange-500" :
+                  item.id === "pending"         ? "bg-primary" :
+                  item.id === "billing"         ? "bg-yellow-500 text-black" :
+                  item.id === "watching"        ? "bg-green-500 text-black" :
+                  item.id === "agent-requests"  ? "bg-orange-500" :
+                  item.id === "agent-list"      ? "bg-orange-500" :
                   "bg-white text-[#c0001a]";
                 return (
                   <button
@@ -670,270 +675,166 @@ export function AdminPage() {
               </div>
             )}
 
-            {/* ── AGENT REQUESTS TAB ── */}
-            {tab === "agents" && (              <div className="space-y-4 max-w-2xl">
-                <div className="flex gap-1 border-b border-border">
-                  <button onClick={() => setAgentSubTab("requests")}
-                    className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${agentSubTab === "requests" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-                    Pending Requests
-                    {agentRequestCount > 0 && (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-xs font-bold text-white">
-                        {agentRequestCount}
-                      </span>
-                    )}
-                  </button>
-                  <button onClick={() => setAgentSubTab("list")}
-                    className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${agentSubTab === "list" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-                    <Briefcase className="h-4 w-4" /> Agents ({agentList.length})
-                  </button>
-                </div>
-
-                {agentSubTab === "requests" && (() => {
-                  // Group requests by agent
-                  const byAgent: Record<string, {
-                    agent_id: string;
-                    agent_name: string | null;
-                    agent_email: string;
-                    agent_phone: string | null;
-                    requests: AgentBillingRequestAdmin[];
-                    totalAmount: number;
-                    totalAgentCut: number;
-                    totalAdminCut: number;
-                  }> = {};
-                  for (const req of agentRequests) {
-                    if (!byAgent[req.agent_id]) {
-                      byAgent[req.agent_id] = {
-                        agent_id: req.agent_id,
-                        agent_name: req.agent_name ?? null,
-                        agent_email: req.agent_email ?? "",
-                        agent_phone: req.agent_phone ?? null,
-                        requests: [],
-                        totalAmount: 0,
-                        totalAgentCut: 0,
-                        totalAdminCut: 0,
-                      };
-                    }
-                    byAgent[req.agent_id].requests.push(req);
-                    byAgent[req.agent_id].totalAmount += req.amount ?? 0;
-                    byAgent[req.agent_id].totalAgentCut += req.agent_commission ?? 0;
-                    byAgent[req.agent_id].totalAdminCut += req.admin_amount ?? 0;
-                  }
-                  const agentGroups = Object.values(byAgent);
-
-                  return (
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Agents have collected the cash — approve each customer to activate their subscription.
-                      </p>
-
-                      {agentGroups.length === 0 && (
-                        <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
-                          No pending agent requests.
-                        </div>
-                      )}
-
-                      {agentGroups.map((group) => {
-                        const expanded = expandedAgent === group.agent_id;
-                        return (
-                          <div key={group.agent_id} className="rounded-xl border border-orange-400/40 bg-card overflow-hidden">
-                            {/* ── Agent header card ── */}
-                            <div className="px-5 pt-4 pb-3">
-                              <div className="flex items-start gap-3">
-                                <div className="flex-1 min-w-0">
-                                  {/* Row 1: name + customer count + call button */}
-                                  <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <Briefcase className="h-4 w-4 text-orange-400 shrink-0" />
-                                      <p className="font-bold text-base">{group.agent_name ?? group.agent_email}</p>
-                                      <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-bold text-orange-400">
-                                        {group.requests.length} customer{group.requests.length !== 1 ? "s" : ""}
-                                      </span>
-                                    </div>
-                                    {group.agent_phone && (
-                                      <a
-                                        href={`tel:${group.agent_phone.replace(/\D/g, "")}`}
-                                        aria-label={`Call ${group.agent_name ?? "agent"}`}
-                                        className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-green-500 bg-green-500/10 text-green-400 transition hover:bg-green-500 hover:text-white active:scale-95"
-                                      >
-                                        <Phone className="h-4 w-4" />
-                                      </a>
-                                    )}
-                                  </div>
-                                  {/* Row 2: email */}
-                                  <p className="text-xs text-muted-foreground mb-3">{group.agent_email}</p>
-                                  {/* Row 3: Summary totals */}
-                                  <div className="grid grid-cols-3 gap-2 mb-3">
-                                    <div className="rounded-lg bg-muted/60 px-3 py-2 text-center">
-                                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
-                                      <p className="text-sm font-extrabold text-foreground">TT${group.totalAmount}</p>
-                                    </div>
-                                    <div className="rounded-lg bg-green-500/10 px-3 py-2 text-center">
-                                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Agent cut</p>
-                                      <p className="text-sm font-extrabold text-green-400">TT${group.totalAgentCut}</p>
-                                    </div>
-                                    <div className="rounded-lg bg-primary/10 px-3 py-2 text-center">
-                                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Your portion</p>
-                                      <p className="text-sm font-extrabold text-primary">TT${group.totalAdminCut}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                              {/* Row 4: Chevron toggle — bottom center */}
-                              <button
-                                onClick={() => setExpandedAgent(expanded ? null : group.agent_id)}
-                                className="flex w-full items-center justify-center py-1 text-muted-foreground hover:text-foreground transition-colors"
-                                aria-label={expanded ? "Collapse" : "Expand requests"}
-                              >
-                                <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`} />
-                              </button>
+            {/* ── PENDING AGENT REQUESTS TAB ── */}
+            {tab === "agent-requests" && (() => {
+              const byAgent: Record<string, { agent_id: string; agent_name: string | null; agent_email: string; agent_phone: string | null; requests: AgentBillingRequestAdmin[]; totalAmount: number; totalAgentCut: number; totalAdminCut: number }> = {};
+              for (const req of agentRequests) {
+                if (!byAgent[req.agent_id]) byAgent[req.agent_id] = { agent_id: req.agent_id, agent_name: req.agent_name ?? null, agent_email: req.agent_email ?? "", agent_phone: req.agent_phone ?? null, requests: [], totalAmount: 0, totalAgentCut: 0, totalAdminCut: 0 };
+                byAgent[req.agent_id].requests.push(req);
+                byAgent[req.agent_id].totalAmount += req.amount ?? 0;
+                byAgent[req.agent_id].totalAgentCut += req.agent_commission ?? 0;
+                byAgent[req.agent_id].totalAdminCut += req.admin_amount ?? 0;
+              }
+              const agentGroups = Object.values(byAgent);
+              return (
+                <div className="space-y-4 max-w-2xl">
+                  <p className="text-sm text-muted-foreground">Agents have collected the cash — approve each customer to activate their subscription.</p>
+                  {agentGroups.length === 0 && <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">No pending agent requests.</div>}
+                  {agentGroups.map((group) => {
+                    const expanded = expandedAgent === group.agent_id;
+                    return (
+                      <div key={group.agent_id} className="rounded-xl border border-orange-400/40 bg-card overflow-hidden">
+                        <div className="px-5 pt-4 pb-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Briefcase className="h-4 w-4 text-orange-400 shrink-0" />
+                              <p className="font-bold text-base">{group.agent_name ?? group.agent_email}</p>
+                              <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-bold text-orange-400">{group.requests.length} customer{group.requests.length !== 1 ? "s" : ""}</span>
                             </div>
-
-                            {/* ── Accordion: list of customer requests ── */}
-                            {expanded && (
-                              <div className="border-t border-border divide-y divide-border">
-                                {group.requests.map((req) => (
-                                  <div key={req.id} className="px-5 py-4">
-                                    <div className="flex flex-wrap items-start justify-between gap-4">
-                                      <div className="flex-1 min-w-0 space-y-1 text-sm">
-                                        <p className="font-semibold">{req.customer_name ?? "—"}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                          {req.customer_email}{req.customer_phone ? ` · ${req.customer_phone}` : ""}
-                                        </p>
-                                        <div className="flex flex-wrap gap-3 text-xs pt-0.5">
-                                          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-primary">
-                                            {PLANS[req.plan as keyof typeof PLANS]?.name ?? req.plan}
-                                          </span>
-                                          <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground capitalize">
-                                            {req.request_type.replace(/_/g, " ")}
-                                          </span>
-                                        </div>
-                                        <div className="flex flex-wrap gap-4 pt-1 text-xs">
-                                          <span><span className="text-muted-foreground">Total: </span><span className="font-bold">TT${req.amount}</span></span>
-                                          <span><span className="text-muted-foreground">Agent: </span><span className="font-bold text-green-400">TT${req.agent_commission}</span></span>
-                                          <span><span className="text-muted-foreground">You: </span><span className="font-bold text-primary">TT${req.admin_amount}</span></span>
-                                        </div>
-                                      </div>
-                                      <div className="flex flex-col gap-2 shrink-0">
-                                        <button
-                                          onClick={() => handleApproveAgentRequest(req)}
-                                          disabled={busy}
-                                          className="rounded-md bg-primary px-4 py-1.5 text-sm font-bold text-primary-foreground hover:bg-primary/85 disabled:opacity-60"
-                                        >
-                                          ✓ Approve
-                                        </button>
-                                        <button
-                                          onClick={() => handleRejectAgentRequest(req)}
-                                          disabled={busy}
-                                          className="rounded-md border border-destructive/50 px-4 py-1.5 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60"
-                                        >
-                                          ✕ Reject
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
+                            {group.agent_phone && (
+                              <a href={`tel:${group.agent_phone.replace(/\D/g, "")}`} aria-label={`Call ${group.agent_name ?? "agent"}`}
+                                className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-green-500 bg-green-500/10 text-green-400 transition hover:bg-green-500 hover:text-white active:scale-95">
+                                <Phone className="h-4 w-4" />
+                              </a>
                             )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })()}
-
-                {agentSubTab === "list" && (
-                  <div className="space-y-3">
-                    {agentList.length === 0 && (
-                      <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
-                        No agents yet.
-                      </div>
-                    )}
-                    {agentList.map((agent) => {
-                      const expanded = expandedAgent === agent.id;
-                      return (
-                        <div key={agent.id} className="rounded-xl border border-border bg-card overflow-hidden">
-                          <div className="px-5 py-4">
-                            {/* Row 1: agent info + monthly amount */}
-                            <div className="flex items-start gap-2">
-                              <button
-                                onClick={() => setExpandedAgent(expanded ? null : agent.id)}
-                                className="flex-1 min-w-0 text-left"
-                              >
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <p className="font-semibold">{agent.full_name ?? "—"}</p>
-                                  <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-bold text-orange-400">
-                                    {agent.customer_count} customer{agent.customer_count !== 1 ? "s" : ""}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-muted-foreground">{agent.email} {agent.phone ? `· ${agent.phone}` : ""}</p>
-                              </button>
-                              <div className="shrink-0 text-right">
-                                <span className="text-green-400 font-semibold text-sm">TT${agent.monthly_income}</span>
-                                <p className="text-[10px] text-muted-foreground">This month</p>
-                              </div>
-                              <button
-                                onClick={() => setExpandedAgent(expanded ? null : agent.id)}
-                                className="rounded p-1 hover:bg-accent shrink-0"
-                                aria-label="Toggle customers"
-                              >
-                                <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
-                              </button>
-                            </div>
-                            {/* Row 2: Buttons */}
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              <Btn
-                                onClick={() => changeStatus({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser, "suspended")}
-                                busy={busy}
-                              >
-                                <Ban className="h-3.5 w-3.5" /> Suspend
-                              </Btn>
-                              <Btn
-                                onClick={() => setConfirmDelete({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser)}
-                                busy={busy}
-                                variant="danger"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" /> Delete
-                              </Btn>
-                            </div>
+                          <p className="text-xs text-muted-foreground mb-3">{group.agent_email}</p>
+                          <div className="grid grid-cols-3 gap-2 mb-3">
+                            <div className="rounded-lg bg-muted/60 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p><p className="text-sm font-extrabold text-foreground">TT${group.totalAmount}</p></div>
+                            <div className="rounded-lg bg-green-500/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Agent cut</p><p className="text-sm font-extrabold text-green-400">TT${group.totalAgentCut}</p></div>
+                            <div className="rounded-lg bg-primary/10 px-3 py-2 text-center"><p className="text-[10px] text-muted-foreground uppercase tracking-wide">Your portion</p><p className="text-sm font-extrabold text-primary">TT${group.totalAdminCut}</p></div>
                           </div>
-                          {expanded && (
-                            <div className="border-t border-border divide-y divide-border">
-                              {agent.customers.length === 0 && (
-                                <p className="px-5 py-4 text-sm text-muted-foreground">No customers linked yet.</p>
-                              )}
-                              {agent.customers.map((c: any) => {
-                                const dueDate = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
-                                return (
-                                  <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-4 text-sm">
-                                    <div className="min-w-0">
-                                      <p className="font-medium truncate">{c.full_name ?? "—"}</p>
-                                      <p className="text-xs text-muted-foreground">{c.email} {c.phone ? `· ${c.phone}` : ""}</p>
+                          <button onClick={() => setExpandedAgent(expanded ? null : group.agent_id)} className="flex w-full items-center justify-center py-1 text-muted-foreground hover:text-foreground transition-colors" aria-label={expanded ? "Collapse" : "Expand"}>
+                            <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                          </button>
+                        </div>
+                        {expanded && (
+                          <div className="border-t border-border divide-y divide-border">
+                            {group.requests.map((req) => (
+                              <div key={req.id} className="px-5 py-4">
+                                <div className="flex flex-wrap items-start justify-between gap-4">
+                                  <div className="flex-1 min-w-0 space-y-1 text-sm">
+                                    <p className="font-semibold">{req.customer_name ?? "—"}</p>
+                                    <p className="text-xs text-muted-foreground">{req.customer_email}{req.customer_phone ? ` · ${req.customer_phone}` : ""}</p>
+                                    <div className="flex flex-wrap gap-3 text-xs pt-0.5">
+                                      <span className="rounded-full bg-primary/15 px-2 py-0.5 text-primary">{PLANS[req.plan as keyof typeof PLANS]?.name ?? req.plan}</span>
+                                      <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground capitalize">{req.request_type.replace(/_/g, " ")}</span>
                                     </div>
-                                    <div className="shrink-0 text-right space-y-0.5">
-                                      <p className="text-xs">{PLANS[c.plan as keyof typeof PLANS]?.name ?? c.plan}</p>
-                                      <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${
-                                        c.status === "approved" ? "bg-green-500/15 text-green-400"
-                                        : c.status === "pending" ? "bg-yellow-500/15 text-yellow-400"
-                                        : "bg-destructive/15 text-destructive"
-                                      }`}>{c.status}</span>
-                                      {dueDate && (
-                                        <p className="text-xs text-muted-foreground">
-                                          Due {dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
-                                        </p>
-                                      )}
+                                    <div className="flex flex-wrap gap-4 pt-1 text-xs">
+                                      <span><span className="text-muted-foreground">Total: </span><span className="font-bold">TT${req.amount}</span></span>
+                                      <span><span className="text-muted-foreground">Agent: </span><span className="font-bold text-green-400">TT${req.agent_commission}</span></span>
+                                      <span><span className="text-muted-foreground">You: </span><span className="font-bold text-primary">TT${req.admin_amount}</span></span>
                                     </div>
                                   </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                                  <div className="flex flex-col gap-2 shrink-0">
+                                    <button onClick={() => handleApproveAgentRequest(req)} disabled={busy} className="rounded-md bg-primary px-4 py-1.5 text-sm font-bold text-primary-foreground hover:bg-primary/85 disabled:opacity-60">✓ Approve</button>
+                                    <button onClick={() => handleRejectAgentRequest(req)} disabled={busy} className="rounded-md border border-destructive/50 px-4 py-1.5 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60">✕ Reject</button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* ── AGENTS TAB ── */}
+            {tab === "agent-list" && (() => {
+              const activeAgents = agentList.filter((a) => a.status === "approved");
+              const suspendedAgents = agentList.filter((a) => a.status === "suspended");
+              const displayAgents = agentListSubTab === "active" ? activeAgents : suspendedAgents;
+              return (
+                <div className="space-y-4 max-w-2xl">
+                  <div className="flex gap-1 border-b border-border">
+                    <button onClick={() => setAgentListSubTab("active")}
+                      className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${agentListSubTab === "active" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                      Active
+                      {activeAgents.length > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-green-500 px-1.5 text-xs font-bold text-white">{activeAgents.length}</span>}
+                    </button>
+                    <button onClick={() => setAgentListSubTab("suspended")}
+                      className={`-mb-px flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition ${agentListSubTab === "suspended" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
+                      Suspended
+                      {suspendedAgents.length > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-xs font-bold text-white">{suspendedAgents.length}</span>}
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
+                  {displayAgents.length === 0 && <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">No {agentListSubTab} agents.</div>}
+                  {displayAgents.map((agent) => {
+                    const expanded = expandedAgent === agent.id;
+                    return (
+                      <div key={agent.id} className="rounded-xl border border-border bg-card overflow-hidden">
+                        <div className="px-5 py-4">
+                          <div className="flex items-start gap-2">
+                            <button onClick={() => setExpandedAgent(expanded ? null : agent.id)} className="flex-1 min-w-0 text-left">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="font-semibold">{agent.full_name ?? "—"}</p>
+                                <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-xs font-bold text-orange-400">{agent.customer_count} customer{agent.customer_count !== 1 ? "s" : ""}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">{agent.email}{agent.phone ? ` · ${agent.phone}` : ""}</p>
+                            </button>
+                            <div className="shrink-0 text-right">
+                              <span className="text-green-400 font-semibold text-sm">TT${agent.monthly_income}</span>
+                              <p className="text-[10px] text-muted-foreground">This month</p>
+                            </div>
+                            <button onClick={() => setExpandedAgent(expanded ? null : agent.id)} className="rounded p-1 hover:bg-accent shrink-0" aria-label="Toggle customers">
+                              <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`} />
+                            </button>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {agent.status !== "suspended" ? (
+                              <Btn onClick={() => changeStatus({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser, "suspended")} busy={busy}>
+                                <Ban className="h-3.5 w-3.5" /> Suspend
+                              </Btn>
+                            ) : (
+                              <Btn onClick={() => changeStatus({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser, "approved")} busy={busy} variant="primary">
+                                <ShieldCheck className="h-3.5 w-3.5" /> Reinstate
+                              </Btn>
+                            )}
+                            <Btn onClick={() => setConfirmDelete({ id: agent.id, email: agent.email, full_name: agent.full_name } as AdminUser)} busy={busy} variant="danger">
+                              <Trash2 className="h-3.5 w-3.5" /> Delete
+                            </Btn>
+                          </div>
+                        </div>
+                        {expanded && (
+                          <div className="border-t border-border divide-y divide-border">
+                            {agent.customers.length === 0 && <p className="px-5 py-4 text-sm text-muted-foreground">No customers linked yet.</p>}
+                            {agent.customers.map((c: any) => {
+                              const dueDate = c.subscription_expires_at ? new Date(c.subscription_expires_at) : null;
+                              return (
+                                <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-4 text-sm">
+                                  <div className="min-w-0">
+                                    <p className="font-medium truncate">{c.full_name ?? "—"}</p>
+                                    <p className="text-xs text-muted-foreground">{c.email}{c.phone ? ` · ${c.phone}` : ""}</p>
+                                  </div>
+                                  <div className="shrink-0 text-right space-y-0.5">
+                                    <p className="text-xs">{PLANS[c.plan as keyof typeof PLANS]?.name ?? c.plan}</p>
+                                    <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${c.status === "approved" ? "bg-green-500/15 text-green-400" : c.status === "pending" ? "bg-yellow-500/15 text-yellow-400" : "bg-destructive/15 text-destructive"}`}>{c.status}</span>
+                                    {dueDate && <p className="text-xs text-muted-foreground">Due {dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}</p>}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* ── WATCHING NOW TAB ── */}
             {tab === "watching" && (

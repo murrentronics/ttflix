@@ -378,9 +378,10 @@ export type AgentListItem = {
   full_name: string | null;
   email: string;
   phone: string | null;
+  status: string;
   customer_count: number;
-  monthly_income: number;   // total collected from agent's customers this month
-  monthly_admin: number;    // admin's portion from agent's customers this month
+  monthly_income: number;
+  monthly_admin: number;
   customers: Array<{
     id: string;
     full_name: string | null;
@@ -396,7 +397,7 @@ export async function fetchAgentList(): Promise<AgentListItem[]> {
   // Fetch all agent profiles
   const { data: agents, error } = await supabase
     .from("profiles")
-    .select("id, full_name, email, phone")
+    .select("id, full_name, email, phone, status")
     .eq("role", "agent")
     .neq("email", ADMIN_EMAIL)
     .order("full_name", { ascending: true });
@@ -436,6 +437,7 @@ export async function fetchAgentList(): Promise<AgentListItem[]> {
     full_name: a.full_name ?? null,
     email: a.email,
     phone: a.phone ?? null,
+    status: a.status ?? "approved",
     customer_count: (linksByAgent[a.id] ?? []).length,
     monthly_income: incomeByAgent[a.id]?.income ?? 0,
     monthly_admin: incomeByAgent[a.id]?.admin ?? 0,
