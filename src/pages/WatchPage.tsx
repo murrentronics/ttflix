@@ -39,12 +39,15 @@ export function WatchPage() {
     return () => { if (exitTimerRef.current) clearTimeout(exitTimerRef.current); };
   }, [loaderVisible, showExit]);
 
-  const title     = searchParams.get("title") ?? "";
-  const poster    = searchParams.get("poster") ?? "";
-  const backdrop  = searchParams.get("backdrop") ?? "";
-  const season    = Number(searchParams.get("season") ?? 1);
-  const episode   = Number(searchParams.get("episode") ?? 1);
-  const startOver = searchParams.get("startOver") === "1";
+  const title      = searchParams.get("title") ?? "";
+  const poster     = searchParams.get("poster") ?? "";
+  const backdrop   = searchParams.get("backdrop") ?? "";
+  const season     = Number(searchParams.get("season") ?? 1);
+  const episode    = Number(searchParams.get("episode") ?? 1);
+  const startOver  = searchParams.get("startOver") === "1";
+  // Carry episode/season counts through URL so remounts don't lose them
+  const urlTotalEps  = searchParams.get("totalEps")  ? Number(searchParams.get("totalEps"))  : null;
+  const urlTotalSeas = searchParams.get("totalSeas") ? Number(searchParams.get("totalSeas")) : null;
 
   const type   = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
@@ -78,8 +81,8 @@ export function WatchPage() {
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
   // ── Next episode ──────────────────────────────────────────────────────────
-  const [totalSeasons, setTotalSeasons] = useState<number | null>(null);
-  const [episodeCount, setEpisodeCount] = useState<number | null>(null);
+  const [totalSeasons, setTotalSeasons] = useState<number | null>(urlTotalSeas);
+  const [episodeCount, setEpisodeCount] = useState<number | null>(urlTotalEps);
   const [episodeCounts, setEpisodeCounts] = useState<number[]>([]);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
 
@@ -557,6 +560,16 @@ export function WatchPage() {
           allowFullScreen title={title || "TTFlix Player"} />
       )}
 
+      {/* Transparent tap-catcher above the iframe — triggers controls visibility on mobile tap.
+          pointer-events-none after controls are visible so taps reach the iframe normally. */}
+      {!kidsBlocked && !exitVisible && (
+        <div
+          className="absolute inset-0 z-20"
+          onTouchStart={showExit}
+          onClick={showExit}
+        />
+      )}
+
       {kidsBlocked && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center px-6 text-center gap-6">
           <div className="text-6xl">🔒</div>
@@ -588,17 +601,15 @@ export function WatchPage() {
             <X className="h-6 w-6" />
           </button>
 
-          {/* Top-right controls — season picker + next episode */}
+          {/* Top-right controls — season picker + next episode — fade with exit button */}
           {type === "tv" && (
             <div
               data-season-picker
               className={`absolute top-4 right-4 z-40 flex items-center gap-2 transition
                 ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
-              {/* Season picker — hide only when confirmed single-season (totalSeasons === 1).
-                  Shows optimistically for all TV so it's always accessible. */}
-              {totalSeasons !== 1 && (
-                <div className="relative">
+              {/* Season picker — always show for TV */}
+              <div className="relative">
                   {/* Dropdown — opens downward */}
                   {showSeasonPicker && (
                     <div className="absolute top-full right-0 mt-2 max-h-56 w-36 overflow-y-auto rounded-xl border border-white/20 bg-black/95 shadow-2xl">
@@ -647,7 +658,6 @@ export function WatchPage() {
                     <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${showSeasonPicker ? "rotate-180" : ""}`} />
                   </button>
                 </div>
-              )}
 
               {/* Next Episode button */}
               {nextEp && (
@@ -658,7 +668,13 @@ export function WatchPage() {
                     const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
                     const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
                     if (watched > 10) persistRef.current(watched, duration);
-                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}`);
+                    // Pass counts through URL so next mount doesn't start from null
+                    const nextEpisodeCount = nextEp.season === season ? episodeCount : null;
+                    const countParams = [
+                      nextEpisodeCount ? `&totalEps=${nextEpisodeCount}` : "",
+                      totalSeasons     ? `&totalSeas=${totalSeasons}`    : "",
+                    ].join("");
+                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
                   }}
                   tabIndex={0}
                   data-tv-card
@@ -671,7 +687,12 @@ export function WatchPage() {
                       const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
                       const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
                       if (watched > 10) persistRef.current(watched, duration);
-                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}`);
+                      const nextEpisodeCount = nextEp.season === season ? episodeCount : null;
+                      const countParams = [
+                        nextEpisodeCount ? `&totalEps=${nextEpisodeCount}` : "",
+                        totalSeasons     ? `&totalSeas=${totalSeasons}`    : "",
+                      ].join("");
+                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
                     }
                   }}
                   className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
