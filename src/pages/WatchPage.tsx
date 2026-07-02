@@ -78,9 +78,10 @@ export function WatchPage() {
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
   // ── Next episode ──────────────────────────────────────────────────────────
-  // Seed totalSeasons optimistically from the URL — if we're on season 3,
-  // we know there are at least 3 seasons without waiting for the fetch.
-  const [totalSeasons, setTotalSeasons] = useState<number | null>(season > 1 ? season : null);
+  const [totalSeasons, setTotalSeasons] = useState<number | null>(null);
+  const [episodeCount, setEpisodeCount] = useState<number | null>(null);
+  const [episodeCounts, setEpisodeCounts] = useState<number[]>([]);
+  const [showSeasonPicker, setShowSeasonPicker] = useState(false);
 
   useEffect(() => {
     if (type !== "tv") return;
@@ -90,41 +91,11 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type]);
 
-  // episodeCountCache: keyed by season number so we don't lose counts when navigating
-  const episodeCountCache = useRef<Record<number, number>>({});
-  const [episodeCount, setEpisodeCount] = useState<number | null>(
-    episodeCountCache.current[season] ?? null
-  );
-  const [episodeCounts, setEpisodeCounts] = useState<number[]>([]);
-  const [showSeasonPicker, setShowSeasonPicker] = useState(false);
-
-  // Close season picker on outside click
-  useEffect(() => {
-    if (!showSeasonPicker) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-season-picker]")) setShowSeasonPicker(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showSeasonPicker]);
-
   useEffect(() => {
     if (type !== "tv") return;
-    // Use cached value immediately so the button doesn't flicker
-    const cached = episodeCountCache.current[season];
-    if (cached !== undefined) {
-      setEpisodeCount(cached);
-    } else {
-      setEpisodeCount(null);
-    }
     getSeasonEpisodes({ data: { id: tmdbId, season } })
-      .then((eps: any[]) => {
-        const count = eps?.length ?? 0;
-        episodeCountCache.current[season] = count;
-        setEpisodeCount(count);
-      })
-      .catch(() => { setEpisodeCount(episodeCountCache.current[season] ?? 0); });
+      .then((eps: any[]) => { if (eps?.length) setEpisodeCount(eps.length); })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, season]);
 
@@ -141,14 +112,39 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, totalSeasons]);
 
-  // Next episode — only show when we have confirmed data.
-  // episodeCountCache means after first fetch of a season, the count is instant on re-visits.
+  // Close season picker on outside click
+  useEffect(() => {
+    if (!showSeasonPicker) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-season-picker]")) setShowSeasonPicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showSeasonPicker]);
+
+  // nextEp: use episodeCounts array (all seasons) when available for accuracy,
+  // fall back to episodeCount (current season only). Both start null and are
+  // populated by the fetches above.
+  // While loading (null): show button optimistically BUT cap at episode 30 to
+  // prevent runaway incrementing on single-season shows.
+  // Once data arrives: use real counts, button disappears only when confirmed end.
   const nextEp = (() => {
     if (type !== "tv") return null;
-    if (episodeCount === null) return null; // wait for real data — cache makes this fast
-    if (episode < episodeCount) return { season, episode: episode + 1 };
-    // Last ep of season — need next season
-    if (totalSeasons === null) return null; // wait for real data
+    // How many eps in the current season?
+    const curSeasonCount = episodeCounts.length >= season
+      ? episodeCounts[season - 1]
+      : episodeCount;
+    if (curSeasonCount === null) {
+      // Still fetching — show optimistically, but cap to avoid runaway
+      return episode < 30 ? { season, episode: episode + 1 } : null;
+    }
+    if (episode < curSeasonCount) return { season, episode: episode + 1 };
+    // Last ep of this season — is there a next season?
+    if (totalSeasons === null) {
+      // Still fetching — assume next season exists (safe since we know current season ended)
+      return { season: season + 1, episode: 1 };
+    }
     if (season < totalSeasons) return { season: season + 1, episode: 1 };
     return null; // confirmed end of series
   })();
