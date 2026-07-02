@@ -244,9 +244,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshProfile();
   };
 
-  const isAdmin =
-    (user?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase() ||
-    (profile?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  // Admin is determined solely by the Supabase Auth email (user.email),
+  // which only Supabase Auth controls. We do NOT check profile.email because
+  // the profiles table is a DB row that could have incorrect data, allowing
+  // regular users to pass the admin check if their profile email matched.
+  const isAdmin = (user?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
   const isAgent = !isAdmin && (profile?.role === "agent");
 

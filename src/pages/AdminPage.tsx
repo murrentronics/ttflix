@@ -302,7 +302,9 @@ export function AdminPage() {
 
   if (loading || !user || !isAdmin) return (
     <AppShell>
-      <div className="flex min-h-[60vh] items-center justify-center pt-20 text-muted-foreground">Loading…</div>
+      <div className="flex min-h-[60vh] items-center justify-center pt-20 text-muted-foreground">
+        {(!loading && (!user || !isAdmin)) ? null : "Loading…"}
+      </div>
     </AppShell>
   );
 
