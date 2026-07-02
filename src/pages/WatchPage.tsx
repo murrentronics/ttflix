@@ -141,29 +141,16 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, totalSeasons]);
 
-  // Next episode calculation.
-  // episodeCount comes from cache (instant) or fetch. Only null on very first load
-  // of a brand new show before any fetch has returned.
+  // Next episode — only show when we have confirmed data.
+  // episodeCountCache means after first fetch of a season, the count is instant on re-visits.
   const nextEp = (() => {
     if (type !== "tv") return null;
-    if (episodeCount === null) {
-      // Genuinely no data yet — optimistic only if we haven't cached anything
-      // for adjacent seasons either. If we know totalSeasons, be conservative.
-      if (totalSeasons !== null && season >= totalSeasons && episode >= 20) return null;
-      return { season, episode: episode + 1 };
-    }
-    if (episode < episodeCount) {
-      return { season, episode: episode + 1 };
-    }
-    // Last episode of this season — check for next season
-    if (totalSeasons === null) {
-      // Don't know yet — only go optimistic if episode count looks reasonable
-      return season < 50 ? { season: season + 1, episode: 1 } : null;
-    }
-    if (season < totalSeasons) {
-      return { season: season + 1, episode: 1 };
-    }
-    return null;
+    if (episodeCount === null) return null; // wait for real data — cache makes this fast
+    if (episode < episodeCount) return { season, episode: episode + 1 };
+    // Last ep of season — need next season
+    if (totalSeasons === null) return null; // wait for real data
+    if (season < totalSeasons) return { season: season + 1, episode: 1 };
+    return null; // confirmed end of series
   })();
 
   const providers        = getProviders(type, tmdbId, season, episode, startOver);
@@ -569,7 +556,7 @@ export function WatchPage() {
 
       {!kidsBlocked && (
         <iframe ref={iframeRef} src={src}
-          className="absolute inset-0 h-full w-full border-0"
+          className="absolute inset-0 h-full w-full border-0 z-10"
           allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
           allowFullScreen title={title || "TTFlix Player"} />
       )}
@@ -605,17 +592,16 @@ export function WatchPage() {
             <X className="h-6 w-6" />
           </button>
 
-          {/* Next Episode button — TV series only */}
-          {/* Top-right controls row — season picker + next episode, inline */}
-          {type === "tv" && (nextEp || (totalSeasons !== null && totalSeasons > 1) || season > 1) && (
+          {/* Top-right controls — season picker + next episode */}
+          {type === "tv" && (
             <div
               data-season-picker
               className={`absolute top-4 right-4 z-40 flex items-center gap-2 transition
                 ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
-              {/* Season picker — show when confirmed multi-season, OR we're already
-                  on a season > 1 (which proves multiple seasons exist) */}
-              {((totalSeasons !== null && totalSeasons > 1) || season > 1) && (
+              {/* Season picker — hide only when confirmed single-season (totalSeasons === 1).
+                  Shows optimistically for all TV so it's always accessible. */}
+              {totalSeasons !== 1 && (
                 <div className="relative">
                   {/* Dropdown — opens downward */}
                   {showSeasonPicker && (
