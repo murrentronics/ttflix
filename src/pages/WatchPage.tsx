@@ -399,7 +399,13 @@ export function WatchPage() {
   }, [stillLoading, canWatch, screenError]);
 
   useEffect(() => {
-    const onResume = () => {
+    const onResume = (e: Event) => {
+      // If PlayerActivity tells us which episode it ended on, update our ref
+      // so persist() saves the correct episode to Continue Watching
+      const detail = (e as CustomEvent).detail;
+      if (detail?.season && detail?.episode) {
+        currentEpisodeRef.current = { season: detail.season, episode: detail.episode };
+      }
       const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
       const duration   = progressRef.current.duration;
       const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;

@@ -57,13 +57,18 @@ public class PlayerActivity extends Activity {
     public static final String EXTRA_URL = "player_url";
     public static final String EXTRA_FALLBACK_URL = "player_fallback_url";
     public static final String EXTRA_NEXT_URL = "player_next_url";
-    public static final String EXTRA_EPISODE_COUNT = "player_episode_count";  // eps in current season
-    public static final String EXTRA_TOTAL_SEASONS = "player_total_seasons";  // total seasons
+    public static final String EXTRA_EPISODE_COUNT = "player_episode_count";
+    public static final String EXTRA_TOTAL_SEASONS = "player_total_seasons";
+    // Static: survives activity finish so MainActivity can read it on resume
+    public static int lastPlayedSeason  = 0;
+    public static int lastPlayedEpisode = 0;
     private String nextUrl = null;
     private android.widget.Button nextBtn = null;
     private boolean shouldAutoplay = false;
-    private int episodeCount = 0;   // 0 = unknown (never hide button)
-    private int totalSeasons = 0;   // 0 = unknown
+    private int episodeCount = 0;
+    private int totalSeasons = 0;
+    private int currentSeason  = 1;
+    private int currentEpisode = 1;
 
     // Single shared hide delay for the X button.
     private final Runnable hideExitRunnable = () -> {
@@ -245,14 +250,23 @@ public class PlayerActivity extends Activity {
                 String currentNext = nextUrl;
                 playerSignalReceived = false;
                 usingFallback = false;
-                shouldAutoplay = true; // autoplay when the new episode loads
+                shouldAutoplay = true;
                 startFallbackTimer();
                 playerWebView.loadUrl(currentNext);
-                // Tell React layer so it can save progress for the new episode
                 playerWebView.evaluateJavascript(
                     "window.dispatchEvent(new CustomEvent('androidNextEpisode'));", null
                 );
-                // Auto-compute the next-next URL from the URL pattern
+                // Update current episode tracking
+                try {
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                        "/tv/\\d+/(\\d+)/(\\d+)").matcher(currentNext);
+                    if (m.find()) {
+                        currentSeason  = Integer.parseInt(m.group(1));
+                        currentEpisode = Integer.parseInt(m.group(2));
+                        lastPlayedSeason  = currentSeason;
+                        lastPlayedEpisode = currentEpisode;
+                    }
+                } catch (Exception e) { /* ignore */ }
                 nextUrl = computeNextEpisodeUrl(currentNext);
                 if (nextUrl != null) {
                     nextBtn.setVisibility(View.VISIBLE);
@@ -326,6 +340,22 @@ public class PlayerActivity extends Activity {
         nextUrl = getIntent().getStringExtra(EXTRA_NEXT_URL);
         episodeCount = getIntent().getIntExtra(EXTRA_EPISODE_COUNT, 0);
         totalSeasons = getIntent().getIntExtra(EXTRA_TOTAL_SEASONS, 0);
+
+        // Parse starting season/episode from the URL so we can track progress
+        String startUrl = getIntent().getStringExtra(EXTRA_URL);
+        if (startUrl != null) {
+            try {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                    "/tv/\\d+/(\\d+)/(\\d+)").matcher(startUrl);
+                if (m.find()) {
+                    currentSeason  = Integer.parseInt(m.group(1));
+                    currentEpisode = Integer.parseInt(m.group(2));
+                }
+            } catch (Exception e) { /* ignore */ }
+        }
+        lastPlayedSeason  = currentSeason;
+        lastPlayedEpisode = currentEpisode;
+
         if (nextUrl != null && nextBtn != null) {
             nextBtn.setVisibility(View.VISIBLE);
         }        startOverTmdbId = getIntent().getStringExtra("tmdb_id");

@@ -106,16 +106,20 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
-        // Fire androidresume into the WebView so WatchPage can save progress
-        // when PlayerActivity closes and we return here
+        // Fire androidresume into the WebView so WatchPage can save progress.
+        // Pass the last played season/episode so Continue Watching saves the
+        // correct episode even if the user nexted through several episodes natively.
+        final int season  = PlayerActivity.lastPlayedSeason;
+        final int episode = PlayerActivity.lastPlayedEpisode;
         runOnUiThread(() -> {
             if (getBridge() != null && getBridge().getWebView() != null) {
+                String detail = (season > 0 && episode > 0)
+                    ? "{season:" + season + ",episode:" + episode + "}"
+                    : "{}";
                 getBridge().getWebView().evaluateJavascript(
-                    "window.dispatchEvent(new CustomEvent('androidresume'));", null);
+                    "window.dispatchEvent(new CustomEvent('androidresume',{detail:" + detail + "}));", null);
             }
         });
-        // Mark that we just resumed — suppress the next Back press so returning
-        // from PlayerActivity doesn't immediately exit the app
         justResumed = true;
         new android.os.Handler(android.os.Looper.getMainLooper())
             .postDelayed(() -> justResumed = false, 1000);
