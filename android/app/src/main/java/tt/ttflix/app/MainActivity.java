@@ -91,13 +91,14 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public void openWithNext(String url, String nextUrl, int epCount, int seasons) {
+        public void openWithNext(String url, String nextUrl, int epCount, int seasons, String episodeCounts) {
             runOnUiThread(() -> {
                 Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
                 intent.putExtra(PlayerActivity.EXTRA_URL, url);
                 intent.putExtra(PlayerActivity.EXTRA_NEXT_URL, nextUrl);
                 intent.putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, epCount);
                 intent.putExtra(PlayerActivity.EXTRA_TOTAL_SEASONS, seasons);
+                intent.putExtra(PlayerActivity.EXTRA_EPISODE_COUNTS, episodeCounts);
                 startActivity(intent);
             });
         }

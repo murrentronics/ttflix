@@ -89,6 +89,7 @@ export function WatchPage() {
   }, [tmdbId, type]);
 
   const [episodeCount, setEpisodeCount] = useState(99); // assume many eps until we know
+  const [episodeCounts, setEpisodeCounts] = useState<number[]>([]); // ep count per season [s1,s2,...]
 
   useEffect(() => {
     if (type !== "tv") return;
@@ -97,6 +98,19 @@ export function WatchPage() {
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, season]);
+
+  // Fetch ALL seasons' episode counts once we know totalSeasons
+  useEffect(() => {
+    if (type !== "tv" || totalSeasons >= 99) return;
+    Promise.all(
+      Array.from({ length: totalSeasons }, (_, i) =>
+        getSeasonEpisodes({ data: { id: tmdbId, season: i + 1 } })
+          .then((eps: any[]) => eps?.length ?? 0)
+          .catch(() => 0)
+      )
+    ).then(setEpisodeCounts).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tmdbId, type, totalSeasons]);
 
   // Next ep is always computable from what we know
   const nextEp = type === "tv"
@@ -388,7 +402,11 @@ export function WatchPage() {
         if (android?.openWithNext && nextEp) {
           const nextUrl = getProviders(type, tmdbId, nextEp.season, nextEp.episode)[0]?.url;
           if (nextUrl) {
-            android.openWithNext(primaryUrl, nextUrl, episodeCount, totalSeasons);
+            // Pass all season episode counts so PlayerActivity knows when to stop
+            const countsStr = episodeCounts.length > 0
+              ? episodeCounts.join(",")
+              : String(episodeCount);
+            android.openWithNext(primaryUrl, nextUrl, episodeCount, totalSeasons, countsStr);
             return;
           }
         }

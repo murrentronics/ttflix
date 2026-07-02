@@ -59,6 +59,7 @@ public class PlayerActivity extends Activity {
     public static final String EXTRA_NEXT_URL = "player_next_url";
     public static final String EXTRA_EPISODE_COUNT = "player_episode_count";
     public static final String EXTRA_TOTAL_SEASONS = "player_total_seasons";
+    public static final String EXTRA_EPISODE_COUNTS = "player_episode_counts";
     // Static: survives activity finish so MainActivity can read it on resume
     public static int lastPlayedSeason  = 0;
     public static int lastPlayedEpisode = 0;
@@ -69,6 +70,7 @@ public class PlayerActivity extends Activity {
     private int totalSeasons = 0;
     private int currentSeason  = 1;
     private int currentEpisode = 1;
+    private int[] seasonEpisodeCounts = null; // index 0 = season 1 episode count
 
     // Single shared hide delay for the X button.
     private final Runnable hideExitRunnable = () -> {
@@ -340,6 +342,17 @@ public class PlayerActivity extends Activity {
         nextUrl = getIntent().getStringExtra(EXTRA_NEXT_URL);
         episodeCount = getIntent().getIntExtra(EXTRA_EPISODE_COUNT, 0);
         totalSeasons = getIntent().getIntExtra(EXTRA_TOTAL_SEASONS, 0);
+        // Parse "12,10,8" → int[] {12, 10, 8}
+        String countsStr = getIntent().getStringExtra(EXTRA_EPISODE_COUNTS);
+        if (countsStr != null && !countsStr.isEmpty()) {
+            try {
+                String[] parts = countsStr.split(",");
+                seasonEpisodeCounts = new int[parts.length];
+                for (int i = 0; i < parts.length; i++) {
+                    seasonEpisodeCounts[i] = Integer.parseInt(parts[i].trim());
+                }
+            } catch (Exception e) { seasonEpisodeCounts = null; }
+        }
 
         // Parse starting season/episode from the URL so we can track progress
         String startUrl = getIntent().getStringExtra(EXTRA_URL);
@@ -538,19 +551,24 @@ public class PlayerActivity extends Activity {
                 int episode  = Integer.parseInt(m.group(3));
                 String query = m.group(4);
 
+                // Look up episode count for this season from the full counts array
+                int count = 0;
+                if (seasonEpisodeCounts != null && season - 1 < seasonEpisodeCounts.length) {
+                    count = seasonEpisodeCounts[season - 1];
+                } else if (episodeCount > 0) {
+                    count = episodeCount;
+                }
+
                 int nextEp     = episode + 1;
                 int nextSeason = season;
 
-                if (episodeCount > 0 && nextEp > episodeCount) {
-                    // End of this season — try next season
+                if (count > 0 && nextEp > count) {
+                    // End of this season — move to next season E1
                     nextSeason = season + 1;
                     nextEp = 1;
                     if (totalSeasons > 0 && nextSeason > totalSeasons) {
-                        // End of series — hide the button
-                        return null;
+                        return null; // end of series — hide button
                     }
-                    // Update our episode count tracking for the new season (unknown until next load)
-                    episodeCount = 0;
                 }
 
                 return base + nextSeason + "/" + nextEp + query;
