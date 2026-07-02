@@ -77,31 +77,35 @@ export function WatchPage() {
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
   // ── Next episode ──────────────────────────────────────────────────────────
-  const [nextEp, setNextEp] = useState<{ season: number; episode: number } | null>(null);
+  // Simple sync calculation — episode + 1, or season + 1 E1 if we fetched total seasons
+  const [totalSeasons, setTotalSeasons] = useState(99); // assume many seasons until we know
 
   useEffect(() => {
-    if (type !== "tv") { setNextEp(null); return; }
-    setNextEp(null);
-    let cancelled = false;
-    Promise.all([
-      getDetails({ data: { id: tmdbId, mediaType: "tv" } }).catch(() => null),
-      getSeasonEpisodes({ data: { id: tmdbId, season } }).catch(() => null),
-    ]).then(([details, eps]) => {
-      if (cancelled) return;
-      const totalSeasons = (details as any)?.number_of_seasons ?? 1;
-      const epList = (eps as any[]) ?? [];
-      const nextInSeason = epList.find((e: any) => e.episode_number === episode + 1);
-      if (nextInSeason) {
-        setNextEp({ season, episode: nextInSeason.episode_number });
-      } else if (season < totalSeasons) {
-        setNextEp({ season: season + 1, episode: 1 });
-      } else {
-        setNextEp(null);
-      }
-    });
-    return () => { cancelled = true; };
+    if (type !== "tv") return;
+    getDetails({ data: { id: tmdbId, mediaType: "tv" } })
+      .then((d) => { if (d?.number_of_seasons) setTotalSeasons(d.number_of_seasons); })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tmdbId, type, season, episode]);
+  }, [tmdbId, type]);
+
+  const [episodeCount, setEpisodeCount] = useState(99); // assume many eps until we know
+
+  useEffect(() => {
+    if (type !== "tv") return;
+    getSeasonEpisodes({ data: { id: tmdbId, season } })
+      .then((eps: any[]) => { if (eps?.length) setEpisodeCount(eps.length); })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tmdbId, type, season]);
+
+  // Next ep is always computable from what we know
+  const nextEp = type === "tv"
+    ? episode < episodeCount
+      ? { season, episode: episode + 1 }
+      : season < totalSeasons
+        ? { season: season + 1, episode: 1 }
+        : null
+    : null;
 
   const providers        = getProviders(type, tmdbId, season, episode);
   const [providerIndex, setProviderIndex] = useState(0);
