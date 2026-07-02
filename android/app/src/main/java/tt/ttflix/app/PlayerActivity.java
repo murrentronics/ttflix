@@ -135,10 +135,23 @@ public class PlayerActivity extends Activity {
         playerWebView.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public void onPlayerReady() {
-                // Called from the postMessage relay script when video starts
                 runOnUiThread(() -> {
                     playerSignalReceived = true;
                     fallbackHandler.removeCallbacks(fallbackRunnable);
+                });
+            }
+
+            /** Called by React WatchPage to push the next episode URL after an episode change */
+            @JavascriptInterface
+            public void setNextUrl(String url) {
+                runOnUiThread(() -> {
+                    if (url != null && !url.isEmpty()) {
+                        nextUrl = url;
+                        if (nextBtn != null) nextBtn.setVisibility(View.VISIBLE);
+                    } else {
+                        nextUrl = null;
+                        if (nextBtn != null) nextBtn.setVisibility(View.GONE);
+                    }
                 });
             }
         }, "TTFlixNative");
@@ -210,11 +223,16 @@ public class PlayerActivity extends Activity {
         nextBtn.setVisibility(View.GONE); // hidden until we know there's a next episode
         nextBtn.setOnClickListener(v -> {
             if (nextUrl != null) {
-                // Reload the WebView with the next episode URL
                 playerSignalReceived = false;
                 usingFallback = false;
                 startFallbackTimer();
                 playerWebView.loadUrl(nextUrl);
+                // Tell the React layer we moved to next episode so it can:
+                // 1. Save progress for the new episode
+                // 2. Compute the next-next URL and send it back via setNextUrl()
+                playerWebView.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('androidNextEpisode'));", null
+                );
                 nextUrl = null;
                 nextBtn.setVisibility(View.GONE);
             }

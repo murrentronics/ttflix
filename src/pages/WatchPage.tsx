@@ -412,6 +412,48 @@ export function WatchPage() {
     return () => window.removeEventListener("androidresume", onResume);
   }, [navigate, user]);
 
+  // When native Next button is tapped, advance episode tracking and push next URL back
+  useEffect(() => {
+    const onNext = () => {
+      // Save progress for the episode just finished
+      const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+      const duration   = progressRef.current.duration;
+      const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
+      const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
+      if (watched > 10) persistRef.current(watched, duration);
+
+      // Advance current episode ref
+      const cur = currentEpisodeRef.current;
+      const newEp = cur.episode < episodeCount
+        ? { season: cur.season, episode: cur.episode + 1 }
+        : { season: cur.season + 1, episode: 1 };
+      currentEpisodeRef.current = newEp;
+
+      // Reset progress tracking for new episode
+      progressRef.current  = { watched: 0, duration: 0, hasPostMessage: false };
+      watchStartRef.current = Date.now();
+      savedInitial.current  = false;
+
+      // Save the new episode position immediately
+      persistRef.current(10, 0);
+
+      // Compute next-next episode and push its URL to the native player
+      const nextSeason  = newEp.episode < episodeCount ? newEp.season : newEp.season < totalSeasons ? newEp.season + 1 : null;
+      const nextEpisode = newEp.episode < episodeCount ? newEp.episode + 1 : nextSeason ? 1 : null;
+
+      if (nextSeason && nextEpisode) {
+        const nextNextUrl = getProviders(type, tmdbId, nextSeason, nextEpisode)[0]?.url ?? "";
+        (window as any).TTFlixNative?.setNextUrl?.(nextNextUrl);
+      } else {
+        // End of series — tell native to hide the button
+        (window as any).TTFlixNative?.setNextUrl?.("");
+      }
+    };
+    window.addEventListener("androidNextEpisode", onNext);
+    return () => window.removeEventListener("androidNextEpisode", onNext);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, type, tmdbId, episodeCount, totalSeasons]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "GoBack" || e.key === "Back" || e.key === "BrowserBack") { e.preventDefault(); navigate("/"); }
