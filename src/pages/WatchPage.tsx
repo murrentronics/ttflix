@@ -388,12 +388,11 @@ export function WatchPage() {
         if (android?.openWithNext && nextEp) {
           const nextUrl = getProviders(type, tmdbId, nextEp.season, nextEp.episode)[0]?.url;
           if (nextUrl) {
-            android.openWithNext(primaryUrl, nextUrl);
+            android.openWithNext(primaryUrl, nextUrl, episodeCount, totalSeasons);
             return;
           }
         }
-        android?.open(primaryUrl);
-      }, 500);
+        android?.open(primaryUrl);      }, 500);
     }
     launch();
   // eslint-disable-next-line react-hooks/exhaustive-deps

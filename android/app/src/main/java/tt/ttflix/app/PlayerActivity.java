@@ -57,8 +57,13 @@ public class PlayerActivity extends Activity {
     public static final String EXTRA_URL = "player_url";
     public static final String EXTRA_FALLBACK_URL = "player_fallback_url";
     public static final String EXTRA_NEXT_URL = "player_next_url";
+    public static final String EXTRA_EPISODE_COUNT = "player_episode_count";  // eps in current season
+    public static final String EXTRA_TOTAL_SEASONS = "player_total_seasons";  // total seasons
     private String nextUrl = null;
     private android.widget.Button nextBtn = null;
+    private boolean shouldAutoplay = false;
+    private int episodeCount = 0;   // 0 = unknown (never hide button)
+    private int totalSeasons = 0;   // 0 = unknown
 
     // Single shared hide delay for the X button.
     private final Runnable hideExitRunnable = () -> {
@@ -240,6 +245,7 @@ public class PlayerActivity extends Activity {
                 String currentNext = nextUrl;
                 playerSignalReceived = false;
                 usingFallback = false;
+                shouldAutoplay = true; // autoplay when the new episode loads
                 startFallbackTimer();
                 playerWebView.loadUrl(currentNext);
                 // Tell React layer so it can save progress for the new episode
@@ -318,6 +324,8 @@ public class PlayerActivity extends Activity {
         String url = getIntent().getStringExtra(EXTRA_URL);
         fallbackUrl = getIntent().getStringExtra(EXTRA_FALLBACK_URL);
         nextUrl = getIntent().getStringExtra(EXTRA_NEXT_URL);
+        episodeCount = getIntent().getIntExtra(EXTRA_EPISODE_COUNT, 0);
+        totalSeasons = getIntent().getIntExtra(EXTRA_TOTAL_SEASONS, 0);
         if (nextUrl != null && nextBtn != null) {
             nextBtn.setVisibility(View.VISIBLE);
         }        startOverTmdbId = getIntent().getStringExtra("tmdb_id");
@@ -484,24 +492,38 @@ public class PlayerActivity extends Activity {
     /**
      * Given a TV episode URL like:
      *   https://player.videasy.net/tv/12345/1/3?color=...
-     * Returns the next episode URL:
-     *   https://player.videasy.net/tv/12345/1/4?color=...
-     * Returns null if URL doesn't match the expected pattern.
+     * Returns the next episode URL, or null if we're at the last episode.
+     * Uses episodeCount and totalSeasons to know when to stop.
      */
     private String computeNextEpisodeUrl(String url) {
         if (url == null) return null;
         try {
-            // Match pattern: /tv/{tmdbId}/{season}/{episode}
             java.util.regex.Pattern p = java.util.regex.Pattern.compile(
                 "(https://player\\.videasy\\.net/tv/\\d+/)(\\d+)/(\\d+)(.*)"
             );
             java.util.regex.Matcher m = p.matcher(url);
             if (m.find()) {
-                String base    = m.group(1);
-                int season     = Integer.parseInt(m.group(2));
-                int episode    = Integer.parseInt(m.group(3));
-                String query   = m.group(4);
-                return base + season + "/" + (episode + 1) + query;
+                String base  = m.group(1);
+                int season   = Integer.parseInt(m.group(2));
+                int episode  = Integer.parseInt(m.group(3));
+                String query = m.group(4);
+
+                int nextEp     = episode + 1;
+                int nextSeason = season;
+
+                if (episodeCount > 0 && nextEp > episodeCount) {
+                    // End of this season — try next season
+                    nextSeason = season + 1;
+                    nextEp = 1;
+                    if (totalSeasons > 0 && nextSeason > totalSeasons) {
+                        // End of series — hide the button
+                        return null;
+                    }
+                    // Update our episode count tracking for the new season (unknown until next load)
+                    episodeCount = 0;
+                }
+
+                return base + nextSeason + "/" + nextEp + query;
             }
         } catch (Exception e) { /* ignore */ }
         return null;
@@ -594,6 +616,45 @@ public class PlayerActivity extends Activity {
                     "})()",
                     null
                 );
+
+                // After Next Episode tap — click the play button to autoplay
+                if (shouldAutoplay) {
+                    shouldAutoplay = false;
+                    // Delay slightly to let Videasy's player UI render before we click
+                    new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                        if (playerWebView != null) {
+                            playerWebView.evaluateJavascript(
+                                "(function(){" +
+                                "  // Try Videasy play button selectors" +
+                                "  var selectors = [" +
+                                "    'video'," +
+                                "    'button[aria-label*=\"play\" i]'," +
+                                "    'button[aria-label*=\"Play\" i]'," +
+                                "    '.play-button'," +
+                                "    '[class*=\"play\"]'," +
+                                "    'iframe'" +
+                                "  ];" +
+                                "  // First try to play any video element directly" +
+                                "  var videos = document.querySelectorAll('video');" +
+                                "  for(var i=0;i<videos.length;i++){" +
+                                "    try{ videos[i].play(); return; }catch(e){}" +
+                                "  }" +
+                                "  // Fallback: click play buttons" +
+                                "  for(var s=0;s<selectors.length;s++){" +
+                                "    var el = document.querySelector(selectors[s]);" +
+                                "    if(el && el.tagName!=='VIDEO' && el.tagName!=='IFRAME'){" +
+                                "      el.click(); return;" +
+                                "    }" +
+                                "  }" +
+                                "  // Last resort: send Space keypress (play/pause toggle)" +
+                                "  var e = new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true});" +
+                                "  document.dispatchEvent(e);" +
+                                "})()",
+                                null
+                            );
+                        }
+                    }, 1500);
+                }
 
                 // Detect Videasy "not found" by evaluating page content
                 if (!usingFallback && fallbackUrl != null) {                    view.evaluateJavascript(
