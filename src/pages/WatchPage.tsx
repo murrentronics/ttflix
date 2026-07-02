@@ -39,11 +39,12 @@ export function WatchPage() {
     return () => { if (exitTimerRef.current) clearTimeout(exitTimerRef.current); };
   }, [loaderVisible, showExit]);
 
-  const title    = searchParams.get("title") ?? "";
-  const poster   = searchParams.get("poster") ?? "";
-  const backdrop = searchParams.get("backdrop") ?? "";
-  const season   = Number(searchParams.get("season") ?? 1);
-  const episode  = Number(searchParams.get("episode") ?? 1);
+  const title     = searchParams.get("title") ?? "";
+  const poster    = searchParams.get("poster") ?? "";
+  const backdrop  = searchParams.get("backdrop") ?? "";
+  const season    = Number(searchParams.get("season") ?? 1);
+  const episode   = Number(searchParams.get("episode") ?? 1);
+  const startOver = searchParams.get("startOver") === "1";
 
   const type   = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
@@ -77,21 +78,24 @@ export function WatchPage() {
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
   // ── Next episode ──────────────────────────────────────────────────────────
-  // Simple sync calculation — episode + 1, or season + 1 E1 if we fetched total seasons
-  const [totalSeasons, setTotalSeasons] = useState<number | null>(null); // null = not yet loaded
+  // Seed totalSeasons optimistically from the URL — if we're on season 3,
+  // we know there are at least 3 seasons without waiting for the fetch.
+  const [totalSeasons, setTotalSeasons] = useState<number | null>(season > 1 ? season : null);
 
   useEffect(() => {
     if (type !== "tv") return;
-    // Don't reset to null — keep the previous value visible while refetching
-    // so the season picker doesn't flash away on navigation
     getDetails({ data: { id: tmdbId, mediaType: "tv" } })
       .then((d) => { if (d?.number_of_seasons) setTotalSeasons(d.number_of_seasons); })
-      .catch(() => { /* keep whatever we had */ });
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type]);
 
-  const [episodeCount, setEpisodeCount] = useState<number | null>(null); // null = not yet loaded
-  const [episodeCounts, setEpisodeCounts] = useState<number[]>([]); // ep count per season [s1,s2,...]
+  // episodeCountCache: keyed by season number so we don't lose counts when navigating
+  const episodeCountCache = useRef<Record<number, number>>({});
+  const [episodeCount, setEpisodeCount] = useState<number | null>(
+    episodeCountCache.current[season] ?? null
+  );
+  const [episodeCounts, setEpisodeCounts] = useState<number[]>([]);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
 
   // Close season picker on outside click
@@ -107,10 +111,20 @@ export function WatchPage() {
 
   useEffect(() => {
     if (type !== "tv") return;
-    setEpisodeCount(null); // reset when season changes so we don't use stale count
+    // Use cached value immediately so the button doesn't flicker
+    const cached = episodeCountCache.current[season];
+    if (cached !== undefined) {
+      setEpisodeCount(cached);
+    } else {
+      setEpisodeCount(null);
+    }
     getSeasonEpisodes({ data: { id: tmdbId, season } })
-      .then((eps: any[]) => { setEpisodeCount(eps?.length ?? 0); })
-      .catch(() => { setEpisodeCount(0); });
+      .then((eps: any[]) => {
+        const count = eps?.length ?? 0;
+        episodeCountCache.current[season] = count;
+        setEpisodeCount(count);
+      })
+      .catch(() => { setEpisodeCount(episodeCountCache.current[season] ?? 0); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, season]);
 
@@ -128,45 +142,37 @@ export function WatchPage() {
   }, [tmdbId, type, totalSeasons]);
 
   // Next episode calculation.
-  // We use optimistic logic while data is still loading so the button isn't hidden
-  // unnecessarily. The guards only suppress the button when we have confirmed data
-  // proving there is no next episode (last ep of last season).
-  //
-  // Rules:
-  //  - episodeCount null  → still loading → assume more episodes exist (show button)
-  //  - episodeCount known → use real cap
-  //  - totalSeasons null  → still loading → assume more seasons exist (show button)
-  //  - totalSeasons known → use real cap
+  // episodeCount comes from cache (instant) or fetch. Only null on very first load
+  // of a brand new show before any fetch has returned.
   const nextEp = (() => {
     if (type !== "tv") return null;
-    // Do we know the episode count for this season?
     if (episodeCount === null) {
-      // Not loaded yet — optimistically assume there's a next episode
+      // Genuinely no data yet — optimistic only if we haven't cached anything
+      // for adjacent seasons either. If we know totalSeasons, be conservative.
+      if (totalSeasons !== null && season >= totalSeasons && episode >= 20) return null;
       return { season, episode: episode + 1 };
     }
     if (episode < episodeCount) {
-      // There's a next episode in this season
       return { season, episode: episode + 1 };
     }
-    // We're on the last episode of this season — is there another season?
+    // Last episode of this season — check for next season
     if (totalSeasons === null) {
-      // Not loaded yet — optimistically assume there's a next season
-      return { season: season + 1, episode: 1 };
+      // Don't know yet — only go optimistic if episode count looks reasonable
+      return season < 50 ? { season: season + 1, episode: 1 } : null;
     }
     if (season < totalSeasons) {
       return { season: season + 1, episode: 1 };
     }
-    // Confirmed last episode of last season — no next
     return null;
   })();
 
-  const providers        = getProviders(type, tmdbId, season, episode);
+  const providers        = getProviders(type, tmdbId, season, episode, startOver);
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc]    = useState(() => providers[0].url);
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    const fresh = getProviders(type, tmdbId, season, episode);
+    const fresh = getProviders(type, tmdbId, season, episode, startOver);
     setProviderIndex(0);
     setSrc(fresh[0].url);
     providerSignalRef.current = false;
@@ -601,7 +607,7 @@ export function WatchPage() {
 
           {/* Next Episode button — TV series only */}
           {/* Top-right controls row — season picker + next episode, inline */}
-          {type === "tv" && (nextEp || (totalSeasons !== null && totalSeasons > 1)) && (
+          {type === "tv" && (nextEp || (totalSeasons !== null && totalSeasons > 1) || season > 1) && (
             <div
               data-season-picker
               className={`absolute top-4 right-4 z-40 flex items-center gap-2 transition

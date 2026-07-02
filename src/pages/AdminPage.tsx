@@ -1148,7 +1148,7 @@ export function AdminPage() {
             )}
 
             {/* ── USER / RENEWALS ACCORDION (pending, approved, suspended, expelled, billing) ── */}
-            {tab !== "history" && tab !== "agents" && tab !== "agent-requests" && tab !== "agent-list" && tab !== "watching" && tab !== "dashboard" && tab !== "create-agent" && (
+            {tab !== "history" && tab !== "agents" && tab !== "agent-requests" && tab !== "agent-list" && tab !== "watching" && tab !== "dashboard" && tab !== "create-agent" && tab !== "collections" && (
               <div className="space-y-3 max-w-2xl">
                 {tab === "billing" && (
                   <p className="text-sm text-muted-foreground">
