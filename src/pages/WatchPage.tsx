@@ -382,7 +382,18 @@ export function WatchPage() {
       if (kidsBlockedRef.current || playerLaunchedRef.current) return;
       playerLaunchedRef.current = true;
       saveInitial();
-      setTimeout(() => { (window as any).AndroidPlayer?.open(providers[0].url); }, 500);
+      setTimeout(() => {
+        const primaryUrl = providers[0].url;
+        const android = (window as any).AndroidPlayer;
+        if (android?.openWithNext && nextEp) {
+          const nextUrl = getProviders(type, tmdbId, nextEp.season, nextEp.episode)[0]?.url;
+          if (nextUrl) {
+            android.openWithNext(primaryUrl, nextUrl);
+            return;
+          }
+        }
+        android?.open(primaryUrl);
+      }, 500);
     }
     launch();
   // eslint-disable-next-line react-hooks/exhaustive-deps

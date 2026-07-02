@@ -56,6 +56,9 @@ public class PlayerActivity extends Activity {
     private static final int HIDE_DELAY_MS = 4000;
     public static final String EXTRA_URL = "player_url";
     public static final String EXTRA_FALLBACK_URL = "player_fallback_url";
+    public static final String EXTRA_NEXT_URL = "player_next_url";
+    private String nextUrl = null;
+    private android.widget.Button nextBtn = null;
 
     // Single shared hide delay for the X button.
     private final Runnable hideExitRunnable = () -> {
@@ -188,6 +191,36 @@ public class PlayerActivity extends Activity {
         });
         exitContainer.addView(exitBtn);
 
+        // Next Episode button — bottom-right, same show/hide as exit button
+        nextBtn = new android.widget.Button(this);
+        nextBtn.setText("Next Episode ▶");
+        nextBtn.setTextColor(Color.WHITE);
+        nextBtn.setTextSize(14f);
+        nextBtn.setTypeface(null, android.graphics.Typeface.BOLD);
+        nextBtn.setBackgroundColor(Color.argb(200, 192, 0, 26)); // TTFlix red
+        nextBtn.setPadding(dpToPx(16), dpToPx(10), dpToPx(16), dpToPx(10));
+        int nextBtnHeight = dpToPx(48);
+        FrameLayout.LayoutParams nextParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, nextBtnHeight,
+            android.view.Gravity.BOTTOM | android.view.Gravity.END
+        );
+        nextParams.bottomMargin = dpToPx(20);
+        nextParams.rightMargin  = dpToPx(16);
+        nextBtn.setLayoutParams(nextParams);
+        nextBtn.setVisibility(View.GONE); // hidden until we know there's a next episode
+        nextBtn.setOnClickListener(v -> {
+            if (nextUrl != null) {
+                // Reload the WebView with the next episode URL
+                playerSignalReceived = false;
+                usingFallback = false;
+                startFallbackTimer();
+                playerWebView.loadUrl(nextUrl);
+                nextUrl = null;
+                nextBtn.setVisibility(View.GONE);
+            }
+        });
+        exitContainer.addView(nextBtn);
+
         // Use the WebView's own touch listener to catch every tap — including taps
         // on Videasy's player control buttons (skip 10s, play/pause, etc.).
         // We restart the X-button hide timer on ACTION_UP so that after any tap,
@@ -248,6 +281,10 @@ public class PlayerActivity extends Activity {
 
         String url = getIntent().getStringExtra(EXTRA_URL);
         fallbackUrl = getIntent().getStringExtra(EXTRA_FALLBACK_URL);
+        nextUrl = getIntent().getStringExtra(EXTRA_NEXT_URL);
+        if (nextUrl != null && nextBtn != null) {
+            nextBtn.setVisibility(View.VISIBLE);
+        }
         startOverTmdbId = getIntent().getStringExtra("tmdb_id");
         startOverEnabled = getIntent().getBooleanExtra("start_over", false);
 
