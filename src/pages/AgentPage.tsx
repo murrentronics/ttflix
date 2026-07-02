@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Users, UserPlus, TrendingUp, Clock, CheckCircle, AlertCircle,
   Check, Phone, Mail, Menu, ChevronDown, LayoutDashboard,
-  Search, X, BookOpen,
+  Search, X, BookOpen, DollarSign,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
@@ -13,11 +13,12 @@ import {
   fetchAgentCustomers, agentCreateCustomer,
   fetchAgentBillingRequests, fetchAgentSummary, fetchAgentUpcomingRenewals,
   agentRequestRenewal, agentPayAndSubmitRenewal, fetchCustomerPaymentHistory,
+  fetchAgentCommissions,
   AGENT_COMMISSION, calcProRata, calcProRataCommission,
-  type AgentCustomer, type AgentBillingRequest,
+  type AgentCustomer, type AgentBillingRequest, type CommissionMonth,
 } from "@/lib/agent";
 
-type AgentTab = "dashboard" | "create" | "pending" | "active" | "suspended" | "expelled" | "renewals" | "instructions";
+type AgentTab = "dashboard" | "create" | "pending" | "active" | "suspended" | "expelled" | "renewals" | "instructions" | "commissions";
 
 function formatPhone(raw: string): string {
   const digits = raw.replace(/\D/g, "").slice(0, 7);
@@ -34,6 +35,7 @@ const NAV_ITEMS: Array<{ id: AgentTab; label: string; icon: React.ReactNode }> =
   { id: "expelled",     label: "Expelled",        icon: <AlertCircle     className="h-4 w-4 shrink-0" /> },
   { id: "renewals",     label: "Renewals Due",    icon: <Clock           className="h-4 w-4 shrink-0" /> },
   { id: "instructions", label: "Instructions",    icon: <BookOpen        className="h-4 w-4 shrink-0" /> },
+  { id: "commissions",  label: "Commissions",     icon: <DollarSign      className="h-4 w-4 shrink-0" /> },
 ];
 
 export function AgentPage() {
@@ -64,6 +66,11 @@ export function AgentPage() {
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
   const [customerHistory, setCustomerHistory] = useState<Record<string, any[]>>({});
   const [historyLoading, setHistoryLoading] = useState<Record<string, boolean>>({});
+
+  // Commissions
+  const [commissionMonths, setCommissionMonths] = useState<CommissionMonth[]>([]);
+  const [commissionsLoading, setCommissionsLoading] = useState(false);
+  const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
 
   // Inline pay form on approved customer card
   const [payOpen, setPayOpen] = useState<string | null>(null);       // customer id
@@ -137,7 +144,18 @@ export function AgentPage() {
     setTimeout(() => setMsg(null), 4000);
   };
 
-  const switchTab = (id: AgentTab) => { setTab(id); setSidebarOpen(false); setSearch(""); };
+  const switchTab = (id: AgentTab) => {
+    setTab(id);
+    setSidebarOpen(false);
+    setSearch("");
+    if (id === "commissions" && user && commissionMonths.length === 0) {
+      setCommissionsLoading(true);
+      fetchAgentCommissions(user.id)
+        .then(setCommissionMonths)
+        .catch(() => {})
+        .finally(() => setCommissionsLoading(false));
+    }
+  };
 
   const searchLower = search.trim().toLowerCase();
 
@@ -828,6 +846,86 @@ export function AgentPage() {
                 </InstructionSection>
               </div>
             )}
+
+            {/* —— COMMISSIONS TAB —— */}
+            {tab === "commissions" && (() => {
+              const allTime   = commissionMonths.reduce((s, m) => s + m.total, 0);
+              const now       = new Date();
+              const thisMonthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+              const lastMonthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+              const lastMonthKey  = `${lastMonthDate.getUTCFullYear()}-${String(lastMonthDate.getUTCMonth() + 1).padStart(2, "0")}`;
+              const thisMonth = commissionMonths.find(m => m.key === thisMonthKey)?.total ?? 0;
+              const lastMonth = commissionMonths.find(m => m.key === lastMonthKey)?.total ?? 0;
+              return (
+                <div className="space-y-5 max-w-2xl">
+                  {/* Hero */}
+                  <div className="rounded-2xl bg-gradient-to-br from-[#c0001a] via-[#8b0013] to-[#1a0005] p-5 shadow-[0_8px_40px_oklch(0.55_0.22_27/0.35)]">
+                    <div className="flex items-center gap-2 mb-1">
+                      <DollarSign className="h-5 w-5 text-white/80" />
+                      <span className="text-xs font-semibold text-white/80 uppercase tracking-widest">My Commissions</span>
+                    </div>
+                    <h1 className="text-xl font-extrabold text-white mb-4">Earnings Overview</h1>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="rounded-xl bg-black/25 px-3 py-3">
+                        <p className="text-[11px] text-white/60 mb-0.5">All Time</p>
+                        <p className="text-lg font-extrabold text-green-300">TT${allTime.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-xl bg-black/25 px-3 py-3">
+                        <p className="text-[11px] text-white/60 mb-0.5">Last Month</p>
+                        <p className="text-lg font-extrabold text-white">TT${lastMonth.toLocaleString()}</p>
+                      </div>
+                      <div className="rounded-xl bg-black/25 px-3 py-3">
+                        <p className="text-[11px] text-white/60 mb-0.5">This Month</p>
+                        <p className="text-lg font-extrabold text-yellow-300">TT${thisMonth.toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {commissionsLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+                  {!commissionsLoading && commissionMonths.length === 0 && (
+                    <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">No commissions recorded yet.</div>
+                  )}
+
+                  {/* Month accordions */}
+                  {!commissionsLoading && commissionMonths.map((month) => {
+                    const open = expandedMonth === month.key;
+                    return (
+                      <div key={month.key} className="rounded-xl border border-border bg-card overflow-hidden">
+                        <button
+                          onClick={() => setExpandedMonth(open ? null : month.key)}
+                          className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-accent transition"
+                        >
+                          <div>
+                            <p className="font-semibold">{month.label}</p>
+                            <p className="text-xs text-muted-foreground">{month.records.length} transaction{month.records.length !== 1 ? "s" : ""}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg font-extrabold text-green-400">TT${month.total.toLocaleString()}</span>
+                            <ChevronDown className={`h-5 w-5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+                          </div>
+                        </button>
+                        {open && (
+                          <div className="border-t border-border divide-y divide-border">
+                            {month.records.map((r) => (
+                              <div key={r.id} className="px-5 py-3 flex items-center justify-between gap-4">
+                                <div className="min-w-0">
+                                  <p className="font-medium text-sm truncate">{r.customer_name ?? r.customer_email}</p>
+                                  <p className="text-xs text-muted-foreground">{r.plan.replace(/_/g, " ")} · {new Date(r.approved_at).toLocaleDateString("en-TT", { day: "numeric", month: "short", timeZone: "UTC" })}</p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p className="font-bold text-green-400">TT${r.agent_commission}</p>
+                                  <p className="text-xs text-muted-foreground">of TT${r.amount}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
           </main>
         </div>

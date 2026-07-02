@@ -432,3 +432,53 @@ export async function fetchAgentSummary(agentId: string) {
     pendingAdminCut: owedToAdmin,  // renamed for UI compatibility — now uses persistent balance
   };
 }
+
+export type CommissionRecord = {
+  id: string;
+  approved_at: string;
+  plan: string;
+  amount: number;         // total collected
+  agent_commission: number;
+  customer_name: string | null;
+  customer_email: string;
+};
+
+export type CommissionMonth = {
+  key: string;            // "2026-07"
+  label: string;          // "July 2026"
+  total: number;
+  records: CommissionRecord[];
+};
+
+export async function fetchAgentCommissions(agentId: string): Promise<CommissionMonth[]> {
+  const { data, error } = await supabase
+    .from("payment_history")
+    .select("id, approved_at, plan, amount, agent_commission, user_id, profiles!payment_history_user_id_fkey(full_name, email)")
+    .eq("agent_id", agentId)
+    .order("approved_at", { ascending: false });
+
+  if (error) throw error;
+
+  const rows = ((data ?? []) as any[]).map((r) => ({
+    id: r.id,
+    approved_at: r.approved_at,
+    plan: r.plan,
+    amount: r.amount ?? 0,
+    agent_commission: r.agent_commission ?? 0,
+    customer_name: r.profiles?.full_name ?? null,
+    customer_email: r.profiles?.email ?? "—",
+  }));
+
+  // Group by month
+  const monthMap: Record<string, CommissionMonth> = {};
+  for (const r of rows) {
+    const d    = new Date(r.approved_at);
+    const key  = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    const label = d.toLocaleDateString("en-TT", { month: "long", year: "numeric", timeZone: "UTC" });
+    if (!monthMap[key]) monthMap[key] = { key, label, total: 0, records: [] };
+    monthMap[key].total += r.agent_commission;
+    monthMap[key].records.push(r);
+  }
+
+  return Object.values(monthMap).sort((a, b) => b.key.localeCompare(a.key));
+}

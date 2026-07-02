@@ -333,3 +333,22 @@ WHERE abr.status = 'approved'
 GROUP BY abr.agent_id
 ON CONFLICT (agent_id) DO UPDATE
   SET balance = EXCLUDED.balance, updated_at = now();
+
+-- 18) Fix payment_history RLS to also allow agents to read their own commission rows
+-- Agents need to see payment_history rows where they are the agent_id
+-- (for the Commissions page in the agent panel).
+
+drop policy if exists "payment_history select" on public.payment_history;
+create policy "payment_history select" on public.payment_history for select to authenticated
+  using (
+    user_id = auth.uid()
+    or public.is_admin()
+    -- Agent sees payments for customers they manage
+    or exists (
+      select 1 from public.agent_customers ac
+      where ac.customer_id = payment_history.user_id
+        and ac.agent_id = auth.uid()
+    )
+    -- Agent sees their own commission rows directly
+    or agent_id = auth.uid()
+  );

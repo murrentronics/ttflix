@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { X, SkipForward } from "lucide-react";
+import { X, SkipForward, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { getProviders } from "@/lib/stream";
@@ -78,30 +78,44 @@ export function WatchPage() {
 
   // ── Next episode ──────────────────────────────────────────────────────────
   // Simple sync calculation — episode + 1, or season + 1 E1 if we fetched total seasons
-  const [totalSeasons, setTotalSeasons] = useState(99); // assume many seasons until we know
+  const [totalSeasons, setTotalSeasons] = useState<number | null>(null); // null = not yet loaded
 
   useEffect(() => {
     if (type !== "tv") return;
+    setTotalSeasons(null);
     getDetails({ data: { id: tmdbId, mediaType: "tv" } })
-      .then((d) => { if (d?.number_of_seasons) setTotalSeasons(d.number_of_seasons); })
-      .catch(() => {});
+      .then((d) => { setTotalSeasons(d?.number_of_seasons ?? 1); })
+      .catch(() => { setTotalSeasons(1); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type]);
 
-  const [episodeCount, setEpisodeCount] = useState(99); // assume many eps until we know
+  const [episodeCount, setEpisodeCount] = useState<number | null>(null); // null = not yet loaded
   const [episodeCounts, setEpisodeCounts] = useState<number[]>([]); // ep count per season [s1,s2,...]
+  const [showSeasonPicker, setShowSeasonPicker] = useState(false);
+
+  // Close season picker on outside click
+  useEffect(() => {
+    if (!showSeasonPicker) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-season-picker]")) setShowSeasonPicker(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showSeasonPicker]);
 
   useEffect(() => {
     if (type !== "tv") return;
+    setEpisodeCount(null); // reset when season changes so we don't use stale count
     getSeasonEpisodes({ data: { id: tmdbId, season } })
-      .then((eps: any[]) => { if (eps?.length) setEpisodeCount(eps.length); })
-      .catch(() => {});
+      .then((eps: any[]) => { setEpisodeCount(eps?.length ?? 0); })
+      .catch(() => { setEpisodeCount(0); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, season]);
 
   // Fetch ALL seasons' episode counts once we know totalSeasons
   useEffect(() => {
-    if (type !== "tv" || totalSeasons >= 99) return;
+    if (type !== "tv" || totalSeasons === null) return;
     Promise.all(
       Array.from({ length: totalSeasons }, (_, i) =>
         getSeasonEpisodes({ data: { id: tmdbId, season: i + 1 } })
@@ -112,8 +126,9 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, totalSeasons]);
 
-  // Next ep is always computable from what we know
-  const nextEp = type === "tv"
+  // Next ep — only computable once episodeCount is loaded (not null).
+  // While null, we treat it as unknown → no next button shown.
+  const nextEp = type === "tv" && episodeCount !== null && totalSeasons !== null
     ? episode < episodeCount
       ? { season, episode: episode + 1 }
       : season < totalSeasons
@@ -405,8 +420,8 @@ export function WatchPage() {
             // Pass all season episode counts so PlayerActivity knows when to stop
             const countsStr = episodeCounts.length > 0
               ? episodeCounts.join(",")
-              : String(episodeCount);
-            android.openWithNext(primaryUrl, nextUrl, episodeCount, totalSeasons, countsStr);
+              : String(episodeCount ?? 0);
+            android.openWithNext(primaryUrl, nextUrl, episodeCount ?? 0, totalSeasons, countsStr);
             return;
           }
         }
@@ -446,8 +461,12 @@ export function WatchPage() {
       if (watched > 10) persistRef.current(watched, duration);
 
       // Advance current episode ref
+      // Use per-season episode counts if available, otherwise fall back to current season count
       const cur = currentEpisodeRef.current;
-      const newEp = cur.episode < episodeCount
+      const curSeasonCount = episodeCounts.length >= cur.season
+        ? episodeCounts[cur.season - 1]
+        : (episodeCount ?? 0);
+      const newEp = cur.episode < curSeasonCount
         ? { season: cur.season, episode: cur.episode + 1 }
         : { season: cur.season + 1, episode: 1 };
       currentEpisodeRef.current = newEp;
@@ -460,9 +479,12 @@ export function WatchPage() {
       // Save the new episode position immediately
       persistRef.current(10, 0);
 
-      // Compute next-next episode and push its URL to the native player
-      const nextSeason  = newEp.episode < episodeCount ? newEp.season : newEp.season < totalSeasons ? newEp.season + 1 : null;
-      const nextEpisode = newEp.episode < episodeCount ? newEp.episode + 1 : nextSeason ? 1 : null;
+      // Compute next-next episode using per-season counts
+      const newSeasonCount = episodeCounts.length >= newEp.season
+        ? episodeCounts[newEp.season - 1]
+        : (episodeCount ?? 0);
+      const nextSeason  = newEp.episode < newSeasonCount ? newEp.season : newEp.season < (totalSeasons ?? 0) ? newEp.season + 1 : null;
+      const nextEpisode = newEp.episode < newSeasonCount ? newEp.episode + 1 : nextSeason ? 1 : null;
 
       if (nextSeason && nextEpisode) {
         const nextNextUrl = getProviders(type, tmdbId, nextSeason, nextEpisode)[0]?.url ?? "";
@@ -554,39 +576,100 @@ export function WatchPage() {
           </button>
 
           {/* Next Episode button — TV series only */}
-          {type === "tv" && nextEp && (
-            <button
-              onClick={() => {
-                // Save current position before navigating so watch_progress is up to date
-                const wallClock = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
-                const duration  = progressRef.current.duration;
-                const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
-                const watched   = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
-                if (watched > 10) persistRef.current(watched, duration);
-                navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}`);
-              }}
-              tabIndex={0}
-              data-tv-card
-              aria-label={`Next S${nextEp.season} E${nextEp.episode}`}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
-                  const duration   = progressRef.current.duration;
-                  const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
-                  const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
-                  if (watched > 10) persistRef.current(watched, duration);
-                  navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}`);
-                }
-              }}
-              className={`absolute bottom-6 right-4 z-40 flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
-                hover:bg-white hover:text-black hover:border-white
-                focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white
+          {/* Top-right controls row — season picker + next episode, inline */}
+          {type === "tv" && (nextEp || (totalSeasons !== null && totalSeasons > 1)) && (
+            <div
+              data-season-picker
+              className={`absolute top-4 right-4 z-40 flex items-center gap-2 transition
                 ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
-              <SkipForward className="h-5 w-5 shrink-0" />
-              Next Episode
-            </button>
+              {/* Season picker — only when multi-season show and count is confirmed */}
+              {totalSeasons !== null && totalSeasons > 1 && (
+                <div className="relative">
+                  {/* Dropdown — opens downward */}
+                  {showSeasonPicker && (
+                    <div className="absolute top-full right-0 mt-2 max-h-56 w-36 overflow-y-auto rounded-xl border border-white/20 bg-black/95 shadow-2xl">
+                      {Array.from({ length: totalSeasons }, (_, i) => i + 1).map((s) => (
+                        <button
+                          key={s}
+                          tabIndex={0}
+                          data-tv-card
+                          onClick={() => {
+                            setShowSeasonPicker(false);
+                            navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=1`);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setShowSeasonPicker(false);
+                              navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=1`);
+                            }
+                            if (e.key === "Escape") { e.preventDefault(); setShowSeasonPicker(false); }
+                          }}
+                          className={`w-full px-4 py-2.5 text-left text-sm font-semibold text-white transition hover:bg-white/20
+                            focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white
+                            ${s === season ? "text-primary" : ""}`}
+                        >
+                          Season {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* Trigger */}
+                  <button
+                    tabIndex={0}
+                    data-tv-card
+                    aria-label="Season picker"
+                    aria-expanded={showSeasonPicker}
+                    onClick={() => setShowSeasonPicker((v) => !v)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowSeasonPicker((v) => !v); }
+                      if (e.key === "Escape") { e.preventDefault(); setShowSeasonPicker(false); }
+                    }}
+                    className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
+                      hover:bg-white hover:text-black hover:border-white
+                      focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
+                  >
+                    Season {season}
+                    <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${showSeasonPicker ? "rotate-180" : ""}`} />
+                  </button>
+                </div>
+              )}
+
+              {/* Next Episode button */}
+              {nextEp && (
+                <button
+                  onClick={() => {
+                    const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+                    const duration   = progressRef.current.duration;
+                    const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
+                    const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
+                    if (watched > 10) persistRef.current(watched, duration);
+                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}`);
+                  }}
+                  tabIndex={0}
+                  data-tv-card
+                  aria-label={`Next S${nextEp.season} E${nextEp.episode}`}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+                      const duration   = progressRef.current.duration;
+                      const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
+                      const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
+                      if (watched > 10) persistRef.current(watched, duration);
+                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}`);
+                    }
+                  }}
+                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
+                    hover:bg-white hover:text-black hover:border-white
+                    focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
+                >
+                  <SkipForward className="h-5 w-5 shrink-0" />
+                  Next Episode
+                </button>
+              )}
+            </div>
           )}
         </>
       )}
