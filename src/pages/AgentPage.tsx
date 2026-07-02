@@ -8,7 +8,7 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { PLANS, type PlanId, supabase } from "@/lib/supabase";
-import { formatDueDate } from "@/lib/admin";
+import { formatDueDate, formatDueDateStr } from "@/lib/admin";
 import {
   fetchAgentCustomers, agentCreateCustomer,
   fetchAgentBillingRequests, fetchAgentSummary, fetchAgentUpcomingRenewals,
@@ -554,7 +554,7 @@ export function AgentPage() {
                                 <div>
                                   <p className="text-xs text-muted-foreground">Next due</p>
                                   <p className="text-sm font-semibold">
-                                    {dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
+                                    {c.subscription_expires_at ? formatDueDateStr(c.subscription_expires_at) : ""}
                                   </p>
                                   {isDueSoon && (
                                     <p className="text-xs font-bold text-yellow-400">
@@ -609,7 +609,7 @@ export function AgentPage() {
                               <div>
                                 <p className="text-xs text-muted-foreground">Next Due</p>
                                 <p className="font-semibold text-primary">
-                                  {dueDate ? dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "long", year: "numeric" }) : "Not set"}
+                                  {dueDate ? c.subscription_expires_at ? formatDueDateStr(c.subscription_expires_at, { day: "numeric", month: "long", year: "numeric" }) : "Not set" : "Not set"}
                                 </p>
                               </div>
                             </div>
@@ -696,7 +696,7 @@ export function AgentPage() {
                           <p><span className="text-muted-foreground">Plan:</span> {PLANS[c.plan as PlanId]?.name} · TT${PLANS[c.plan as PlanId]?.price}</p>
                           <p>
                             <span className="text-muted-foreground">Due:</span>{" "}
-                            {dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}
+                            {dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}
                             <span className={`ml-2 font-bold ${daysLeft <= 1 ? "text-destructive" : "text-yellow-400"}`}>
                               {daysLeft === 0 ? "(Today!)" : `(${daysLeft}d)`}
                             </span>

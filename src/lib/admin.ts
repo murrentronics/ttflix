@@ -29,24 +29,27 @@ function calcExpiry(startDate: Date, isAnnual: boolean): Date {
  * Shows the last day of the month (the DB stores the 2nd of next month as the cutoff).
  */
 export function formatDueDate(expiresAt: string): Date {
-  // Handles two storage formats:
-  // NEW: stored as 2026-08-02 (2nd of month after subscription) → show 31 Jul
-  // OLD: stored as 2026-07-31 or 2026-07-01 (various legacy formats)
-  //
-  // Strategy: if stored day is 1 or 2, it's the new format — go to prev month's last day.
-  // Otherwise it's an old format — show last day of that same month.
   const d = new Date(expiresAt);
   const day = d.getUTCDate();
   const y   = d.getUTCFullYear();
   const m   = d.getUTCMonth();
+  // day <= 2 = new format (2nd of next month) → last day of previous month
+  // day > 2  = old format (within subscription month) → last day of that month
+  return day <= 2
+    ? new Date(Date.UTC(y, m, 0))
+    : new Date(Date.UTC(y, m + 1, 0));
+}
 
-  if (day <= 2) {
-    // New format: 2nd of next month → last day of previous month
-    return new Date(Date.UTC(y, m, 0));
-  } else {
-    // Old format: date is within the subscription month → last day of that month
-    return new Date(Date.UTC(y, m + 1, 0));
-  }
+/**
+ * Format a subscription_expires_at value as a human-readable due date string.
+ * Always uses UTC so Trinidad's UTC-4 offset never shifts the day backward.
+ */
+export function formatDueDateStr(
+  expiresAt: string,
+  opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" }
+): string {
+  const d = formatDueDate(expiresAt);
+  return d.toLocaleDateString("en-TT", { ...opts, timeZone: "UTC" });
 }
 
 export type AdminUser = Profile & {

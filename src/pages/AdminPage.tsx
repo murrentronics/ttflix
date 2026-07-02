@@ -12,7 +12,7 @@ import {
   fetchUsersByStatus, countByStatus, setUserStatus, setUserRole, makeUserAgent, removeUserAgent, deleteUserRecord,
   fetchPendingAgentBillingRequests, adminApproveAgentRequest, adminRejectAgentRequest,
   fetchAgentList, fetchAgentCustomerLinks, fetchDashboardStats, fetchPaymentHistory, adminCreateAgent,
-  fetchAgentCollections, clearAgentBalance, formatDueDate,
+  fetchAgentCollections, clearAgentBalance, formatDueDate, formatDueDateStr,
   type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin, type AgentListItem, type DashboardStats,
   type AgentCollectionItem,
 } from "@/lib/admin";
@@ -846,7 +846,7 @@ export function AdminPage() {
                                   <div className="shrink-0 text-right space-y-0.5">
                                     <p className="text-xs">{PLANS[c.plan as keyof typeof PLANS]?.name ?? c.plan}</p>
                                     <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${c.status === "approved" ? "bg-green-500/15 text-green-400" : c.status === "pending" ? "bg-yellow-500/15 text-yellow-400" : "bg-destructive/15 text-destructive"}`}>{c.status}</span>
-                                    {dueDate && <p className="text-xs text-muted-foreground">Due {dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}</p>}
+                                    {dueDate && <p className="text-xs text-muted-foreground">Due {c.subscription_expires_at ? formatDueDateStr(c.subscription_expires_at) : ""}</p>}
                                   </div>
                                 </div>
                               );
@@ -1195,7 +1195,7 @@ export function AdminPage() {
                                 }`}>
                                   {tab === "billing"
                                     ? (daysLeft! === 0 ? "Due today" : daysLeft! < 0 ? "Overdue" : `${daysLeft!}d left`)
-                                    : `Renews ${dueDate.toLocaleDateString("en-TT", { day: "numeric", month: "short", year: "numeric" })}`}
+                                    : `Renews ${u.subscription_expires_at ? formatDueDateStr(u.subscription_expires_at) : ""}`}
                                 </span>
                               )}
                             </div>
