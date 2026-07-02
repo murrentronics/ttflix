@@ -25,7 +25,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
 
   const handlePlay = () => {
     if (!canWatch) { navigate("/"); return; }
-    navigate(`/watch/${item.media_type}/${item.id}?title=${encodeURIComponent(item.title)}&poster=${encodeURIComponent(item.poster_path ?? "")}&backdrop=${encodeURIComponent(item.backdrop_path ?? "")}&season=1&episode=1&startOver=1`);
+    navigate(`/watch/${item.media_type}/${item.id}?title=${encodeURIComponent(item.title)}&poster=${encodeURIComponent(item.poster_path ?? "")}&backdrop=${encodeURIComponent(item.backdrop_path ?? "")}&season=1&episode=1`);
   };
 
   return (

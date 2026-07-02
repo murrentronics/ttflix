@@ -9,7 +9,6 @@ export function getProviders(
   tmdbId: number,
   season = 1,
   episode = 1,
-  startOver = false,
 ): Provider[] {
   const color = "E50914";
 
@@ -17,7 +16,7 @@ export function getProviders(
     return [
       {
         name: "Videasy",
-        url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplayNextEpisode=true&autoplay=1&postMessageOrigin=*${startOver ? "&startTime=0" : ""}`,
+        url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplayNextEpisode=true&autoplay=1&postMessageOrigin=*`,
       },
       {
         name: "VidSrc",
@@ -29,7 +28,7 @@ export function getProviders(
   return [
     {
       name: "Videasy",
-      url: `https://player.videasy.net/movie/${tmdbId}?color=${color}&overlay=true&autoplay=1&postMessageOrigin=*${startOver ? "&startTime=0" : ""}`,
+      url: `https://player.videasy.net/movie/${tmdbId}?color=${color}&overlay=true&autoplay=1&postMessageOrigin=*`,
     },
     {
       name: "VidSrc",
@@ -38,13 +37,11 @@ export function getProviders(
   ];
 }
 
-// Legacy single-URL helper kept for compatibility
 export function streamUrl(
   mediaType: "movie" | "tv",
   tmdbId: number,
   season = 1,
   episode = 1,
-  startOver = false,
 ): string {
-  return getProviders(mediaType, tmdbId, season, episode, startOver)[0].url;
+  return getProviders(mediaType, tmdbId, season, episode)[0].url;
 }

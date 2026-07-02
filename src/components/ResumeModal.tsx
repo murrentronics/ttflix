@@ -8,12 +8,11 @@ import type { WatchProgress } from "@/lib/continue-watching";
 type Props = {
   item: WatchProgress | null;
   onContinue: (item: WatchProgress) => void;
-  onStartOver: (item: WatchProgress) => void;
   onPlayEpisode: (item: WatchProgress, season: number, episode: number) => void;
   onClose: () => void;
 };
 
-export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onClose }: Props) {
+export function ResumeModal({ item, onContinue, onPlayEpisode, onClose }: Props) {
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -127,17 +126,6 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
               ? `Continue — S${item.season} E${item.episode}`
               : "Continue Watching"}
           </button>
-
-          {/* Play from Start — movies only (TV uses the episode picker below) */}
-          {!isTv && (
-            <button
-              onClick={() => onStartOver(item)}
-              className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-secondary px-6 py-3 font-semibold transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card"
-            >
-              <Play className="h-4 w-4" />
-              Play from Start
-            </button>
-          )}
 
           {/* Episode picker — TV only */}
           {isTv && (
