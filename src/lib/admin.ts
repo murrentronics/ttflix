@@ -29,12 +29,24 @@ function calcExpiry(startDate: Date, isAnnual: boolean): Date {
  * Shows the last day of the month (the DB stores the 2nd of next month as the cutoff).
  */
 export function formatDueDate(expiresAt: string): Date {
-  // DB stores expiry as the 2nd of the following month at 00:00 UTC.
-  // e.g. July plan → stored as 2026-08-02 → display as 31 Jul 2026.
-  // Date.UTC(y, m, 0) = last day of month (m-1). Since stored month IS the month
-  // after the subscription month, Date.UTC(y, storedMonth, 0) = last day of sub month.
+  // Handles two storage formats:
+  // NEW: stored as 2026-08-02 (2nd of month after subscription) → show 31 Jul
+  // OLD: stored as 2026-07-31 or 2026-07-01 (various legacy formats)
+  //
+  // Strategy: if stored day is 1 or 2, it's the new format — go to prev month's last day.
+  // Otherwise it's an old format — show last day of that same month.
   const d = new Date(expiresAt);
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0));
+  const day = d.getUTCDate();
+  const y   = d.getUTCFullYear();
+  const m   = d.getUTCMonth();
+
+  if (day <= 2) {
+    // New format: 2nd of next month → last day of previous month
+    return new Date(Date.UTC(y, m, 0));
+  } else {
+    // Old format: date is within the subscription month → last day of that month
+    return new Date(Date.UTC(y, m + 1, 0));
+  }
 }
 
 export type AdminUser = Profile & {

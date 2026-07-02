@@ -210,7 +210,16 @@ where role = 'agent';
 
 drop policy if exists "payment_history select" on public.payment_history;
 create policy "payment_history select" on public.payment_history for select to authenticated
-  using (user_id = auth.uid() or public.is_admin());
+  using (
+    user_id = auth.uid()
+    or public.is_admin()
+    -- Agents can see payment history for customers they manage
+    or exists (
+      select 1 from public.agent_customers ac
+      where ac.customer_id = payment_history.user_id
+        and ac.agent_id = auth.uid()
+    )
+  );
 
 -- Also ensure the insert policy allows admin and agents (via service path)
 drop policy if exists "payment_history insert" on public.payment_history;

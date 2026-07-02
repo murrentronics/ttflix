@@ -797,10 +797,10 @@ export function AgentPage() {
                 {/* Section 4 — Due Dates & Renewals */}
                 <InstructionSection title="Due Dates &amp; Renewals">
                   <ul className="list-disc pl-5 space-y-2 text-sm text-muted-foreground">
-                    <li>All monthly subscriptions renew on the <span className="font-bold text-foreground">1st of every month</span>.</li>
                     <li>Tell your customers their payment is due on the <span className="font-bold text-foreground">last day of the month</span>.</li>
-                    <li>You have the <span className="font-bold text-foreground">entire 1st of the month</span> to collect and submit renewals before any account is suspended.</li>
-                    <li>Accounts that are not renewed by midnight on the 1st are automatically suspended.</li>
+                    <li>Collect all payments <span className="font-bold text-foreground">before the end of the month</span> and submit to admin.</li>
+                    <li>Admin processes all payments on the <span className="font-bold text-foreground">1st of the month</span>.</li>
+                    <li>Accounts not paid by midnight on the 1st (00:00 on the 2nd) are <span className="font-bold text-foreground">automatically suspended</span>.</li>
                     <li>Use the <span className="font-bold text-foreground">Renewals Due</span> tab to see who is coming up for renewal and submit requests.</li>
                   </ul>
                 </InstructionSection>
@@ -822,7 +822,7 @@ export function AgentPage() {
                   <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm space-y-2">
                     <p className="font-bold text-foreground">Script you can use:</p>
                     <p className="text-muted-foreground italic">
-                      "Your TTFlix subscription renews on the 1st of every month. Your payment of TT$[amount] is due by the last day of the month. If payment is not received by midnight on the 1st, your account will be suspended until payment is collected. Once I receive your payment and submit it, your account is reactivated within a few hours."
+                      "Your TTFlix subscription is due by the last day of the month. Please make your payment of TT$[amount] before the end of the month. If payment is not received by midnight on the 1st, your account will be suspended until payment is collected. Once I receive your payment and submit it, your account is reactivated within a few hours."
                     </p>
                   </div>
                 </InstructionSection>
