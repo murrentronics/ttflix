@@ -13,13 +13,13 @@ import type { Profile } from "./auth";
  */
 function calcExpiry(startDate: Date, isAnnual: boolean): Date {
   const expiry = new Date(startDate);
+  // Set day to 2 FIRST to avoid month overflow (e.g. Jan 31 + 1 month = Mar 3, not Feb 2)
+  expiry.setUTCDate(2);
   if (isAnnual) {
     expiry.setUTCFullYear(expiry.getUTCFullYear() + 1);
   } else {
     expiry.setUTCMonth(expiry.getUTCMonth() + 1);
   }
-  // Set to the 2nd of that month at 00:00:00 UTC — gives the full 1st for collection
-  expiry.setUTCDate(2);
   expiry.setUTCHours(0, 0, 0, 0);
   return expiry;
 }

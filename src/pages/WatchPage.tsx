@@ -130,13 +130,17 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, season]);
 
-  // Fetch ALL seasons' episode counts once we know totalSeasons
+  // Fetch ALL seasons' episode counts once we know totalSeasons — also populate cache
   useEffect(() => {
     if (type !== "tv" || totalSeasons === null) return;
     Promise.all(
       Array.from({ length: totalSeasons }, (_, i) =>
         getSeasonEpisodes({ data: { id: tmdbId, season: i + 1 } })
-          .then((eps: any[]) => eps?.length ?? 0)
+          .then((eps: any[]) => {
+            const count = eps?.length ?? 0;
+            seasonEpCountCache.set(`${tmdbId}-${i + 1}`, count);
+            return count;
+          })
           .catch(() => 0)
       )
     ).then(setEpisodeCounts).catch(() => {});
@@ -684,11 +688,15 @@ export function WatchPage() {
                     const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
                     const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
                     if (watched > 10) persistRef.current(watched, duration);
-                    // Pass counts through URL so next mount doesn't start from null
-                    const nextEpisodeCount = nextEp.season === season ? episodeCount : null;
+                    // For same season: pass current episodeCount. For new season: look up from episodeCounts array or cache.
+                    const nextSeasonCount = nextEp.season === season
+                      ? episodeCount
+                      : episodeCounts.length >= nextEp.season
+                        ? episodeCounts[nextEp.season - 1]
+                        : seasonEpCountCache.get(`${tmdbId}-${nextEp.season}`) ?? null;
                     const countParams = [
-                      nextEpisodeCount ? `&totalEps=${nextEpisodeCount}` : "",
-                      totalSeasons     ? `&totalSeas=${totalSeasons}`    : "",
+                      nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
+                      totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                     ].join("");
                     navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
                   }}
@@ -703,10 +711,14 @@ export function WatchPage() {
                       const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
                       const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
                       if (watched > 10) persistRef.current(watched, duration);
-                      const nextEpisodeCount = nextEp.season === season ? episodeCount : null;
+                      const nextSeasonCount = nextEp.season === season
+                        ? episodeCount
+                        : episodeCounts.length >= nextEp.season
+                          ? episodeCounts[nextEp.season - 1]
+                          : seasonEpCountCache.get(`${tmdbId}-${nextEp.season}`) ?? null;
                       const countParams = [
-                        nextEpisodeCount ? `&totalEps=${nextEpisodeCount}` : "",
-                        totalSeasons     ? `&totalSeas=${totalSeasons}`    : "",
+                        nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
+                        totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                       ].join("");
                       navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
                     }
