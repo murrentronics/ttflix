@@ -82,10 +82,11 @@ export function WatchPage() {
 
   useEffect(() => {
     if (type !== "tv") return;
-    setTotalSeasons(null);
+    // Don't reset to null — keep the previous value visible while refetching
+    // so the season picker doesn't flash away on navigation
     getDetails({ data: { id: tmdbId, mediaType: "tv" } })
-      .then((d) => { setTotalSeasons(d?.number_of_seasons ?? 1); })
-      .catch(() => { setTotalSeasons(1); });
+      .then((d) => { if (d?.number_of_seasons) setTotalSeasons(d.number_of_seasons); })
+      .catch(() => { /* keep whatever we had */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type]);
 
@@ -126,15 +127,38 @@ export function WatchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, totalSeasons]);
 
-  // Next ep — only computable once episodeCount is loaded (not null).
-  // While null, we treat it as unknown → no next button shown.
-  const nextEp = type === "tv" && episodeCount !== null && totalSeasons !== null
-    ? episode < episodeCount
-      ? { season, episode: episode + 1 }
-      : season < totalSeasons
-        ? { season: season + 1, episode: 1 }
-        : null
-    : null;
+  // Next episode calculation.
+  // We use optimistic logic while data is still loading so the button isn't hidden
+  // unnecessarily. The guards only suppress the button when we have confirmed data
+  // proving there is no next episode (last ep of last season).
+  //
+  // Rules:
+  //  - episodeCount null  → still loading → assume more episodes exist (show button)
+  //  - episodeCount known → use real cap
+  //  - totalSeasons null  → still loading → assume more seasons exist (show button)
+  //  - totalSeasons known → use real cap
+  const nextEp = (() => {
+    if (type !== "tv") return null;
+    // Do we know the episode count for this season?
+    if (episodeCount === null) {
+      // Not loaded yet — optimistically assume there's a next episode
+      return { season, episode: episode + 1 };
+    }
+    if (episode < episodeCount) {
+      // There's a next episode in this season
+      return { season, episode: episode + 1 };
+    }
+    // We're on the last episode of this season — is there another season?
+    if (totalSeasons === null) {
+      // Not loaded yet — optimistically assume there's a next season
+      return { season: season + 1, episode: 1 };
+    }
+    if (season < totalSeasons) {
+      return { season: season + 1, episode: 1 };
+    }
+    // Confirmed last episode of last season — no next
+    return null;
+  })();
 
   const providers        = getProviders(type, tmdbId, season, episode);
   const [providerIndex, setProviderIndex] = useState(0);
@@ -583,13 +607,14 @@ export function WatchPage() {
               className={`absolute top-4 right-4 z-40 flex items-center gap-2 transition
                 ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
-              {/* Season picker — only when multi-season show and count is confirmed */}
-              {totalSeasons !== null && totalSeasons > 1 && (
+              {/* Season picker — show when confirmed multi-season, OR we're already
+                  on a season > 1 (which proves multiple seasons exist) */}
+              {((totalSeasons !== null && totalSeasons > 1) || season > 1) && (
                 <div className="relative">
                   {/* Dropdown — opens downward */}
                   {showSeasonPicker && (
                     <div className="absolute top-full right-0 mt-2 max-h-56 w-36 overflow-y-auto rounded-xl border border-white/20 bg-black/95 shadow-2xl">
-                      {Array.from({ length: totalSeasons }, (_, i) => i + 1).map((s) => (
+                      {Array.from({ length: totalSeasons ?? season }, (_, i) => i + 1).map((s) => (
                         <button
                           key={s}
                           tabIndex={0}
