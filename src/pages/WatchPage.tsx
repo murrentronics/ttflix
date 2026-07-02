@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { X } from "lucide-react";
+import { X, SkipForward } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { getProviders } from "@/lib/stream";
@@ -75,6 +75,33 @@ export function WatchPage() {
 
   const currentEpisodeRef = useRef({ season, episode });
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
+
+  // ── Next episode ──────────────────────────────────────────────────────────
+  const [nextEp, setNextEp] = useState<{ season: number; episode: number } | null>(null);
+
+  useEffect(() => {
+    if (type !== "tv") { setNextEp(null); return; }
+    setNextEp(null);
+    let cancelled = false;
+    Promise.all([
+      getDetails({ data: { id: tmdbId, mediaType: "tv" } }).catch(() => null),
+      getSeasonEpisodes({ data: { id: tmdbId, season } }).catch(() => null),
+    ]).then(([details, eps]) => {
+      if (cancelled) return;
+      const totalSeasons = (details as any)?.number_of_seasons ?? 1;
+      const epList = (eps as any[]) ?? [];
+      const nextInSeason = epList.find((e: any) => e.episode_number === episode + 1);
+      if (nextInSeason) {
+        setNextEp({ season, episode: nextInSeason.episode_number });
+      } else if (season < totalSeasons) {
+        setNextEp({ season: season + 1, episode: 1 });
+      } else {
+        setNextEp(null);
+      }
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tmdbId, type, season, episode]);
 
   const providers        = getProviders(type, tmdbId, season, episode);
   const [providerIndex, setProviderIndex] = useState(0);
@@ -431,19 +458,57 @@ export function WatchPage() {
 
       {/* Exit button — shows on tap/move, fades after 3s */}
       {!loaderVisible && !kidsBlocked && (
-        <button
-          onClick={() => navigate("/")}
-          tabIndex={0}
-          data-tv-card
-          aria-label="Exit player"
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
-          className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
-            hover:bg-black/90
-            focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
-            ${exitVisible ? "opacity-100" : "opacity-0"}`}
-        >
-          <X className="h-6 w-6" />
-        </button>
+        <>
+          <button
+            onClick={() => navigate("/")}
+            tabIndex={0}
+            data-tv-card
+            aria-label="Exit player"
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
+            className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
+              hover:bg-black/90
+              focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
+              ${exitVisible ? "opacity-100" : "opacity-0"}`}
+          >
+            <X className="h-6 w-6" />
+          </button>
+
+          {/* Next Episode button — TV series only */}
+          {type === "tv" && nextEp && (
+            <button
+              onClick={() => {
+                // Save current position before navigating so watch_progress is up to date
+                const wallClock = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+                const duration  = progressRef.current.duration;
+                const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
+                const watched   = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
+                if (watched > 10) persistRef.current(watched, duration);
+                navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}`);
+              }}
+              tabIndex={0}
+              data-tv-card
+              aria-label={`Next S${nextEp.season} E${nextEp.episode}`}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+                  const duration   = progressRef.current.duration;
+                  const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
+                  const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
+                  if (watched > 10) persistRef.current(watched, duration);
+                  navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}`);
+                }
+              }}
+              className={`absolute bottom-6 right-4 z-40 flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
+                hover:bg-white hover:text-black hover:border-white
+                focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white
+                ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+            >
+              <SkipForward className="h-5 w-5 shrink-0" />
+              Next Episode
+            </button>
+          )}
+        </>
       )}
     </div>
   );

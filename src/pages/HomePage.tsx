@@ -11,26 +11,27 @@ import { Browse } from "@/components/Browse";
 import type { UserStatus } from "@/lib/supabase";
 
 export function HomePage() {
-  const { user, loading, profileLoading, profile, isAdmin } = useAuth();
+  const { user, loading, profileLoading, profile, isAdmin, isAgent } = useAuth();
   const { profileSelected, activeProfile } = useProfile();
   const navigate = useNavigate();
 
   // Redirect to profile picker once logged in + approved but no profile chosen
+  // Agents and admins don't need profile selection — skip for them
   useEffect(() => {
     if (!loading && !profileLoading && user && profile) {
       const canWatch = isAdmin || profile.status === "approved";
-      if (canWatch && !profileSelected) {
+      if (canWatch && !profileSelected && !isAdmin && !isAgent) {
         navigate("/profiles");
       }
     }
-  }, [loading, profileLoading, user, profile, isAdmin, profileSelected, navigate]);
+  }, [loading, profileLoading, user, profile, isAdmin, isAgent, profileSelected, navigate]);
 
   if (loading || profileLoading) {
     return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>;
   }
 
   if (!user) return <Landing />;
-  if (isAdmin) return <HomeFeed />;
+  if (isAdmin || isAgent) return <HomeFeed />;
 
   const status = profile?.status;
   if (status !== "approved") return <StatusWall status={status ?? "pending"} />;
