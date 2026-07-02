@@ -74,6 +74,13 @@ public class PlayerActivity extends Activity {
             exitContainer.setVisibility(View.VISIBLE);
             exitContainer.animate().alpha(1f).setDuration(200).start();
             hideHandler.postDelayed(hideExitRunnable, HIDE_DELAY_MS);
+            // On TV: auto-focus the Next button if visible, else the Exit button
+            // so D-pad can reach them without touching the screen
+            if (nextBtn != null && nextBtn.getVisibility() == View.VISIBLE) {
+                nextBtn.requestFocus();
+            } else if (exitBtn != null) {
+                exitBtn.requestFocus();
+            }
         }
     }
 
@@ -175,10 +182,13 @@ public class PlayerActivity extends Activity {
         exitContainer.setVisibility(View.GONE);
 
         exitBtn = new ImageButton(this);
+        exitBtn.setId(android.R.id.button1);
         exitBtn.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
         exitBtn.setBackgroundColor(Color.argb(180, 0, 0, 0));
         exitBtn.setColorFilter(Color.WHITE);
         exitBtn.setContentDescription("Exit");
+        exitBtn.setFocusable(true);
+        exitBtn.setFocusableInTouchMode(true);
         int btnSize = dpToPx(48);
         int margin = dpToPx(12);
         FrameLayout.LayoutParams btnParams = new FrameLayout.LayoutParams(btnSize, btnSize);
@@ -204,7 +214,7 @@ public class PlayerActivity extends Activity {
         });
         exitContainer.addView(exitBtn);
 
-        // Next Episode button — bottom-right, same show/hide as exit button
+        // Next Episode button — top-right, same show/hide as exit button
         nextBtn = new android.widget.Button(this);
         nextBtn.setText("Next Episode ▶");
         nextBtn.setTextColor(Color.WHITE);
@@ -215,26 +225,34 @@ public class PlayerActivity extends Activity {
         int nextBtnHeight = dpToPx(48);
         FrameLayout.LayoutParams nextParams = new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, nextBtnHeight,
-            android.view.Gravity.BOTTOM | android.view.Gravity.END
+            android.view.Gravity.TOP | android.view.Gravity.END
         );
-        nextParams.bottomMargin = dpToPx(20);
-        nextParams.rightMargin  = dpToPx(16);
+        nextParams.topMargin   = dpToPx(12);
+        nextParams.rightMargin = dpToPx(16);
         nextBtn.setLayoutParams(nextParams);
-        nextBtn.setVisibility(View.GONE); // hidden until we know there's a next episode
+        // Make focusable for TV remote D-pad navigation
+        nextBtn.setFocusable(true);
+        nextBtn.setFocusableInTouchMode(true);
+        nextBtn.setNextFocusLeftId(android.R.id.content); // D-pad left goes to exit btn
+        nextBtn.setVisibility(View.GONE);
         nextBtn.setOnClickListener(v -> {
             if (nextUrl != null) {
+                String currentNext = nextUrl;
                 playerSignalReceived = false;
                 usingFallback = false;
                 startFallbackTimer();
-                playerWebView.loadUrl(nextUrl);
-                // Tell the React layer we moved to next episode so it can:
-                // 1. Save progress for the new episode
-                // 2. Compute the next-next URL and send it back via setNextUrl()
+                playerWebView.loadUrl(currentNext);
+                // Tell React layer so it can save progress for the new episode
                 playerWebView.evaluateJavascript(
                     "window.dispatchEvent(new CustomEvent('androidNextEpisode'));", null
                 );
-                nextUrl = null;
-                nextBtn.setVisibility(View.GONE);
+                // Auto-compute the next-next URL from the URL pattern
+                nextUrl = computeNextEpisodeUrl(currentNext);
+                if (nextUrl != null) {
+                    nextBtn.setVisibility(View.VISIBLE);
+                } else {
+                    nextBtn.setVisibility(View.GONE);
+                }
             }
         });
         exitContainer.addView(nextBtn);
@@ -302,8 +320,7 @@ public class PlayerActivity extends Activity {
         nextUrl = getIntent().getStringExtra(EXTRA_NEXT_URL);
         if (nextUrl != null && nextBtn != null) {
             nextBtn.setVisibility(View.VISIBLE);
-        }
-        startOverTmdbId = getIntent().getStringExtra("tmdb_id");
+        }        startOverTmdbId = getIntent().getStringExtra("tmdb_id");
         startOverEnabled = getIntent().getBooleanExtra("start_over", false);
 
         if (startOverEnabled && startOverTmdbId != null) {
@@ -462,6 +479,32 @@ public class PlayerActivity extends Activity {
             finish();
             overridePendingTransition(0, 0);
         }, 150);
+    }
+
+    /**
+     * Given a TV episode URL like:
+     *   https://player.videasy.net/tv/12345/1/3?color=...
+     * Returns the next episode URL:
+     *   https://player.videasy.net/tv/12345/1/4?color=...
+     * Returns null if URL doesn't match the expected pattern.
+     */
+    private String computeNextEpisodeUrl(String url) {
+        if (url == null) return null;
+        try {
+            // Match pattern: /tv/{tmdbId}/{season}/{episode}
+            java.util.regex.Pattern p = java.util.regex.Pattern.compile(
+                "(https://player\\.videasy\\.net/tv/\\d+/)(\\d+)/(\\d+)(.*)"
+            );
+            java.util.regex.Matcher m = p.matcher(url);
+            if (m.find()) {
+                String base    = m.group(1);
+                int season     = Integer.parseInt(m.group(2));
+                int episode    = Integer.parseInt(m.group(3));
+                String query   = m.group(4);
+                return base + season + "/" + (episode + 1) + query;
+            }
+        } catch (Exception e) { /* ignore */ }
+        return null;
     }
 
     private void startFallbackTimer() {
