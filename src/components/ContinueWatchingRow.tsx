@@ -66,6 +66,14 @@ export function ContinueWatchingRow() {
     navigate(playUrl(item, item.season ?? 1, item.episode ?? 1));
   };
 
+  const handleStartOver = async (item: WatchProgress) => {
+    setPrompt(null);
+    if (!user || !effectiveProfile) return;
+    await removeProgress(user.id, effectiveProfile.id, item.tmdb_id, item.media_type);
+    setItems((prev) => prev.filter((i) => i.tmdb_id !== item.tmdb_id || i.media_type !== item.media_type));
+    navigate(`/watch/${item.media_type}/${item.tmdb_id}?title=${encodeURIComponent(item.title)}&poster=${encodeURIComponent(item.poster_path ?? "")}&backdrop=${encodeURIComponent(item.backdrop_path ?? "")}&season=1&episode=1`);
+  };
+
   const handlePlayEpisode = (item: WatchProgress, season: number, episode: number) => {
     setPrompt(null);
     navigate(playUrl(item, season, episode));
@@ -134,7 +142,7 @@ export function ContinueWatchingRow() {
       <ResumeModal
         item={prompt}
         onContinue={handleContinue}
-        onStartOver={() => {}}
+        onStartOver={handleStartOver}
         onPlayEpisode={handlePlayEpisode}
         onClose={() => setPrompt(null)}
       />

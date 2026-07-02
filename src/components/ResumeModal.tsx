@@ -128,6 +128,17 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
               : "Continue Watching"}
           </button>
 
+          {/* Play from Start — movies only (TV uses the episode picker below) */}
+          {!isTv && (
+            <button
+              onClick={() => onStartOver(item)}
+              className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-secondary px-6 py-3 font-semibold transition hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card"
+            >
+              <Play className="h-4 w-4" />
+              Play from Start
+            </button>
+          )}
+
           {/* Episode picker — TV only */}
           {isTv && (
             <div className="space-y-3">

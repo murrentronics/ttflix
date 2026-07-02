@@ -193,39 +193,28 @@ export function DetailModal() {
                   Not for Kids
                 </div>
               ) : watchProgress && watchProgress.watched_seconds >= 5 ? (
-                // Has in-progress watch — show "Continue" + separate "Play from Start"
-                <>
-                  <button
-                    onClick={() => {
-                      if (isBlockedForKids) return;
-                      close();
-                      if (!canWatch) { navigate("/"); return; }
-                      const poster = data?.poster_path ?? "";
-                      const backdrop = data?.backdrop_path ?? "";
-                      const title = data?.title ?? current.title ?? "";
-                      const s = watchProgress.season ?? 1;
-                      const ep = watchProgress.episode ?? 1;
-                      navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=${ep}`);
-                    }}
-                    className={`flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 ${focusStyle}`}
-                  >
-                    {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
-                    {canWatch
-                      ? isTv
-                        ? `Continue S${watchProgress.season} E${watchProgress.episode}`
-                        : "Continue"
-                      : "Unlock"}
-                  </button>
-                  {canWatch && (
-                    <button
-                      onClick={() => handlePlay(isTv ? 1 : 1, 1)}
-                      className={`flex items-center gap-2 rounded-md border border-border bg-secondary px-5 py-2.5 font-semibold transition hover:bg-accent ${focusStyle}`}
-                    >
-                      <Play className="h-4 w-4" />
-                      Play from Start
-                    </button>
-                  )}
-                </>
+                // Has in-progress watch — show "Continue" only
+                <button
+                  onClick={() => {
+                    if (isBlockedForKids) return;
+                    close();
+                    if (!canWatch) { navigate("/"); return; }
+                    const poster = data?.poster_path ?? "";
+                    const backdrop = data?.backdrop_path ?? "";
+                    const title = data?.title ?? current.title ?? "";
+                    const s = watchProgress.season ?? 1;
+                    const ep = watchProgress.episode ?? 1;
+                    navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=${ep}`);
+                  }}
+                  className={`flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 ${focusStyle}`}
+                >
+                  {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
+                  {canWatch
+                    ? isTv
+                      ? `Continue S${watchProgress.season} E${watchProgress.episode}`
+                      : "Continue"
+                    : "Unlock"}
+                </button>
               ) : (
                 <button
                   onClick={() => handlePlay(isTv ? selectedSeason : 1, 1)}
