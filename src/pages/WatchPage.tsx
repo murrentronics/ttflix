@@ -621,6 +621,7 @@ export function WatchPage() {
       {!loaderVisible && !kidsBlocked && (
         <>
           <button
+            onTouchEnd={(e) => { e.preventDefault(); navigate("/"); }}
             onClick={() => navigate("/")}
             tabIndex={0}
             data-tv-card
@@ -716,6 +717,24 @@ export function WatchPage() {
                   tabIndex={0}
                   data-tv-card
                   aria-label={`Next S${nextEp.season} E${nextEp.episode}`}
+                  onTouchEnd={(e) => {
+                    e.preventDefault();
+                    const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+                    const duration   = progressRef.current.duration;
+                    const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
+                    const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
+                    if (watched > 10) persistRef.current(watched, duration);
+                    const nextSeasonCount = nextEp.season === season
+                      ? episodeCount
+                      : episodeCounts.length >= nextEp.season
+                        ? episodeCounts[nextEp.season - 1]
+                        : seasonEpCountCache.get(`${tmdbId}-${nextEp.season}`) ?? null;
+                    const countParams = [
+                      nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
+                      totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
+                    ].join("");
+                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
