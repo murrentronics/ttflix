@@ -216,7 +216,7 @@ export function WatchPage() {
           return prev;
         });
       }
-    }, 15_000);
+    }, 8_000);
   }, [providers]);
 
   useEffect(() => {
