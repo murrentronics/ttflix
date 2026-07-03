@@ -73,7 +73,7 @@ export function ContinueWatchingRow() {
 
   const handlePlayEpisode = (item: WatchProgress, season: number, episode: number) => {
     setPrompt(null);
-    navigate(`${playUrl(item, season, episode)}&progress=0`);
+    navigate(playUrl(item, season, episode));
   };
   return (
     <>
