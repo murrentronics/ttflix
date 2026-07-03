@@ -83,8 +83,8 @@ export function WatchPage() {
   const currentEpisodeRef = useRef({ season, episode });
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
-  // If our DB has a reset row (watched_seconds < 5), send a seek(0) postMessage
-  // to Videasy once it's ready — overriding its server-side resume memory.
+  // If our DB has a reset row (watched_seconds < 5), clear Videasy's localStorage
+  // for this tmdbId so it has no resume memory, then flag to seek to 0 as backup.
   const shouldSeekToStart = useRef(false);
   useEffect(() => {
     if (!user || !effectiveProfile) return;
@@ -93,7 +93,20 @@ export function WatchPage() {
       .eq("tmdb_id", tmdbId).eq("media_type", type)
       .maybeSingle()
       .then(({ data }) => {
-        if (data && data.watched_seconds < 5) shouldSeekToStart.current = true;
+        if (data && data.watched_seconds < 5) {
+          shouldSeekToStart.current = true;
+          // Clear Videasy localStorage via Android bridge (clears resume memory)
+          (window as any).AndroidPlayer?.clearVideasyStorage?.(String(tmdbId));
+          // Also clear directly from this WebView context
+          try {
+            Object.keys(localStorage).forEach(k => {
+              if (k.includes(String(tmdbId))) localStorage.removeItem(k);
+            });
+            Object.keys(sessionStorage).forEach(k => {
+              if (k.includes(String(tmdbId))) sessionStorage.removeItem(k);
+            });
+          } catch { /* ignore */ }
+        }
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type]);
