@@ -83,6 +83,17 @@ export function WatchPage() {
   const currentEpisodeRef = useRef({ season, episode });
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
+  const seekToStartRef = useRef(false);
+  useEffect(() => {
+    if (!user || !effectiveProfile) return;
+    supabase.from("watch_progress").select("watched_seconds")
+      .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
+      .eq("tmdb_id", tmdbId).eq("media_type", type)
+      .maybeSingle()
+      .then(({ data }) => { if (data && data.watched_seconds < 5) seekToStartRef.current = true; });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tmdbId, type]);
+
   // ── Next episode ──────────────────────────────────────────────────────────
   // Module-level caches survive remounts within the same browser session.
   // On first-ever load of a show they start null, so we fetch immediately.
@@ -383,6 +394,23 @@ export function WatchPage() {
         }
         if (d?.type === "ready" || d?.event === "ready") {
           providerSignalRef.current = true; triggerExplosion(); saveInitial();
+          if (seekToStartRef.current) {
+            seekToStartRef.current = false;
+            const iframe = iframeRef.current;
+            if (iframe?.contentWindow) {
+              setTimeout(() => {
+                // Try every known postMessage seek format
+                const win = iframe.contentWindow!;
+                win.postMessage(JSON.stringify({ event: "seek", time: 0 }), "*");
+                win.postMessage(JSON.stringify({ type: "seek", time: 0 }), "*");
+                win.postMessage(JSON.stringify({ command: "seek", position: 0 }), "*");
+                win.postMessage(JSON.stringify({ action: "seek", seconds: 0 }), "*");
+                win.postMessage(JSON.stringify({ method: "seek", value: 0 }), "*");
+                win.postMessage(JSON.stringify({ event: "seekTo", time: 0 }), "*");
+                win.postMessage(JSON.stringify({ type: "seekTo", seconds: 0 }), "*");
+              }, 1000);
+            }
+          }
         }
         if (d?.type === "episodeChange" || d?.event === "episodeChange") {
           if (d?.season)  currentEpisodeRef.current.season  = Number(d.season);
