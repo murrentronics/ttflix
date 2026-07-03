@@ -634,19 +634,19 @@ export function WatchPage() {
             data-tv-card
             aria-label="Exit player"
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
-            className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
+            className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-4 text-white transition
               hover:bg-black/90
               focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
               ${exitVisible ? "opacity-100" : "opacity-0"}`}
           >
-            <X className="h-6 w-6" />
+            <X className="h-7 w-7" />
           </button>
 
           {/* Top-right controls — season picker + next episode — fade with exit button */}
           {type === "tv" && (
             <div
               data-season-picker
-              className={`absolute top-4 right-4 z-40 flex items-center gap-2 transition
+              className={`absolute top-4 right-4 z-40 flex items-center gap-2
                 ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
               {/* Season picker — always show for TV */}
@@ -719,7 +719,8 @@ export function WatchPage() {
                       totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                     ].join("");
                     // Full page reload so Videasy fully reinitialises from progress=0
-                    window.location.href = `/#/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
+                    const nextHash = `/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
+                    window.location.hash = nextHash;
                     window.location.reload();
                   }}
                   tabIndex={0}
@@ -742,11 +743,11 @@ export function WatchPage() {
                         nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                         totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                       ].join("");
-                      window.location.href = `/#/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
+                      window.location.hash = `/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
                       window.location.reload();
                     }
                   }}
-                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
+                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-6 py-4 text-sm font-bold text-white transition
                     hover:bg-white hover:text-black hover:border-white
                     focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
                 >
