@@ -633,23 +633,20 @@ export function WatchPage() {
             tabIndex={0}
             data-tv-card
             aria-label="Exit player"
-            onTouchStart={(e) => { e.currentTarget.style.transform = "scale(0.92)"; e.currentTarget.style.background = "white"; e.currentTarget.style.color = "black"; }}
-            onTouchEnd={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.background = ""; e.currentTarget.style.color = ""; }}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
-            className={`absolute left-4 top-4 z-50 flex items-center justify-center rounded-full bg-black/80 p-4 text-white
-              active:scale-90 active:bg-white active:text-black
+            className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
+              hover:bg-black/90
               focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
               ${exitVisible ? "opacity-100" : "opacity-0"}`}
-            style={{ WebkitTapHighlightColor: "transparent", minWidth: 52, minHeight: 52 }}
           >
-            <X className="h-7 w-7" />
+            <X className="h-6 w-6" />
           </button>
 
           {/* Top-right controls — season picker + next episode — fade with exit button */}
           {type === "tv" && (
             <div
               data-season-picker
-              className={`absolute top-4 right-4 z-50 flex items-center gap-2
+              className={`absolute top-4 right-4 z-40 flex items-center gap-2 transition
                 ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
               {/* Season picker — always show for TV */}
@@ -721,16 +718,11 @@ export function WatchPage() {
                       nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                       totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                     ].join("");
-                    // Save next ep URL then force a true full reload
-                    const nextHash = `/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
-                    localStorage.setItem("ttflix_next_ep", nextHash);
-                    window.location.reload();
+                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`);
                   }}
                   tabIndex={0}
                   data-tv-card
                   aria-label={`Next S${nextEp.season} E${nextEp.episode}`}
-                  onTouchStart={(e) => { e.currentTarget.style.transform = "scale(0.92)"; e.currentTarget.style.background = "white"; e.currentTarget.style.color = "black"; }}
-                  onTouchEnd={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.background = ""; e.currentTarget.style.color = ""; }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -748,15 +740,12 @@ export function WatchPage() {
                         nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                         totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                       ].join("");
-                      const nextHash = `/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
-                      localStorage.setItem("ttflix_next_ep", nextHash);
-                      window.location.reload();
+                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`);
                     }
                   }}
-                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-6 py-4 text-sm font-bold text-white
-                    active:scale-90 active:bg-white active:text-black active:border-white
+                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
+                    hover:bg-white hover:text-black hover:border-white
                     focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
-                  style={{ WebkitTapHighlightColor: "transparent", minHeight: 52 }}
                 >
                   <SkipForward className="h-5 w-5 shrink-0" />
                   Next Episode
