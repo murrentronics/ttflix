@@ -11,6 +11,13 @@ import { ScrollToTop } from "./components/ScrollToTop";
 import { UpdateChecker } from "./components/UpdateChecker";
 import "./styles.css";
 
+// If a next-episode navigation was stored before a reload, apply it now
+const pendingNav = sessionStorage.getItem("ttflix_next_ep");
+if (pendingNav) {
+  sessionStorage.removeItem("ttflix_next_ep");
+  window.location.hash = pendingNav;
+}
+
 const queryClient = new QueryClient();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

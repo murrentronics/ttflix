@@ -634,10 +634,11 @@ export function WatchPage() {
             data-tv-card
             aria-label="Exit player"
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
-            className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-4 text-white transition
-              hover:bg-black/90
+            className={`absolute left-4 top-4 z-50 flex items-center justify-center rounded-full bg-black/80 p-4 text-white
+              active:scale-90 active:bg-white active:text-black
               focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
               ${exitVisible ? "opacity-100" : "opacity-0"}`}
+            style={{ WebkitTapHighlightColor: "transparent", minWidth: 52, minHeight: 52 }}
           >
             <X className="h-7 w-7" />
           </button>
@@ -646,7 +647,7 @@ export function WatchPage() {
           {type === "tv" && (
             <div
               data-season-picker
-              className={`absolute top-4 right-4 z-40 flex items-center gap-2
+              className={`absolute top-4 right-4 z-50 flex items-center gap-2
                 ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
               {/* Season picker — always show for TV */}
@@ -718,9 +719,9 @@ export function WatchPage() {
                       nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                       totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                     ].join("");
-                    // Full page reload so Videasy fully reinitialises from progress=0
+                    // Save next ep URL then force a true full reload
                     const nextHash = `/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
-                    window.location.hash = nextHash;
+                    sessionStorage.setItem("ttflix_next_ep", nextHash);
                     window.location.reload();
                   }}
                   tabIndex={0}
@@ -743,13 +744,15 @@ export function WatchPage() {
                         nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                         totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                       ].join("");
-                      window.location.hash = `/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
+                      const nextHash = `/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
+                      sessionStorage.setItem("ttflix_next_ep", nextHash);
                       window.location.reload();
                     }
                   }}
-                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-6 py-4 text-sm font-bold text-white transition
-                    hover:bg-white hover:text-black hover:border-white
+                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-6 py-4 text-sm font-bold text-white
+                    active:scale-90 active:bg-white active:text-black active:border-white
                     focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
+                  style={{ WebkitTapHighlightColor: "transparent", minHeight: 52 }}
                 >
                   <SkipForward className="h-5 w-5 shrink-0" />
                   Next Episode
