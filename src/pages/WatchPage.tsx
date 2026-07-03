@@ -50,7 +50,6 @@ export function WatchPage() {
   const episode    = Number(searchParams.get("episode") ?? 1);
   // progress=0 means force start from beginning (passed when title was reset)
   const progressParam = searchParams.get("progress") !== null ? Number(searchParams.get("progress")) : undefined;
-  const bustParam    = searchParams.get("_") ?? "";
   // Carry episode/season counts through URL so remounts don't lose them
   const urlTotalEps  = searchParams.get("totalEps")  ? Number(searchParams.get("totalEps"))  : null;
   const urlTotalSeas = searchParams.get("totalSeas") ? Number(searchParams.get("totalSeas")) : null;
@@ -58,7 +57,7 @@ export function WatchPage() {
   const type   = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
 
-  const contentKey  = `${type}-${tmdbId}-${season}-${episode}-${progressParam ?? ""}-${bustParam}`;
+  const contentKey  = `${type}-${tmdbId}-${season}-${episode}-${progressParam ?? ""}`;
   const stillLoading = loading || profileLoading;
   const canWatch     = isAdmin || (!!user && profile?.status === "approved");
   const isKidsProfile = activeProfile?.is_kids ?? false;
@@ -218,7 +217,7 @@ export function WatchPage() {
           return prev;
         });
       }
-    }, 8_000);
+    }, 15_000);
   }, [providers]);
 
   useEffect(() => {
@@ -601,7 +600,15 @@ export function WatchPage() {
           allowFullScreen title={title || "TTFlix Player"} />
       )}
 
-      {/* Tap anywhere on the player to show controls */}
+      {/* Transparent tap-catcher above the iframe — triggers controls visibility on mobile tap.
+          pointer-events-none after controls are visible so taps reach the iframe normally. */}
+      {!kidsBlocked && !exitVisible && (
+        <div
+          className="absolute inset-0 z-20"
+          onTouchStart={showExit}
+          onClick={showExit}
+        />
+      )}
 
       {kidsBlocked && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center px-6 text-center gap-6">
@@ -621,26 +628,24 @@ export function WatchPage() {
       {!loaderVisible && !kidsBlocked && (
         <>
           <button
-            onTouchEnd={(e) => { e.preventDefault(); navigate("/"); }}
             onClick={() => navigate("/")}
             tabIndex={0}
             data-tv-card
             aria-label="Exit player"
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
-            className={`absolute left-4 top-4 z-50 flex items-center justify-center rounded-full bg-black/80 p-4 text-white
-              active:scale-90 active:bg-white active:text-black
+            className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
+              hover:bg-black/90
               focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
               ${exitVisible ? "opacity-100" : "opacity-0"}`}
-            style={{ WebkitTapHighlightColor: "transparent", minWidth: 52, minHeight: 52 }}
           >
-            <X className="h-7 w-7" />
+            <X className="h-6 w-6" />
           </button>
 
           {/* Top-right controls — season picker + next episode — fade with exit button */}
           {type === "tv" && (
             <div
               data-season-picker
-              className={`absolute top-4 right-4 z-50 flex items-center gap-2
+              className={`absolute top-4 right-4 z-40 flex items-center gap-2 transition
                 ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
               {/* Season picker — always show for TV */}
@@ -717,24 +722,6 @@ export function WatchPage() {
                   tabIndex={0}
                   data-tv-card
                   aria-label={`Next S${nextEp.season} E${nextEp.episode}`}
-                  onTouchEnd={(e) => {
-                    e.preventDefault();
-                    const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
-                    const duration   = progressRef.current.duration;
-                    const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
-                    const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
-                    if (watched > 10) persistRef.current(watched, duration);
-                    const nextSeasonCount = nextEp.season === season
-                      ? episodeCount
-                      : episodeCounts.length >= nextEp.season
-                        ? episodeCounts[nextEp.season - 1]
-                        : seasonEpCountCache.get(`${tmdbId}-${nextEp.season}`) ?? null;
-                    const countParams = [
-                      nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
-                      totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
-                    ].join("");
-                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`);
-                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -755,10 +742,9 @@ export function WatchPage() {
                       navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`);
                     }
                   }}
-                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-6 py-4 text-sm font-bold text-white
-                    active:scale-90 active:bg-white active:text-black active:border-white
+                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
+                    hover:bg-white hover:text-black hover:border-white
                     focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
-                  style={{ WebkitTapHighlightColor: "transparent", minHeight: 52 }}
                 >
                   <SkipForward className="h-5 w-5 shrink-0" />
                   Next Episode
