@@ -50,7 +50,6 @@ export function WatchPage() {
   const episode    = Number(searchParams.get("episode") ?? 1);
   // progress=0 means force start from beginning (passed when title was reset)
   const progressParam = searchParams.get("progress") !== null ? Number(searchParams.get("progress")) : undefined;
-  const bustParam    = searchParams.get("_") ?? "";
   // Carry episode/season counts through URL so remounts don't lose them
   const urlTotalEps  = searchParams.get("totalEps")  ? Number(searchParams.get("totalEps"))  : null;
   const urlTotalSeas = searchParams.get("totalSeas") ? Number(searchParams.get("totalSeas")) : null;
@@ -58,7 +57,7 @@ export function WatchPage() {
   const type   = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
 
-  const contentKey  = `${type}-${tmdbId}-${season}-${episode}-${progressParam ?? ""}-${bustParam}`;
+  const contentKey  = `${type}-${tmdbId}-${season}-${episode}`;
   const stillLoading = loading || profileLoading;
   const canWatch     = isAdmin || (!!user && profile?.status === "approved");
   const isKidsProfile = activeProfile?.is_kids ?? false;
@@ -197,9 +196,7 @@ export function WatchPage() {
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    // Read progressParam fresh from searchParams at effect time (not stale closure)
-    const p = searchParams.get("progress") !== null ? Number(searchParams.get("progress")) : undefined;
-    const freshProviders = getProviders(type, tmdbId, season, episode, p);
+    const freshProviders = getProviders(type, tmdbId, season, episode, progressParam);
     setProviderIndex(0);
     setSrc(freshProviders[0].url);
     providerSignalRef.current = false;
