@@ -83,6 +83,10 @@ export function WatchPage() {
   const currentEpisodeRef = useRef({ season, episode });
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
+  // If this title was removed from Continue Watching, skip Videasy (which has resume memory)
+  // and go straight to VidSrc which has no stored position.
+  const fresh = sessionStorage.getItem(`fresh-${type}-${tmdbId}`) === "1";
+
   // ── Next episode ──────────────────────────────────────────────────────────
   // Module-level caches survive remounts within the same browser session.
   // On first-ever load of a show they start null, so we fetch immediately.
@@ -188,15 +192,15 @@ export function WatchPage() {
     return { season, episode: episode + 1 };
   })();
 
-  const providers        = getProviders(type, tmdbId, season, episode);
+  const providers        = getProviders(type, tmdbId, season, episode, fresh);
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc]    = useState(() => providers[0].url);
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    const fresh = getProviders(type, tmdbId, season, episode);
+    const freshProviders = getProviders(type, tmdbId, season, episode, fresh);
     setProviderIndex(0);
-    setSrc(fresh[0].url);
+    setSrc(freshProviders[0].url);
     providerSignalRef.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentKey]);
@@ -306,6 +310,8 @@ export function WatchPage() {
     }
     if (kidsBlockedRef.current) return;
     savedInitial.current = true;
+    // Clear the fresh flag — next play of this title uses Videasy normally
+    sessionStorage.removeItem(`fresh-${type}-${tmdbId}`);
     if (!durationReadyRef.current) {
       await new Promise<void>((resolve) => {
         const check = setInterval(() => { if (durationReadyRef.current) { clearInterval(check); resolve(); } }, 200);
