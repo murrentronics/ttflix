@@ -84,7 +84,10 @@ export function WatchPage() {
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
   // ── Next episode ──────────────────────────────────────────────────────────
-  // Use module-level caches so counts survive React remounts on episode navigation.
+  // Module-level caches survive remounts within the same browser session.
+  // On first-ever load of a show they start null, so we fetch immediately.
+  // Optimistic fallback keeps the button visible while fetching.
+
   const [totalSeasons, setTotalSeasons] = useState<number | null>(
     totalSeasonsCache.get(tmdbId) ?? urlTotalSeas ?? null
   );
@@ -94,9 +97,9 @@ export function WatchPage() {
   const [episodeCounts, setEpisodeCounts] = useState<number[]>([]);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
 
+  // Fetch totalSeasons (skip if cached)
   useEffect(() => {
     if (type !== "tv") return;
-    // Already have it cached
     if (totalSeasonsCache.has(tmdbId)) {
       setTotalSeasons(totalSeasonsCache.get(tmdbId)!);
       return;
@@ -107,30 +110,29 @@ export function WatchPage() {
           totalSeasonsCache.set(tmdbId, d.number_of_seasons);
           setTotalSeasons(d.number_of_seasons);
         }
-      })
-      .catch(() => {});
+      }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type]);
 
+  // Fetch episodeCount for current season (skip if cached)
   useEffect(() => {
     if (type !== "tv") return;
-    const cacheKey = `${tmdbId}-${season}`;
-    if (seasonEpCountCache.has(cacheKey)) {
-      setEpisodeCount(seasonEpCountCache.get(cacheKey)!);
+    const key = `${tmdbId}-${season}`;
+    if (seasonEpCountCache.has(key)) {
+      setEpisodeCount(seasonEpCountCache.get(key)!);
       return;
     }
     getSeasonEpisodes({ data: { id: tmdbId, season } })
       .then((eps: any[]) => {
         if (eps?.length) {
-          seasonEpCountCache.set(cacheKey, eps.length);
+          seasonEpCountCache.set(key, eps.length);
           setEpisodeCount(eps.length);
         }
-      })
-      .catch(() => {});
+      }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type, season]);
 
-  // Fetch ALL seasons' episode counts once we know totalSeasons — also populate cache
+  // Fetch all season counts once totalSeasons is known — populates cache for future navigations
   useEffect(() => {
     if (type !== "tv" || totalSeasons === null) return;
     Promise.all(
@@ -140,8 +142,7 @@ export function WatchPage() {
             const count = eps?.length ?? 0;
             seasonEpCountCache.set(`${tmdbId}-${i + 1}`, count);
             return count;
-          })
-          .catch(() => 0)
+          }).catch(() => 0)
       )
     ).then(setEpisodeCounts).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,18 +159,33 @@ export function WatchPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showSeasonPicker]);
 
-  // nextEp — cache guarantees episodeCount/totalSeasons are populated immediately
-  // after the first visit to any episode. Only null on the very first load ever.
+  // nextEp — two-tier logic:
+  // 1. If we have real data (from cache or fetch) → use it precisely.
+  // 2. If still loading (null) → show optimistically so button is never hidden on first load.
+  //    Optimistic cap: episode+1 always shown while episodeCount unknown.
+  //    Season+1 shown while totalSeasons unknown only if we finished this season.
   const nextEp = (() => {
     if (type !== "tv") return null;
+
+    // Prefer the full episodeCounts array (all seasons), fall back to single-season count
     const curSeasonCount = episodeCounts.length >= season
       ? episodeCounts[season - 1]
       : episodeCount;
-    if (curSeasonCount === null) return null; // first-ever load, wait for fetch
-    if (episode < curSeasonCount) return { season, episode: episode + 1 };
-    if (totalSeasons === null) return null;
-    if (season < totalSeasons) return { season: season + 1, episode: 1 };
-    return null;
+
+    if (curSeasonCount !== null) {
+      // We know exactly how many episodes are in this season
+      if (episode < curSeasonCount) return { season, episode: episode + 1 };
+      // Last episode of this season — check next season
+      if (totalSeasons !== null) {
+        return season < totalSeasons ? { season: season + 1, episode: 1 } : null;
+      }
+      // totalSeasons still loading — show S+1 E1 optimistically
+      return { season: season + 1, episode: 1 };
+    }
+
+    // episodeCount still loading — show next ep optimistically
+    // This covers first-ever load before any fetch returns
+    return { season, episode: episode + 1 };
   })();
 
   const providers        = getProviders(type, tmdbId, season, episode);
