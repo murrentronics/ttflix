@@ -6,8 +6,8 @@ import { Capacitor } from "@capacitor/core";
 const VERSION_URL = "https://ttflix.pages.dev/version.json";
 
 // Current version — patched automatically by the CI version bump script
-const CURRENT_VERSION_NAME = "1.1.238";
-const CURRENT_VERSION_CODE = 240;
+const CURRENT_VERSION_NAME = "1.1.239";
+const CURRENT_VERSION_CODE = 241;
 
 type VersionInfo = {
   versionName: string;

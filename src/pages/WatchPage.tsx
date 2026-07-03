@@ -744,7 +744,9 @@ export function WatchPage() {
                   }}
                   className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
                     hover:bg-white hover:text-black hover:border-white
+                    active:scale-95 active:bg-white active:text-black active:border-white
                     focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
+                  style={{ WebkitTapHighlightColor: "rgba(255,255,255,0.3)" }}
                 >
                   <SkipForward className="h-5 w-5 shrink-0" />
                   Next Episode
