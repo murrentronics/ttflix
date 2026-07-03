@@ -633,6 +633,8 @@ export function WatchPage() {
             tabIndex={0}
             data-tv-card
             aria-label="Exit player"
+            onTouchStart={(e) => { e.currentTarget.style.transform = "scale(0.92)"; e.currentTarget.style.background = "white"; e.currentTarget.style.color = "black"; }}
+            onTouchEnd={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.background = ""; e.currentTarget.style.color = ""; }}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
             className={`absolute left-4 top-4 z-50 flex items-center justify-center rounded-full bg-black/80 p-4 text-white
               active:scale-90 active:bg-white active:text-black
@@ -721,12 +723,14 @@ export function WatchPage() {
                     ].join("");
                     // Save next ep URL then force a true full reload
                     const nextHash = `/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
-                    sessionStorage.setItem("ttflix_next_ep", nextHash);
+                    localStorage.setItem("ttflix_next_ep", nextHash);
                     window.location.reload();
                   }}
                   tabIndex={0}
                   data-tv-card
                   aria-label={`Next S${nextEp.season} E${nextEp.episode}`}
+                  onTouchStart={(e) => { e.currentTarget.style.transform = "scale(0.92)"; e.currentTarget.style.background = "white"; e.currentTarget.style.color = "black"; }}
+                  onTouchEnd={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.background = ""; e.currentTarget.style.color = ""; }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -745,7 +749,7 @@ export function WatchPage() {
                         totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                       ].join("");
                       const nextHash = `/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`;
-                      sessionStorage.setItem("ttflix_next_ep", nextHash);
+                      localStorage.setItem("ttflix_next_ep", nextHash);
                       window.location.reload();
                     }
                   }}
