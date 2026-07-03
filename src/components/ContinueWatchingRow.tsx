@@ -110,6 +110,9 @@ export function ContinueWatchingRow() {
 
                 <div className="mt-1.5 px-0.5">
                   <p className="line-clamp-1 text-xs font-semibold text-foreground leading-tight">{item.title}</p>
+                  {item.media_type === "tv" && item.season != null && item.episode != null && (
+                    <p className="text-xs text-muted-foreground mt-0.5">S{item.season} E{item.episode}</p>
+                  )}
                 </div>
 
                 <button

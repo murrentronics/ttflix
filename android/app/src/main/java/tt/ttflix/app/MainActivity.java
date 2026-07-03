@@ -73,27 +73,6 @@ public class MainActivity extends BridgeActivity {
     /** Exposed to JavaScript as window.AndroidPlayer — launches PlayerActivity */
     public class PlayerBridge {
         @JavascriptInterface
-        public void clearVideasyStorage(String tmdbId) {
-            // Called from WatchPage before loading a "fresh" play.
-            // Wipes all localStorage keys containing this tmdbId from the
-            // Capacitor WebView so Videasy has no stored resume for this content.
-            runOnUiThread(() -> {
-                if (getBridge() != null && getBridge().getWebView() != null) {
-                    getBridge().getWebView().evaluateJavascript(
-                        "(function(){" +
-                        "  try{" +
-                        "    [localStorage,sessionStorage].forEach(function(s){" +
-                        "      Object.keys(s).forEach(function(k){" +
-                        "        if(k.indexOf('" + tmdbId + "')>=0)s.removeItem(k);" +
-                        "      });" +
-                        "    });" +
-                        "  }catch(e){}" +
-                        "})()", null);
-                }
-            });
-        }
-
-        @JavascriptInterface
         public void open(String url) {
             runOnUiThread(() -> {
                 Intent intent = new Intent(MainActivity.this, PlayerActivity.class);

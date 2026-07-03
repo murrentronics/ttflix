@@ -83,34 +83,6 @@ export function WatchPage() {
   const currentEpisodeRef = useRef({ season, episode });
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
-  // If our DB has a reset row (watched_seconds < 5), clear Videasy's localStorage
-  // for this tmdbId so it has no resume memory, then flag to seek to 0 as backup.
-  const shouldSeekToStart = useRef(false);
-  useEffect(() => {
-    if (!user || !effectiveProfile) return;
-    supabase.from("watch_progress").select("watched_seconds")
-      .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
-      .eq("tmdb_id", tmdbId).eq("media_type", type)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data && data.watched_seconds < 5) {
-          shouldSeekToStart.current = true;
-          // Clear Videasy localStorage via Android bridge (clears resume memory)
-          (window as any).AndroidPlayer?.clearVideasyStorage?.(String(tmdbId));
-          // Also clear directly from this WebView context
-          try {
-            Object.keys(localStorage).forEach(k => {
-              if (k.includes(String(tmdbId))) localStorage.removeItem(k);
-            });
-            Object.keys(sessionStorage).forEach(k => {
-              if (k.includes(String(tmdbId))) sessionStorage.removeItem(k);
-            });
-          } catch { /* ignore */ }
-        }
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tmdbId, type]);
-
   // ── Next episode ──────────────────────────────────────────────────────────
   // Module-level caches survive remounts within the same browser session.
   // On first-ever load of a show they start null, so we fetch immediately.
@@ -411,15 +383,6 @@ export function WatchPage() {
         }
         if (d?.type === "ready" || d?.event === "ready") {
           providerSignalRef.current = true; triggerExplosion(); saveInitial();
-          // If this title was reset (watched_seconds < 5), seek to 0 to override Videasy's resume
-          if (shouldSeekToStart.current) {
-            shouldSeekToStart.current = false;
-            setTimeout(() => {
-              iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "seek", time: 0 }), "*");
-              iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ command: "seek", position: 0 }), "*");
-              iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ type: "seek", seconds: 0 }), "*");
-            }, 500);
-          }
         }
         if (d?.type === "episodeChange" || d?.event === "episodeChange") {
           if (d?.season)  currentEpisodeRef.current.season  = Number(d.season);
