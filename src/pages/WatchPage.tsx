@@ -48,6 +48,8 @@ export function WatchPage() {
   const backdrop   = searchParams.get("backdrop") ?? "";
   const season     = Number(searchParams.get("season") ?? 1);
   const episode    = Number(searchParams.get("episode") ?? 1);
+  // progress=0 means force start from beginning (passed when title was reset)
+  const progressParam = searchParams.get("progress") !== null ? Number(searchParams.get("progress")) : undefined;
   // Carry episode/season counts through URL so remounts don't lose them
   const urlTotalEps  = searchParams.get("totalEps")  ? Number(searchParams.get("totalEps"))  : null;
   const urlTotalSeas = searchParams.get("totalSeas") ? Number(searchParams.get("totalSeas")) : null;
@@ -82,21 +84,6 @@ export function WatchPage() {
 
   const currentEpisodeRef = useRef({ season, episode });
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
-
-  // If DB shows watched_seconds < 5 (title was reset via X button),
-  // pass progress=0 to Videasy so it starts from the beginning.
-  const [forceProgress, setForceProgress] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    if (!user || !effectiveProfile) return;
-    supabase.from("watch_progress").select("watched_seconds")
-      .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
-      .eq("tmdb_id", tmdbId).eq("media_type", type)
-      .maybeSingle()
-      .then(({ data }) => {
-        setForceProgress(data && data.watched_seconds < 5 ? 0 : undefined);
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tmdbId, type]);
 
   // ── Next episode ──────────────────────────────────────────────────────────
   // Module-level caches survive remounts within the same browser session.
@@ -203,18 +190,18 @@ export function WatchPage() {
     return { season, episode: episode + 1 };
   })();
 
-  const providers        = getProviders(type, tmdbId, season, episode, forceProgress);
+  const providers        = getProviders(type, tmdbId, season, episode, progressParam);
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc]    = useState(() => providers[0].url);
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    const freshProviders = getProviders(type, tmdbId, season, episode, forceProgress);
+    const freshProviders = getProviders(type, tmdbId, season, episode, progressParam);
     setProviderIndex(0);
     setSrc(freshProviders[0].url);
     providerSignalRef.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentKey, forceProgress]);
+  }, [contentKey]);
 
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startFallbackTimer = useCallback(() => {
@@ -321,7 +308,6 @@ export function WatchPage() {
     }
     if (kidsBlockedRef.current) return;
     savedInitial.current = true;
-    setForceProgress(undefined); // clear so next play resumes normally
     if (!durationReadyRef.current) {
       await new Promise<void>((resolve) => {
         const check = setInterval(() => { if (durationReadyRef.current) { clearInterval(check); resolve(); } }, 200);
