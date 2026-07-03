@@ -83,14 +83,18 @@ export function WatchPage() {
   const currentEpisodeRef = useRef({ season, episode });
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
-  const seekToStartRef = useRef(false);
+  // If DB shows watched_seconds < 5 (title was reset via X button),
+  // pass progress=0 to Videasy so it starts from the beginning.
+  const [forceProgress, setForceProgress] = useState<number | undefined>(undefined);
   useEffect(() => {
     if (!user || !effectiveProfile) return;
     supabase.from("watch_progress").select("watched_seconds")
       .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
       .eq("tmdb_id", tmdbId).eq("media_type", type)
       .maybeSingle()
-      .then(({ data }) => { if (data && data.watched_seconds < 5) seekToStartRef.current = true; });
+      .then(({ data }) => {
+        setForceProgress(data && data.watched_seconds < 5 ? 0 : undefined);
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tmdbId, type]);
 
@@ -199,18 +203,18 @@ export function WatchPage() {
     return { season, episode: episode + 1 };
   })();
 
-  const providers        = getProviders(type, tmdbId, season, episode);
+  const providers        = getProviders(type, tmdbId, season, episode, forceProgress);
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc]    = useState(() => providers[0].url);
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    const freshProviders = getProviders(type, tmdbId, season, episode);
+    const freshProviders = getProviders(type, tmdbId, season, episode, forceProgress);
     setProviderIndex(0);
     setSrc(freshProviders[0].url);
     providerSignalRef.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentKey]);
+  }, [contentKey, forceProgress]);
 
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startFallbackTimer = useCallback(() => {
@@ -317,6 +321,7 @@ export function WatchPage() {
     }
     if (kidsBlockedRef.current) return;
     savedInitial.current = true;
+    setForceProgress(undefined); // clear so next play resumes normally
     if (!durationReadyRef.current) {
       await new Promise<void>((resolve) => {
         const check = setInterval(() => { if (durationReadyRef.current) { clearInterval(check); resolve(); } }, 200);
@@ -394,23 +399,6 @@ export function WatchPage() {
         }
         if (d?.type === "ready" || d?.event === "ready") {
           providerSignalRef.current = true; triggerExplosion(); saveInitial();
-          if (seekToStartRef.current) {
-            seekToStartRef.current = false;
-            const iframe = iframeRef.current;
-            if (iframe?.contentWindow) {
-              setTimeout(() => {
-                // Try every known postMessage seek format
-                const win = iframe.contentWindow!;
-                win.postMessage(JSON.stringify({ event: "seek", time: 0 }), "*");
-                win.postMessage(JSON.stringify({ type: "seek", time: 0 }), "*");
-                win.postMessage(JSON.stringify({ command: "seek", position: 0 }), "*");
-                win.postMessage(JSON.stringify({ action: "seek", seconds: 0 }), "*");
-                win.postMessage(JSON.stringify({ method: "seek", value: 0 }), "*");
-                win.postMessage(JSON.stringify({ event: "seekTo", time: 0 }), "*");
-                win.postMessage(JSON.stringify({ type: "seekTo", seconds: 0 }), "*");
-              }, 1000);
-            }
-          }
         }
         if (d?.type === "episodeChange" || d?.event === "episodeChange") {
           if (d?.season)  currentEpisodeRef.current.season  = Number(d.season);
