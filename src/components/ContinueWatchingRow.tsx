@@ -66,9 +66,14 @@ export function ContinueWatchingRow() {
     navigate(playUrl(item, item.season ?? 1, item.episode ?? 1));
   };
 
+  const handleStartOver = (item: WatchProgress) => {
+    setPrompt(null);
+    navigate(`${playUrl(item, 1, 1)}&progress=0&_=${Date.now()}`);
+  };
+
   const handlePlayEpisode = (item: WatchProgress, season: number, episode: number) => {
     setPrompt(null);
-    navigate(playUrl(item, season, episode));
+    navigate(`${playUrl(item, season, episode)}&progress=0&_=${Date.now()}`);
   };
   return (
     <>
@@ -137,6 +142,7 @@ export function ContinueWatchingRow() {
       <ResumeModal
         item={prompt}
         onContinue={handleContinue}
+        onStartOver={handleStartOver}
         onPlayEpisode={handlePlayEpisode}
         onClose={() => setPrompt(null)}
       />

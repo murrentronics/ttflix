@@ -57,7 +57,7 @@ export function WatchPage() {
   const type   = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
 
-  const contentKey  = `${type}-${tmdbId}-${season}-${episode}`;
+  const contentKey  = `${type}-${tmdbId}-${season}-${episode}-${progressParam ?? ""}`;
   const stillLoading = loading || profileLoading;
   const canWatch     = isAdmin || (!!user && profile?.status === "approved");
   const isKidsProfile = activeProfile?.is_kids ?? false;
@@ -196,7 +196,9 @@ export function WatchPage() {
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    const freshProviders = getProviders(type, tmdbId, season, episode, progressParam);
+    // Read progressParam fresh from searchParams at effect time (not stale closure)
+    const p = searchParams.get("progress") !== null ? Number(searchParams.get("progress")) : undefined;
+    const freshProviders = getProviders(type, tmdbId, season, episode, p);
     setProviderIndex(0);
     setSrc(freshProviders[0].url);
     providerSignalRef.current = false;
