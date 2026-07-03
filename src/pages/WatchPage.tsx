@@ -218,7 +218,7 @@ export function WatchPage() {
           return prev;
         });
       }
-    }, 15_000);
+    }, 8_000);
   }, [providers]);
 
   useEffect(() => {
@@ -601,15 +601,7 @@ export function WatchPage() {
           allowFullScreen title={title || "TTFlix Player"} />
       )}
 
-      {/* Transparent tap-catcher above the iframe — triggers controls visibility on mobile tap.
-          pointer-events-none after controls are visible so taps reach the iframe normally. */}
-      {!kidsBlocked && !exitVisible && (
-        <div
-          className="absolute inset-0 z-20"
-          onTouchStart={showExit}
-          onClick={showExit}
-        />
-      )}
+      {/* Tap anywhere on the player to show controls */}
 
       {kidsBlocked && (
         <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center px-6 text-center gap-6">
