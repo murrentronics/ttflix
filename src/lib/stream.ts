@@ -5,21 +5,32 @@ export function getProviders(
   tmdbId: number,
   season = 1,
   episode = 1,
-  fresh = false,
 ): Provider[] {
   const color = "E50914";
 
-  const videasy: Provider = mediaType === "tv"
-    ? { name: "Videasy", url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplay=1&postMessageOrigin=*` }
-    : { name: "Videasy", url: `https://player.videasy.net/movie/${tmdbId}?color=${color}&overlay=true&autoplay=1&postMessageOrigin=*` };
+  if (mediaType === "tv") {
+    return [
+      {
+        name: "Videasy",
+        url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplay=1&postMessageOrigin=*`,
+      },
+      {
+        name: "VidSrc",
+        url: `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}?autoplay=1`,
+      },
+    ];
+  }
 
-  const vidsrc: Provider = mediaType === "tv"
-    ? { name: "VidSrc", url: `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}?autoplay=1` }
-    : { name: "VidSrc", url: `https://vidsrc.to/embed/movie/${tmdbId}?autoplay=1` };
-
-  // When fresh=true (title was removed from continue watching), use VidSrc first
-  // since it has no stored resume position, unlike Videasy.
-  return fresh ? [vidsrc, videasy] : [videasy, vidsrc];
+  return [
+    {
+      name: "Videasy",
+      url: `https://player.videasy.net/movie/${tmdbId}?color=${color}&overlay=true&autoplay=1&postMessageOrigin=*`,
+    },
+    {
+      name: "VidSrc",
+      url: `https://vidsrc.to/embed/movie/${tmdbId}?autoplay=1`,
+    },
+  ];
 }
 
 export function streamUrl(

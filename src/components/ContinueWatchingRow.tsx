@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
-import { fetchContinueWatching, removeProgress, resetProgress, type WatchProgress } from "@/lib/continue-watching";
+import { fetchContinueWatching, removeProgress, type WatchProgress } from "@/lib/continue-watching";
 import { img } from "@/lib/tmdb";
 import { ResumeModal } from "./ResumeModal";
 import { navigateVertical } from "@/lib/tv-navigation";
@@ -53,9 +53,7 @@ export function ContinueWatchingRow() {
 
   const handleRemove = async (item: WatchProgress) => {
     if (!user || !effectiveProfile) return;
-    await resetProgress(user.id, effectiveProfile.id, item.tmdb_id, item.media_type);
-    // Mark this title as reset so WatchPage skips Videasy resume on next play
-    sessionStorage.setItem(`fresh-${item.media_type}-${item.tmdb_id}`, "1");
+    await removeProgress(user.id, effectiveProfile.id, item.tmdb_id, item.media_type);
     setItems((prev) => prev.filter((i) => i.tmdb_id !== item.tmdb_id || i.media_type !== item.media_type));
     if (prompt?.tmdb_id === item.tmdb_id) setPrompt(null);
   };

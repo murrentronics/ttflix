@@ -83,9 +83,20 @@ export function WatchPage() {
   const currentEpisodeRef = useRef({ season, episode });
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
 
-  // If this title was removed from Continue Watching, skip Videasy (which has resume memory)
-  // and go straight to VidSrc which has no stored position.
-  const fresh = sessionStorage.getItem(`fresh-${type}-${tmdbId}`) === "1";
+  // If our DB has a reset row (watched_seconds < 5), send a seek(0) postMessage
+  // to Videasy once it's ready — overriding its server-side resume memory.
+  const shouldSeekToStart = useRef(false);
+  useEffect(() => {
+    if (!user || !effectiveProfile) return;
+    supabase.from("watch_progress").select("watched_seconds")
+      .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
+      .eq("tmdb_id", tmdbId).eq("media_type", type)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data && data.watched_seconds < 5) shouldSeekToStart.current = true;
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tmdbId, type]);
 
   // ── Next episode ──────────────────────────────────────────────────────────
   // Module-level caches survive remounts within the same browser session.
@@ -192,13 +203,13 @@ export function WatchPage() {
     return { season, episode: episode + 1 };
   })();
 
-  const providers        = getProviders(type, tmdbId, season, episode, fresh);
+  const providers        = getProviders(type, tmdbId, season, episode);
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc]    = useState(() => providers[0].url);
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    const freshProviders = getProviders(type, tmdbId, season, episode, fresh);
+    const freshProviders = getProviders(type, tmdbId, season, episode);
     setProviderIndex(0);
     setSrc(freshProviders[0].url);
     providerSignalRef.current = false;
@@ -310,8 +321,6 @@ export function WatchPage() {
     }
     if (kidsBlockedRef.current) return;
     savedInitial.current = true;
-    // Clear the fresh flag — next play of this title uses Videasy normally
-    sessionStorage.removeItem(`fresh-${type}-${tmdbId}`);
     if (!durationReadyRef.current) {
       await new Promise<void>((resolve) => {
         const check = setInterval(() => { if (durationReadyRef.current) { clearInterval(check); resolve(); } }, 200);
@@ -389,6 +398,15 @@ export function WatchPage() {
         }
         if (d?.type === "ready" || d?.event === "ready") {
           providerSignalRef.current = true; triggerExplosion(); saveInitial();
+          // If this title was reset (watched_seconds < 5), seek to 0 to override Videasy's resume
+          if (shouldSeekToStart.current) {
+            shouldSeekToStart.current = false;
+            setTimeout(() => {
+              iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "seek", time: 0 }), "*");
+              iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ command: "seek", position: 0 }), "*");
+              iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ type: "seek", seconds: 0 }), "*");
+            }, 500);
+          }
         }
         if (d?.type === "episodeChange" || d?.event === "episodeChange") {
           if (d?.season)  currentEpisodeRef.current.season  = Number(d.season);
