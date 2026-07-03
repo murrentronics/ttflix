@@ -706,7 +706,6 @@ export function WatchPage() {
                     const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
                     const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
                     if (watched > 10) persistRef.current(watched, duration);
-                    // For same season: pass current episodeCount. For new season: look up from episodeCounts array or cache.
                     const nextSeasonCount = nextEp.season === season
                       ? episodeCount
                       : episodeCounts.length >= nextEp.season
@@ -716,7 +715,7 @@ export function WatchPage() {
                       nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                       totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                     ].join("");
-                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
+                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`);
                   }}
                   tabIndex={0}
                   data-tv-card
@@ -738,7 +737,7 @@ export function WatchPage() {
                         nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                         totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                       ].join("");
-                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
+                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`);
                     }
                   }}
                   className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
