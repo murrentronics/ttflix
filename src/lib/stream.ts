@@ -16,7 +16,7 @@ export function getProviders(
     return [
       {
         name: "Videasy",
-        url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplayNextEpisode=true&autoplay=1&postMessageOrigin=*`,
+        url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplay=1&postMessageOrigin=*`,
       },
       {
         name: "VidSrc",

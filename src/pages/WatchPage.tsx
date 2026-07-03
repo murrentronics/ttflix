@@ -744,7 +744,7 @@ export function WatchPage() {
                     focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
                 >
                   <SkipForward className="h-5 w-5 shrink-0" />
-                  S{nextEp.season} E{nextEp.episode}
+                  Next Episode
                 </button>
               )}
             </div>
