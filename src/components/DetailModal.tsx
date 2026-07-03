@@ -114,9 +114,7 @@ export function DetailModal() {
     const poster = data?.poster_path ?? "";
     const backdrop = data?.backdrop_path ?? "";
     const title = data?.title ?? current.title ?? "";
-    // Pass progress=0 if title was reset (watched_seconds < 5) so Videasy starts from beginning
-    const progressSuffix = watchProgress && watchProgress.watched_seconds < 5 ? "&progress=0" : "";
-    navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${season}&episode=${episode}${progressSuffix}`);
+    navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${season}&episode=${episode}`);
   };
 
   const isTv = current.mediaType === "tv";
@@ -219,16 +217,7 @@ export function DetailModal() {
                 </button>
               ) : (
                 <button
-                  onClick={() => {
-                    if (isBlockedForKids) return;
-                    close();
-                    if (!canWatch) { navigate("/"); return; }
-                    const poster = data?.poster_path ?? "";
-                    const backdrop = data?.backdrop_path ?? "";
-                    const title = data?.title ?? current.title ?? "";
-                    const s = isTv ? selectedSeason : 1;
-                    navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=1&progress=0`);
-                  }}
+                  onClick={() => handlePlay(isTv ? selectedSeason : 1, 1)}
                   className={`flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 ${focusStyle}`}
                 >
                   {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
