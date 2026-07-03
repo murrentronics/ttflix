@@ -48,6 +48,9 @@ export function WatchPage() {
   const backdrop   = searchParams.get("backdrop") ?? "";
   const season     = Number(searchParams.get("season") ?? 1);
   const episode    = Number(searchParams.get("episode") ?? 1);
+  // progress=0 means force start from beginning (passed when title was reset)
+  const progressParam = searchParams.get("progress") !== null ? Number(searchParams.get("progress")) : undefined;
+  const bustParam    = searchParams.get("_") ?? "";
   // Carry episode/season counts through URL so remounts don't lose them
   const urlTotalEps  = searchParams.get("totalEps")  ? Number(searchParams.get("totalEps"))  : null;
   const urlTotalSeas = searchParams.get("totalSeas") ? Number(searchParams.get("totalSeas")) : null;
@@ -55,7 +58,7 @@ export function WatchPage() {
   const type   = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
 
-  const contentKey  = `${type}-${tmdbId}-${season}-${episode}`;
+  const contentKey  = `${type}-${tmdbId}-${season}-${episode}-${progressParam ?? ""}-${bustParam}`;
   const stillLoading = loading || profileLoading;
   const canWatch     = isAdmin || (!!user && profile?.status === "approved");
   const isKidsProfile = activeProfile?.is_kids ?? false;
@@ -82,21 +85,6 @@ export function WatchPage() {
 
   const currentEpisodeRef = useRef({ season, episode });
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
-
-  // If DB shows watched_seconds < 5 (title was reset via X button),
-  // pass progress=0 to Videasy so it starts from the beginning.
-  const [forceProgress, setForceProgress] = useState<number | undefined>(undefined);
-  useEffect(() => {
-    if (!user || !effectiveProfile) return;
-    supabase.from("watch_progress").select("watched_seconds")
-      .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
-      .eq("tmdb_id", tmdbId).eq("media_type", type)
-      .maybeSingle()
-      .then(({ data }) => {
-        setForceProgress(data && data.watched_seconds < 5 ? 0 : undefined);
-      });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tmdbId, type]);
 
   // ── Next episode ──────────────────────────────────────────────────────────
   // Module-level caches survive remounts within the same browser session.
@@ -203,18 +191,20 @@ export function WatchPage() {
     return { season, episode: episode + 1 };
   })();
 
-  const providers        = getProviders(type, tmdbId, season, episode, forceProgress);
+  const providers        = getProviders(type, tmdbId, season, episode, progressParam);
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc]    = useState(() => providers[0].url);
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    const freshProviders = getProviders(type, tmdbId, season, episode, forceProgress);
+    // Read progressParam fresh from searchParams at effect time (not stale closure)
+    const p = searchParams.get("progress") !== null ? Number(searchParams.get("progress")) : undefined;
+    const freshProviders = getProviders(type, tmdbId, season, episode, p);
     setProviderIndex(0);
     setSrc(freshProviders[0].url);
     providerSignalRef.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentKey, forceProgress]);
+  }, [contentKey]);
 
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startFallbackTimer = useCallback(() => {
@@ -321,7 +311,6 @@ export function WatchPage() {
     }
     if (kidsBlockedRef.current) return;
     savedInitial.current = true;
-    setForceProgress(undefined); // clear so next play resumes normally
     if (!durationReadyRef.current) {
       await new Promise<void>((resolve) => {
         const check = setInterval(() => { if (durationReadyRef.current) { clearInterval(check); resolve(); } }, 200);
@@ -645,19 +634,20 @@ export function WatchPage() {
             data-tv-card
             aria-label="Exit player"
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
-            className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
-              hover:bg-black/90
+            className={`absolute left-4 top-4 z-50 flex items-center justify-center rounded-full bg-black/80 p-4 text-white
+              active:scale-90 active:bg-white active:text-black
               focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
               ${exitVisible ? "opacity-100" : "opacity-0"}`}
+            style={{ WebkitTapHighlightColor: "transparent", minWidth: 52, minHeight: 52 }}
           >
-            <X className="h-6 w-6" />
+            <X className="h-7 w-7" />
           </button>
 
           {/* Top-right controls — season picker + next episode — fade with exit button */}
           {type === "tv" && (
             <div
               data-season-picker
-              className={`absolute top-4 right-4 z-40 flex items-center gap-2 transition
+              className={`absolute top-4 right-4 z-50 flex items-center gap-2
                 ${exitVisible ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
               {/* Season picker — always show for TV */}
@@ -720,7 +710,6 @@ export function WatchPage() {
                     const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
                     const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
                     if (watched > 10) persistRef.current(watched, duration);
-                    // For same season: pass current episodeCount. For new season: look up from episodeCounts array or cache.
                     const nextSeasonCount = nextEp.season === season
                       ? episodeCount
                       : episodeCounts.length >= nextEp.season
@@ -730,7 +719,7 @@ export function WatchPage() {
                       nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                       totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                     ].join("");
-                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
+                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`);
                   }}
                   tabIndex={0}
                   data-tv-card
@@ -752,12 +741,13 @@ export function WatchPage() {
                         nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                         totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                       ].join("");
-                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
+                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`);
                     }
                   }}
-                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
-                    hover:bg-white hover:text-black hover:border-white
+                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-6 py-4 text-sm font-bold text-white
+                    active:scale-90 active:bg-white active:text-black active:border-white
                     focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
+                  style={{ WebkitTapHighlightColor: "transparent", minHeight: 52 }}
                 >
                   <SkipForward className="h-5 w-5 shrink-0" />
                   Next Episode

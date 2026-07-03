@@ -119,7 +119,20 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-4">
-          <Link to="/search" className="rounded p-1 text-foreground/90 transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label="Search">
+          <Link
+            to="/search"
+            data-tv-card
+            tabIndex={0}
+            className="rounded p-1 text-foreground/90 transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            aria-label="Search"
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                const first = document.querySelector<HTMLElement>("[data-tv-card]");
+                first?.focus();
+              }
+            }}
+          >
             <Search className="h-5 w-5" />
           </Link>
 
