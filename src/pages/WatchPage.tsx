@@ -48,7 +48,6 @@ export function WatchPage() {
   const backdrop   = searchParams.get("backdrop") ?? "";
   const season     = Number(searchParams.get("season") ?? 1);
   const episode    = Number(searchParams.get("episode") ?? 1);
-  // progress=0 means force start from beginning (passed when title was reset)
   const progressParam = searchParams.get("progress") !== null ? Number(searchParams.get("progress")) : undefined;
   // Carry episode/season counts through URL so remounts don't lose them
   const urlTotalEps  = searchParams.get("totalEps")  ? Number(searchParams.get("totalEps"))  : null;
@@ -57,7 +56,7 @@ export function WatchPage() {
   const type   = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
 
-  const contentKey  = `${type}-${tmdbId}-${season}-${episode}-${progressParam ?? ""}`;
+  const contentKey  = `${type}-${tmdbId}-${season}-${episode}`;
   const stillLoading = loading || profileLoading;
   const canWatch     = isAdmin || (!!user && profile?.status === "approved");
   const isKidsProfile = activeProfile?.is_kids ?? false;
@@ -84,6 +83,8 @@ export function WatchPage() {
 
   const currentEpisodeRef = useRef({ season, episode });
   useEffect(() => { currentEpisodeRef.current = { season, episode }; }, [season, episode]);
+
+  // progress=0 is passed via URL param when starting from beginning
 
   // ── Next episode ──────────────────────────────────────────────────────────
   // Module-level caches survive remounts within the same browser session.
@@ -196,9 +197,7 @@ export function WatchPage() {
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    // Read progressParam fresh from searchParams at effect time (not stale closure)
-    const p = searchParams.get("progress") !== null ? Number(searchParams.get("progress")) : undefined;
-    const freshProviders = getProviders(type, tmdbId, season, episode, p);
+    const freshProviders = getProviders(type, tmdbId, season, episode, progressParam);
     setProviderIndex(0);
     setSrc(freshProviders[0].url);
     providerSignalRef.current = false;
@@ -708,6 +707,7 @@ export function WatchPage() {
                     const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
                     const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
                     if (watched > 10) persistRef.current(watched, duration);
+                    // For same season: pass current episodeCount. For new season: look up from episodeCounts array or cache.
                     const nextSeasonCount = nextEp.season === season
                       ? episodeCount
                       : episodeCounts.length >= nextEp.season
@@ -744,9 +744,7 @@ export function WatchPage() {
                   }}
                   className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
                     hover:bg-white hover:text-black hover:border-white
-                    active:scale-95 active:bg-white active:text-black active:border-white
                     focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
-                  style={{ WebkitTapHighlightColor: "rgba(255,255,255,0.3)" }}
                 >
                   <SkipForward className="h-5 w-5 shrink-0" />
                   Next Episode
