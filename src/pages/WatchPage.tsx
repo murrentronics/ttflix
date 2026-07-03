@@ -627,15 +627,17 @@ export function WatchPage() {
       {!loaderVisible && !kidsBlocked && (
         <>
           <button
+            onTouchStart={(e) => { e.stopPropagation(); navigate("/"); }}
             onClick={() => navigate("/")}
             tabIndex={0}
             data-tv-card
             aria-label="Exit player"
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
             className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
-              hover:bg-black/90
+              hover:bg-black/90 active:bg-white active:text-black
               focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
               ${exitVisible ? "opacity-100" : "opacity-0"}`}
+            style={{ WebkitTapHighlightColor: "rgba(255,255,255,0.3)" }}
           >
             <X className="h-6 w-6" />
           </button>
@@ -701,13 +703,30 @@ export function WatchPage() {
               {/* Next Episode button */}
               {nextEp && (
                 <button
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+                    const duration   = progressRef.current.duration;
+                    const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
+                    const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
+                    if (watched > 10) persistRef.current(watched, duration);
+                    const nextSeasonCount = nextEp.season === season
+                      ? episodeCount
+                      : episodeCounts.length >= nextEp.season
+                        ? episodeCounts[nextEp.season - 1]
+                        : seasonEpCountCache.get(`${tmdbId}-${nextEp.season}`) ?? null;
+                    const countParams = [
+                      nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
+                      totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
+                    ].join("");
+                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}&progress=0${countParams}`);
+                  }}
                   onClick={() => {
                     const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
                     const duration   = progressRef.current.duration;
                     const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
                     const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
                     if (watched > 10) persistRef.current(watched, duration);
-                    // For same season: pass current episodeCount. For new season: look up from episodeCounts array or cache.
                     const nextSeasonCount = nextEp.season === season
                       ? episodeCount
                       : episodeCounts.length >= nextEp.season
@@ -743,8 +762,9 @@ export function WatchPage() {
                     }
                   }}
                   className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
-                    hover:bg-white hover:text-black hover:border-white
+                    hover:bg-white hover:text-black hover:border-white active:bg-white active:text-black active:border-white
                     focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
+                  style={{ WebkitTapHighlightColor: "rgba(255,255,255,0.3)" }}
                 >
                   <SkipForward className="h-5 w-5 shrink-0" />
                   Next Episode
