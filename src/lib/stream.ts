@@ -7,30 +7,29 @@ export function getProviders(
   episode = 1,
   progress?: number,
 ): Provider[] {
-  const color = "E50914";
   const progressParam = progress !== undefined ? `&progress=${progress}` : "";
 
   if (mediaType === "tv") {
     return [
       {
-        name: "Videasy",
-        url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplay=1&postMessageOrigin=*${progressParam}`,
+        name: "VidSrc",
+        url: `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}?autoplay=1${progressParam}`,
       },
       {
-        name: "VidSrc",
-        url: `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}?autoplay=1`,
+        name: "Videasy",
+        url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=E50914&nextEpisode=true&episodeSelector=true&autoplay=1&postMessageOrigin=*${progressParam}`,
       },
     ];
   }
 
   return [
     {
-      name: "Videasy",
-      url: `https://player.videasy.net/movie/${tmdbId}?color=${color}&overlay=true&autoplay=1&postMessageOrigin=*${progressParam}`,
+      name: "VidSrc",
+      url: `https://vidsrc.to/embed/movie/${tmdbId}?autoplay=1${progressParam}`,
     },
     {
-      name: "VidSrc",
-      url: `https://vidsrc.to/embed/movie/${tmdbId}?autoplay=1`,
+      name: "Videasy",
+      url: `https://player.videasy.net/movie/${tmdbId}?color=E50914&overlay=true&autoplay=1&postMessageOrigin=*${progressParam}`,
     },
   ];
 }
