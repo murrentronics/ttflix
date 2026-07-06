@@ -470,7 +470,7 @@ export function WatchPage() {
         const primaryUrl = providers[0].url;
         const android = (window as any).AndroidPlayer;
         if (android?.openWithNext && nextEp) {
-          const nextUrl = getProviders(type, tmdbId, nextEp.season, nextEp.episode)[0]?.url;
+          const nextUrl = getProviders(type, tmdbId, nextEp.season, nextEp.episode, 0)[0]?.url;
           if (nextUrl) {
             // Pass all season episode counts so PlayerActivity knows when to stop
             const countsStr = episodeCounts.length > 0
@@ -542,7 +542,7 @@ export function WatchPage() {
       const nextEpisode = newEp.episode < newSeasonCount ? newEp.episode + 1 : nextSeason ? 1 : null;
 
       if (nextSeason && nextEpisode) {
-        const nextNextUrl = getProviders(type, tmdbId, nextSeason, nextEpisode)[0]?.url ?? "";
+        const nextNextUrl = getProviders(type, tmdbId, nextSeason, nextEpisode, 0)[0]?.url ?? "";
         (window as any).TTFlixNative?.setNextUrl?.(nextNextUrl);
       } else {
         // End of series — tell native to hide the button
