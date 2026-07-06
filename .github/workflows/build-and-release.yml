@@ -171,23 +171,332 @@ jobs:
             <meta name="viewport" content="width=device-width, initial-scale=1"/>
             <title>TTFlix v${VERSION} — Download</title>
             <style>
-              *{margin:0;padding:0;box-sizing:border-box}
-              body{background:#141414;color:#fff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-              .card{background:#1f1f1f;border-radius:16px;padding:40px 32px;max-width:420px;width:100%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.6)}
-              .logo{font-size:2.6rem;font-weight:900;letter-spacing:-1px;margin-bottom:8px}
-              .logo span{color:#e50914}
-              .badge{display:inline-block;background:#e50914;color:#fff;font-size:.75rem;font-weight:700;padding:4px 12px;border-radius:20px;margin-bottom:28px}
-              .btn{display:flex;align-items:center;justify-content:center;gap:10px;background:#e50914;color:#fff;font-size:1.05rem;font-weight:700;padding:16px 24px;border-radius:10px;text-decoration:none;margin-bottom:12px}
-              .req{color:#555;font-size:.78rem}
+              *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+              /* ── Full-screen cinema poster background ── */
+              body {
+                min-height: 100vh;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                color: #fff;
+                overflow-x: hidden;
+                background: #0a0a0a;
+              }
+
+              /* Poster collage — real movie backdrops tiled in a grid via CSS */
+              .bg {
+                position: fixed;
+                inset: 0;
+                z-index: 0;
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                grid-template-rows: repeat(3, 1fr);
+                gap: 3px;
+                transform: scale(1.06) rotate(-1.5deg);
+                filter: brightness(0.38) saturate(1.2);
+              }
+              .bg-tile {
+                background-size: cover;
+                background-position: center;
+              }
+              /* TMDB backdrop images — popular movies, no API key needed for direct image URLs */
+              .t0  { background-image: url('https://image.tmdb.org/t/p/w500/fm6KqXpkh7triA08gg7t8j5wFIP.jpg'); }
+              .t1  { background-image: url('https://image.tmdb.org/t/p/w500/xJHokMbljvjADYdit5fK5VQsXEG.jpg'); }
+              .t2  { background-image: url('https://image.tmdb.org/t/p/w500/8rpDcsfLJypbO6vREc0547VKqEv.jpg'); }
+              .t3  { background-image: url('https://image.tmdb.org/t/p/w500/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg'); }
+              .t4  { background-image: url('https://image.tmdb.org/t/p/w500/v9Du2HC3hlknAvGlWhquRbeifa.jpg'); }
+              .t5  { background-image: url('https://image.tmdb.org/t/p/w500/d5iIlFn5s0ImszYzBPb8JPIfbXD.jpg'); }
+              .t6  { background-image: url('https://image.tmdb.org/t/p/w500/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg'); }
+              .t7  { background-image: url('https://image.tmdb.org/t/p/w500/qNBAXBIQlnOThrVvA6mA2B5ggkl.jpg'); }
+              .t8  { background-image: url('https://image.tmdb.org/t/p/w500/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg'); }
+              .t9  { background-image: url('https://image.tmdb.org/t/p/w500/rAiYTfKGqDCRIIqo664sY9XZIvQ.jpg'); }
+              .t10 { background-image: url('https://image.tmdb.org/t/p/w500/hO7KbdvGOtDdeg0W4Y5nKEHeDDh.jpg'); }
+              .t11 { background-image: url('https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg'); }
+              .t12 { background-image: url('https://image.tmdb.org/t/p/w500/AkJQpZp9WoNdj7pLYSj1L0RcMMN.jpg'); }
+              .t13 { background-image: url('https://image.tmdb.org/t/p/w500/9cqNxx0GxF0bAY74WX9LiyMoehO.jpg'); }
+              .t14 { background-image: url('https://image.tmdb.org/t/p/w500/kXfqcdQKsToO0OUXHcrrNCHDBzO.jpg'); }
+
+              /* Dark vignette + red tint gradient over the poster grid */
+              .bg-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: 1;
+                background:
+                  radial-gradient(ellipse at 50% 40%, rgba(229,9,20,0.10) 0%, transparent 65%),
+                  linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 40%, rgba(0,0,0,0.75) 100%);
+              }
+
+              /* Film grain — SVG noise filter */
+              .grain {
+                position: fixed;
+                inset: 0;
+                z-index: 2;
+                pointer-events: none;
+                opacity: 0.045;
+                background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+                background-repeat: repeat;
+                background-size: 180px 180px;
+              }
+
+              /* ── Page layout ── */
+              .page {
+                position: relative;
+                z-index: 10;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 32px 20px;
+              }
+
+              /* Top branding bar */
+              .top-logo {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                z-index: 20;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 18px 32px;
+                background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%);
+              }
+              .top-logo-text {
+                font-size: 1.7rem;
+                font-weight: 900;
+                letter-spacing: -0.5px;
+              }
+              .top-logo-text span { color: #e50914; }
+              .top-tagline {
+                font-size: 0.75rem;
+                color: rgba(255,255,255,0.45);
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+              }
+
+              /* ── Download card ── */
+              .card {
+                background: rgba(15,15,15,0.82);
+                backdrop-filter: blur(28px) saturate(1.4);
+                -webkit-backdrop-filter: blur(28px) saturate(1.4);
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 20px;
+                padding: 44px 40px 36px;
+                max-width: 440px;
+                width: 100%;
+                text-align: center;
+                box-shadow:
+                  0 0 0 1px rgba(229,9,20,0.15),
+                  0 32px 80px rgba(0,0,0,0.75),
+                  0 0 60px rgba(229,9,20,0.08);
+              }
+
+              /* Red glow line at top of card */
+              .card::before {
+                content: '';
+                display: block;
+                height: 3px;
+                background: linear-gradient(90deg, transparent, #e50914 30%, #ff6b6b 50%, #e50914 70%, transparent);
+                border-radius: 3px 3px 0 0;
+                margin: -44px -40px 36px;
+              }
+
+              .logo {
+                font-size: 3rem;
+                font-weight: 900;
+                letter-spacing: -1.5px;
+                line-height: 1;
+                margin-bottom: 4px;
+              }
+              .logo span { color: #e50914; }
+
+              .tagline {
+                font-size: 0.7rem;
+                letter-spacing: 0.25em;
+                text-transform: uppercase;
+                color: rgba(255,255,255,0.35);
+                margin-bottom: 24px;
+              }
+
+              /* Divider */
+              .divider {
+                height: 1px;
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+                margin: 0 -8px 24px;
+              }
+
+              .version-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                background: rgba(229,9,20,0.15);
+                border: 1px solid rgba(229,9,20,0.3);
+                color: #ff6b6b;
+                font-size: 0.7rem;
+                font-weight: 700;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                padding: 5px 14px;
+                border-radius: 20px;
+                margin-bottom: 28px;
+              }
+              .version-badge::before {
+                content: '';
+                display: inline-block;
+                width: 6px;
+                height: 6px;
+                background: #e50914;
+                border-radius: 50%;
+                box-shadow: 0 0 6px #e50914;
+              }
+
+              /* Download button */
+              .btn-download {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+                width: 100%;
+                background: linear-gradient(135deg, #e50914 0%, #b00710 100%);
+                color: #fff;
+                font-size: 1rem;
+                font-weight: 800;
+                letter-spacing: 0.02em;
+                padding: 17px 24px;
+                border-radius: 12px;
+                text-decoration: none;
+                margin-bottom: 14px;
+                box-shadow: 0 4px 24px rgba(229,9,20,0.45), 0 1px 0 rgba(255,255,255,0.1) inset;
+                transition: transform 0.15s ease, box-shadow 0.15s ease;
+              }
+              .btn-download:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 8px 32px rgba(229,9,20,0.6);
+              }
+              .btn-download:active { transform: translateY(0); }
+
+              .btn-icon {
+                width: 22px;
+                height: 22px;
+                background: rgba(255,255,255,0.15);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.8rem;
+                flex-shrink: 0;
+              }
+
+              /* Requirements row */
+              .req-row {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin-bottom: 20px;
+              }
+              .req-pill {
+                background: rgba(255,255,255,0.06);
+                border: 1px solid rgba(255,255,255,0.1);
+                color: rgba(255,255,255,0.5);
+                font-size: 0.68rem;
+                padding: 4px 10px;
+                border-radius: 20px;
+                white-space: nowrap;
+              }
+
+              /* Install note */
+              .install-note {
+                font-size: 0.72rem;
+                color: rgba(255,255,255,0.3);
+                line-height: 1.5;
+              }
+              .install-note strong { color: rgba(255,255,255,0.55); }
+
+              /* Bottom bar */
+              .bottom-bar {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                z-index: 20;
+                padding: 16px 32px;
+                background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%);
+                text-align: center;
+                font-size: 0.65rem;
+                color: rgba(255,255,255,0.2);
+                letter-spacing: 0.05em;
+              }
             </style>
           </head>
           <body>
-            <div class="card">
-              <div class="logo"><span>TT</span>FLIX</div>
-              <div class="badge">v${VERSION}</div>
-              <a class="btn" href="${APK_URL}">⬇&nbsp; Download TTFlix v${VERSION}</a>
-              <p class="req">Android 7.0+ · Enable "Install unknown apps" to install</p>
+
+            <!-- Poster grid background -->
+            <div class="bg" aria-hidden="true">
+              <div class="bg-tile t0"></div>
+              <div class="bg-tile t1"></div>
+              <div class="bg-tile t2"></div>
+              <div class="bg-tile t3"></div>
+              <div class="bg-tile t4"></div>
+              <div class="bg-tile t5"></div>
+              <div class="bg-tile t6"></div>
+              <div class="bg-tile t7"></div>
+              <div class="bg-tile t8"></div>
+              <div class="bg-tile t9"></div>
+              <div class="bg-tile t10"></div>
+              <div class="bg-tile t11"></div>
+              <div class="bg-tile t12"></div>
+              <div class="bg-tile t13"></div>
+              <div class="bg-tile t14"></div>
             </div>
+
+            <!-- Dark gradient overlay -->
+            <div class="bg-overlay" aria-hidden="true"></div>
+
+            <!-- Film grain -->
+            <div class="grain" aria-hidden="true"></div>
+
+            <!-- Top logo bar -->
+            <header class="top-logo">
+              <div class="top-logo-text"><span>TT</span>FLIX</div>
+              <div class="top-tagline">Trinidad &amp; Tobago</div>
+            </header>
+
+            <!-- Main content -->
+            <main class="page">
+              <div class="card">
+                <div class="logo"><span>TT</span>FLIX</div>
+                <div class="tagline">Stream Everything</div>
+
+                <div class="divider"></div>
+
+                <div class="version-badge">Version ${VERSION}</div>
+
+                <a class="btn-download" href="${APK_URL}" download>
+                  <span class="btn-icon">↓</span>
+                  Download TTFlix v${VERSION}
+                </a>
+
+                <div class="req-row">
+                  <span class="req-pill">Android 7.0+</span>
+                  <span class="req-pill">~15 MB</span>
+                  <span class="req-pill">Free</span>
+                </div>
+
+                <p class="install-note">
+                  After downloading, open the APK.<br/>
+                  If prompted, enable <strong>"Install unknown apps"</strong> in your settings.
+                </p>
+              </div>
+            </main>
+
+            <!-- Bottom bar -->
+            <footer class="bottom-bar">
+              &copy; ${VERSION} TTFlix &nbsp;·&nbsp; Trinidad &amp; Tobago Only
+            </footer>
+
           </body>
           </html>
           HTMLEOF

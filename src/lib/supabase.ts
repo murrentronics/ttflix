@@ -1,9 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
 // External Supabase project (not Lovable Cloud).
-const SUPABASE_URL = "https://pqjnkazkkagmewbaylti.supabase.co";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBxam5rYXpra2FnbWV3YmF5bHRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyOTA4NDYsImV4cCI6MjA5Njg2Njg0Nn0.UbqZYCfgZ8K2cOPCdPKLEUc6gi33GcvVuL1FAB0y95g";
+// Values come from environment variables — never hardcode secrets in source.
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {

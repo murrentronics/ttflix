@@ -114,7 +114,7 @@ export function DetailModal() {
     const poster = data?.poster_path ?? "";
     const backdrop = data?.backdrop_path ?? "";
     const title = data?.title ?? current.title ?? "";
-    navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${season}&episode=${episode}`);
+    navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${season}&episode=${episode}&progress=0`);
   };
 
   const isTv = current.mediaType === "tv";

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>TTFlix VVERSION_PLACEHOLDER — Download</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /* Lock entire page — NO scroll ever */
+    html, body {
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background: #0a0a0a;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #fff;
+    }
+
+    /* ── Poster grid — fixed, fills screen, never scrolls ── */
+    .bg {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 2px;
+      transform: scale(1.08) rotate(-1.5deg);
+      transform-origin: center center;
+      filter: brightness(0.35) saturate(1.2);
+    }
+    .bg-tile {
+      background-size: cover;
+      background-position: center;
+    }
+    .t0  { background-image: url('https://image.tmdb.org/t/p/w500/fm6KqXpkh7triA08gg7t8j5wFIP.jpg'); }
+    .t1  { background-image: url('https://image.tmdb.org/t/p/w500/xJHokMbljvjADYdit5fK5VQsXEG.jpg'); }
+    .t2  { background-image: url('https://image.tmdb.org/t/p/w500/8rpDcsfLJypbO6vREc0547VKqEv.jpg'); }
+    .t3  { background-image: url('https://image.tmdb.org/t/p/w500/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg'); }
+    .t4  { background-image: url('https://image.tmdb.org/t/p/w500/v9Du2HC3hlknAvGlWhquRbeifa.jpg'); }
+    .t5  { background-image: url('https://image.tmdb.org/t/p/w500/d5iIlFn5s0ImszYzBPb8JPIfbXD.jpg'); }
+    .t6  { background-image: url('https://image.tmdb.org/t/p/w500/oYuLEt3zVCKq57qu2F8dT7NIa6f.jpg'); }
+    .t7  { background-image: url('https://image.tmdb.org/t/p/w500/qNBAXBIQlnOThrVvA6mA2B5ggkl.jpg'); }
+    .t8  { background-image: url('https://image.tmdb.org/t/p/w500/arw2vcBveWOVZr6pxd9XTd1TdQa.jpg'); }
+    .t9  { background-image: url('https://image.tmdb.org/t/p/w500/rAiYTfKGqDCRIIqo664sY9XZIvQ.jpg'); }
+    .t10 { background-image: url('https://image.tmdb.org/t/p/w500/hO7KbdvGOtDdeg0W4Y5nKEHeDDh.jpg'); }
+    .t11 { background-image: url('https://image.tmdb.org/t/p/w500/t6HIqrRAclMCA60NsSmeqe9RmNV.jpg'); }
+    .t12 { background-image: url('https://image.tmdb.org/t/p/w500/AkJQpZp9WoNdj7pLYSj1L0RcMMN.jpg'); }
+    .t13 { background-image: url('https://image.tmdb.org/t/p/w500/9cqNxx0GxF0bAY74WX9LiyMoehO.jpg'); }
+    .t14 { background-image: url('https://image.tmdb.org/t/p/w500/kXfqcdQKsToO0OUXHcrrNCHDBzO.jpg'); }
+    .t15 { background-image: url('https://image.tmdb.org/t/p/w500/rcnO9b0FHmMuDFMaBFRFONMNXzj.jpg'); }
+    .t16 { background-image: url('https://image.tmdb.org/t/p/w500/jYEW5xZkZk2WTrdbMychWBsB0T1.jpg'); }
+    .t17 { background-image: url('https://image.tmdb.org/t/p/w500/1E5baAaEse26fej7uHcjOgEE2t2.jpg'); }
+    .t18 { background-image: url('https://image.tmdb.org/t/p/w500/gMJngTNfaqCSCqGD4y8lVMZXKDn.jpg'); }
+    .t19 { background-image: url('https://image.tmdb.org/t/p/w500/odJ4hx6g6vBt4lBWKFD1tI8WS4x.jpg'); }
