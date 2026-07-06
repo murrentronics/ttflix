@@ -55,3 +55,266 @@
     .t17 { background-image: url('https://image.tmdb.org/t/p/w500/1E5baAaEse26fej7uHcjOgEE2t2.jpg'); }
     .t18 { background-image: url('https://image.tmdb.org/t/p/w500/gMJngTNfaqCSCqGD4y8lVMZXKDn.jpg'); }
     .t19 { background-image: url('https://image.tmdb.org/t/p/w500/odJ4hx6g6vBt4lBWKFD1tI8WS4x.jpg'); }
+
+    /* Dark vignette + red centre glow */
+    .bg-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background:
+        radial-gradient(ellipse 70% 60% at 50% 50%, rgba(229,9,20,0.08) 0%, transparent 70%),
+        linear-gradient(to bottom,
+          rgba(0,0,0,0.6) 0%,
+          rgba(0,0,0,0.15) 35%,
+          rgba(0,0,0,0.15) 65%,
+          rgba(0,0,0,0.7) 100%);
+    }
+
+    /* Film grain */
+    .grain {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-repeat: repeat;
+      background-size: 160px 160px;
+    }
+
+    /* ── Shell: fixed, full viewport, no scroll ── */
+    .shell {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top bar */
+    .top-bar {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: clamp(12px, 3vw, 20px) clamp(16px, 4vw, 36px);
+      background: linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, transparent 100%);
+    }
+    .top-logo-text {
+      font-size: clamp(1.3rem, 4vw, 1.8rem);
+      font-weight: 900;
+      letter-spacing: -0.5px;
+    }
+    .top-logo-text span { color: #e50914; }
+    .top-region {
+      font-size: clamp(0.6rem, 1.5vw, 0.75rem);
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    /* Centre area — takes remaining space, centres the card */
+    .centre {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(8px, 2vw, 24px) clamp(12px, 4vw, 24px);
+      min-height: 0; /* allow flex shrink */
+    }
+
+    /* ── Download card ── */
+    .card {
+      background: rgba(12,12,12,0.84);
+      backdrop-filter: blur(32px) saturate(1.5);
+      -webkit-backdrop-filter: blur(32px) saturate(1.5);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: clamp(14px, 3vw, 22px);
+      padding: clamp(20px, 4vw, 44px) clamp(18px, 5vw, 44px) clamp(18px, 3vw, 36px);
+      width: min(440px, 100%);
+      text-align: center;
+      box-shadow:
+        0 0 0 1px rgba(229,9,20,0.12),
+        0 24px 64px rgba(0,0,0,0.8),
+        0 0 48px rgba(229,9,20,0.07);
+      /* Prevent card itself from ever overflowing */
+      overflow: hidden;
+    }
+
+    /* Red accent line at card top */
+    .card-accent {
+      height: 3px;
+      background: linear-gradient(90deg, transparent, #e50914 30%, #ff6b6b 50%, #e50914 70%, transparent);
+      border-radius: 2px;
+      margin: 0 0 clamp(16px, 3vw, 32px);
+    }
+
+    .logo {
+      font-size: clamp(2rem, 8vw, 3.2rem);
+      font-weight: 900;
+      letter-spacing: -1.5px;
+      line-height: 1;
+      margin-bottom: 3px;
+    }
+    .logo span { color: #e50914; }
+
+    .tagline {
+      font-size: clamp(0.58rem, 1.5vw, 0.7rem);
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.3);
+      margin-bottom: clamp(14px, 3vw, 22px);
+    }
+
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.09), transparent);
+      margin: 0 0 clamp(14px, 3vw, 22px);
+    }
+
+    .version-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(229,9,20,0.14);
+      border: 1px solid rgba(229,9,20,0.28);
+      color: #ff6b6b;
+      font-size: clamp(0.6rem, 1.5vw, 0.7rem);
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-bottom: clamp(14px, 3vw, 24px);
+    }
+    .version-badge::before {
+      content: '';
+      display: inline-block;
+      width: 6px; height: 6px;
+      background: #e50914;
+      border-radius: 50%;
+      box-shadow: 0 0 6px #e50914;
+    }
+
+    /* Download button */
+    .btn-download {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      background: linear-gradient(135deg, #e50914 0%, #b00710 100%);
+      color: #fff;
+      font-size: clamp(0.85rem, 2.5vw, 1rem);
+      font-weight: 800;
+      padding: clamp(13px, 2.5vw, 17px) 20px;
+      border-radius: clamp(8px, 2vw, 12px);
+      text-decoration: none;
+      margin-bottom: clamp(10px, 2vw, 14px);
+      box-shadow: 0 4px 24px rgba(229,9,20,0.4), 0 1px 0 rgba(255,255,255,0.1) inset;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn-download:hover  { transform: translateY(-1px); box-shadow: 0 8px 32px rgba(229,9,20,0.55); }
+    .btn-download:active { transform: translateY(0); }
+    .btn-icon {
+      width: 20px; height: 20px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    /* Requirement pills */
+    .req-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: clamp(10px, 2vw, 16px);
+    }
+    .req-pill {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.09);
+      color: rgba(255,255,255,0.45);
+      font-size: clamp(0.6rem, 1.4vw, 0.68rem);
+      padding: 3px 9px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    /* Install note */
+    .install-note {
+      font-size: clamp(0.6rem, 1.4vw, 0.72rem);
+      color: rgba(255,255,255,0.28);
+      line-height: 1.55;
+    }
+    .install-note strong { color: rgba(255,255,255,0.5); }
+
+    /* Bottom bar */
+    .bottom-bar {
+      flex-shrink: 0;
+      padding: clamp(10px, 2vw, 16px) clamp(16px, 4vw, 32px);
+      background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+      text-align: center;
+      font-size: clamp(0.55rem, 1.2vw, 0.65rem);
+      color: rgba(255,255,255,0.18);
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Poster grid -->
+  <div class="bg" aria-hidden="true">
+    <div class="bg-tile t0"></div><div class="bg-tile t1"></div><div class="bg-tile t2"></div>
+    <div class="bg-tile t3"></div><div class="bg-tile t4"></div><div class="bg-tile t5"></div>
+    <div class="bg-tile t6"></div><div class="bg-tile t7"></div><div class="bg-tile t8"></div>
+    <div class="bg-tile t9"></div><div class="bg-tile t10"></div><div class="bg-tile t11"></div>
+    <div class="bg-tile t12"></div><div class="bg-tile t13"></div><div class="bg-tile t14"></div>
+    <div class="bg-tile t15"></div><div class="bg-tile t16"></div><div class="bg-tile t17"></div>
+    <div class="bg-tile t18"></div><div class="bg-tile t19"></div>
+  </div>
+  <div class="bg-overlay" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- Fixed shell — no scroll -->
+  <div class="shell">
+
+    <header class="top-bar">
+      <div class="top-logo-text"><span>TT</span>FLIX</div>
+      <div class="top-region">Trinidad &amp; Tobago</div>
+    </header>
+
+    <main class="centre">
+      <div class="card">
+        <div class="card-accent"></div>
+        <div class="logo"><span>TT</span>FLIX</div>
+        <div class="tagline">Stream Everything</div>
+        <div class="divider"></div>
+        <div class="version-badge">Version VVERSION_PLACEHOLDER</div>
+        <a class="btn-download" href="APKURL_PLACEHOLDER" download>
+          <span class="btn-icon">↓</span>
+          Download TTFlix vVVERSION_PLACEHOLDER
+        </a>
+        <div class="req-row">
+          <span class="req-pill">Android 7.0+</span>
+          <span class="req-pill">~15 MB</span>
+          <span class="req-pill">Free</span>
+        </div>
+        <p class="install-note">
+          After downloading, open the APK.<br/>
+          If prompted, enable <strong>"Install unknown apps"</strong> in Settings.
+        </p>
+      </div>
+    </main>
+
+    <footer class="bottom-bar">
+      &copy; VVERSION_PLACEHOLDER TTFlix &nbsp;·&nbsp; Trinidad &amp; Tobago Only
+    </footer>
+
+  </div>
+
+</body>
+</html>
