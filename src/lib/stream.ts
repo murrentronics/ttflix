@@ -8,13 +8,15 @@ export function getProviders(
   progress?: number,
 ): Provider[] {
   const color = "E50914";
-  const progressParam = progress !== undefined ? `&progress=${progress}` : "";
+  // progress param is only meaningful for movies — Videasy TV embeds don't support it
+  // and passing it causes the player to hang without firing the ready postMessage
+  const movieProgressParam = mediaType === "movie" && progress !== undefined ? `&progress=${progress}` : "";
 
   if (mediaType === "tv") {
     return [
       {
         name: "Videasy",
-        url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplay=1&postMessageOrigin=*${progressParam}`,
+        url: `https://player.videasy.net/tv/${tmdbId}/${season}/${episode}?color=${color}&nextEpisode=true&episodeSelector=true&autoplay=1&postMessageOrigin=*`,
       },
       {
         name: "VidSrc",
@@ -26,7 +28,7 @@ export function getProviders(
   return [
     {
       name: "Videasy",
-      url: `https://player.videasy.net/movie/${tmdbId}?color=${color}&overlay=true&autoplay=1&postMessageOrigin=*${progressParam}`,
+      url: `https://player.videasy.net/movie/${tmdbId}?color=${color}&overlay=true&autoplay=1&postMessageOrigin=*${movieProgressParam}`,
     },
     {
       name: "VidSrc",
