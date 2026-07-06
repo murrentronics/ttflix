@@ -22,6 +22,10 @@ export function getProviders(
         name: "VidSrc",
         url: `https://vidsrc.to/embed/tv/${tmdbId}/${season}/${episode}?autoplay=1`,
       },
+      {
+        name: "VidSrcCC",
+        url: `https://vidsrc.cc/v2/embed/tv/${tmdbId}/${season}/${episode}?autoplay=1`,
+      },
     ];
   }
 

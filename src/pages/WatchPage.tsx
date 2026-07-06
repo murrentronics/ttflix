@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { X, SkipForward, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -191,15 +191,18 @@ export function WatchPage() {
     return { season, episode: episode + 1 };
   })();
 
-  const providers        = getProviders(type, tmdbId, season, episode, progressParam);
+  const providers        = useMemo(
+    () => getProviders(type, tmdbId, season, episode, progressParam),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [contentKey]
+  );
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc]    = useState(() => providers[0].url);
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    const freshProviders = getProviders(type, tmdbId, season, episode, progressParam);
     setProviderIndex(0);
-    setSrc(freshProviders[0].url);
+    setSrc(providers[0].url);
     providerSignalRef.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentKey]);
@@ -216,7 +219,7 @@ export function WatchPage() {
           return prev;
         });
       }
-    }, 8_000);
+    }, 5_000);
   }, [providers]);
 
   useEffect(() => {
