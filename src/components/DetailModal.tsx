@@ -260,7 +260,9 @@ export function DetailModal() {
                             <button
                               key={s}
                               onClick={() => { setSelectedSeason(s); setShowSeasonPicker(false); }}
-                              className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-accent ${s === selectedSeason ? "font-bold text-primary" : ""} ${focusStyle}`}
+                              className={`w-full px-4 py-2.5 text-left text-sm transition hover:bg-accent
+                                ${s === selectedSeason ? "font-bold text-primary bg-primary/10 ring-1 ring-inset ring-primary" : ""}
+                                ${focusStyle}`}
                             >
                               Season {s}
                             </button>
@@ -314,7 +316,10 @@ export function DetailModal() {
                         onClick={() => { if (!isBlockedForKids) handlePlay(selectedSeason, ep.episode_number); }}
                         onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest" })}
                         disabled={isBlockedForKids}
-                        className={`flex w-full items-start gap-3 rounded-lg p-2 text-left transition hover:bg-accent active:bg-accent/80 ${isBlockedForKids ? "opacity-40 cursor-not-allowed" : ""} ${focusStyle}`}
+                        className={`flex w-full items-start gap-3 rounded-lg p-2 text-left transition hover:bg-accent active:bg-accent/80
+                          ${isBlockedForKids ? "opacity-40 cursor-not-allowed" : ""}
+                          ${isCurrent ? "ring-2 ring-primary bg-primary/10" : ""}
+                          ${focusStyle}`}
                       >
                         {/* Thumbnail */}
                         <div className="relative w-28 shrink-0 overflow-hidden rounded-md bg-muted sm:w-36">
