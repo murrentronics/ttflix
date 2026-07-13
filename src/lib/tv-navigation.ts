@@ -25,9 +25,12 @@ function getDocumentLeft(el: HTMLElement): number {
 }
 
 export function navigateVertical(current: HTMLElement, dir: "up" | "down") {
+  // Only navigate among browse cards (data-tv-card elements that are NOT
+  // inside the player overlay). Player controls handle their own focus.
   const allCards = Array.from(
     document.querySelectorAll<HTMLElement>("[data-tv-card]")
-  );
+  ).filter((el) => !el.closest("[data-tv-player]"));
+
   if (!allCards.length) return;
 
   const currentTop = getDocumentTop(current);
@@ -48,17 +51,24 @@ export function navigateVertical(current: HTMLElement, dir: "up" | "down") {
 
   if (!candidates.length) return;
 
-  const best = candidates.reduce((closest, card) => {
-    const cardTop = getDocumentTop(card);
-    const closestTop = getDocumentTop(closest);
-    const cardVertDist = Math.abs(cardTop - currentTop);
-    const closestVertDist = Math.abs(closestTop - currentTop);
+  // Group candidates by row — cards whose tops are within 40px of each other
+  // are considered the same row. This prevents skipping rows when scrolling up.
+  const sorted = [...candidates].sort((a, b) => {
+    const diff = getDocumentTop(a) - getDocumentTop(b);
+    return dir === "down" ? diff : -diff;
+  });
 
-    // First pick the nearest row vertically (within 60px = same row tolerance)
-    if (Math.abs(cardVertDist - closestVertDist) > 60) {
-      return cardVertDist < closestVertDist ? card : closest;
-    }
-    // Same row — pick closest column (horizontal proximity)
+  // Find the top value of the nearest row
+  const firstTop = getDocumentTop(sorted[0]);
+  const ROW_TOLERANCE = 40; // px — cards within this vertical range are one row
+
+  // Only consider cards in the nearest row
+  const nearestRow = sorted.filter(
+    (card) => Math.abs(getDocumentTop(card) - firstTop) <= ROW_TOLERANCE
+  );
+
+  // Within the nearest row pick the card whose horizontal center is closest
+  const best = nearestRow.reduce((closest, card) => {
     const cardCenterX = getDocumentLeft(card) + card.offsetWidth / 2;
     const closestCenterX = getDocumentLeft(closest) + closest.offsetWidth / 2;
     return Math.abs(cardCenterX - currentCenterX) < Math.abs(closestCenterX - currentCenterX)

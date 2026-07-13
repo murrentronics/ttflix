@@ -556,11 +556,25 @@ export function WatchPage() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "GoBack" || e.key === "Back" || e.key === "BrowserBack") { e.preventDefault(); navigate("/"); }
+      if (e.key === "GoBack" || e.key === "Back" || e.key === "BrowserBack") { e.preventDefault(); navigate("/"); return; }
+
+      // Centre button (OK/Select on TV remote) or dedicated media key → play/pause
+      // Only fire when focus is not on one of the overlay control buttons (those handle Enter themselves)
+      const active = document.activeElement as HTMLElement | null;
+      const onPlayerControl = active?.closest("[data-tv-player]");
+      if (
+        !onPlayerControl &&
+        (e.key === "MediaPlayPause" || e.key === "MediaPlay" || e.key === "MediaPause" ||
+         e.key === "Enter" || e.key === " ")
+      ) {
+        e.preventDefault();
+        iframeRef.current?.contentWindow?.postMessage({ type: "togglePlay" }, "*");
+        showExit();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [navigate]);
+  }, [navigate, showExit]);
 
   useEffect(() => {
     const android = (window as any).AndroidOrientation;
@@ -623,20 +637,33 @@ export function WatchPage() {
         </div>
       )}
 
-      {/* Exit button — shows on tap/move, fades after 3s */}
+      {/* Exit button — shows on tap/move/remote focus, fades after 3s */}
+      {/* data-tv-player marks this zone so navigateVertical skips these buttons */}
       {!loaderVisible && !kidsBlocked && (
-        <>
+        <div data-tv-player>
           <button
             onTouchStart={(e) => { e.stopPropagation(); navigate("/"); }}
             onClick={() => navigate("/")}
             tabIndex={0}
-            data-tv-card
             aria-label="Exit player"
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); } }}
+            onFocus={showExit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); }
+              // ArrowRight moves to the season picker / next episode button
+              if (e.key === "ArrowRight") {
+                e.preventDefault();
+                const playerZone = (e.currentTarget as HTMLElement).closest("[data-tv-player]");
+                const btns = playerZone
+                  ? Array.from(playerZone.querySelectorAll<HTMLElement>("button:not([disabled])"))
+                  : [];
+                const idx = btns.indexOf(e.currentTarget as HTMLElement);
+                if (idx >= 0 && idx < btns.length - 1) btns[idx + 1].focus();
+              }
+            }}
             className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
               hover:bg-black/90 active:bg-white active:text-black
               focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
-              ${exitVisible ? "opacity-100" : "opacity-0"}`}
+              ${exitVisible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
             style={{ WebkitTapHighlightColor: "rgba(255,255,255,0.3)" }}
           >
             <X className="h-6 w-6" />
@@ -658,7 +685,7 @@ export function WatchPage() {
                         <button
                           key={s}
                           tabIndex={0}
-                          data-tv-card
+                          onFocus={showExit}
                           onClick={() => {
                             setShowSeasonPicker(false);
                             navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=1`);
@@ -683,13 +710,32 @@ export function WatchPage() {
                   {/* Trigger */}
                   <button
                     tabIndex={0}
-                    data-tv-card
                     aria-label="Season picker"
                     aria-expanded={showSeasonPicker}
+                    onFocus={showExit}
                     onClick={() => setShowSeasonPicker((v) => !v)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowSeasonPicker((v) => !v); }
                       if (e.key === "Escape") { e.preventDefault(); setShowSeasonPicker(false); }
+                      // ArrowLeft moves back to the exit button
+                      if (e.key === "ArrowLeft") {
+                        e.preventDefault();
+                        const playerZone = (e.currentTarget as HTMLElement).closest("[data-tv-player]");
+                        const btns = playerZone
+                          ? Array.from(playerZone.querySelectorAll<HTMLElement>("button:not([disabled])"))
+                          : [];
+                        const idx = btns.indexOf(e.currentTarget as HTMLElement);
+                        if (idx > 0) btns[idx - 1].focus();
+                      }
+                      if (e.key === "ArrowRight") {
+                        e.preventDefault();
+                        const playerZone = (e.currentTarget as HTMLElement).closest("[data-tv-player]");
+                        const btns = playerZone
+                          ? Array.from(playerZone.querySelectorAll<HTMLElement>("button:not([disabled])"))
+                          : [];
+                        const idx = btns.indexOf(e.currentTarget as HTMLElement);
+                        if (idx >= 0 && idx < btns.length - 1) btns[idx + 1].focus();
+                      }
                     }}
                     className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
                       hover:bg-white hover:text-black hover:border-white
@@ -739,8 +785,8 @@ export function WatchPage() {
                     navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
                   }}
                   tabIndex={0}
-                  data-tv-card
                   aria-label={`Next S${nextEp.season} E${nextEp.episode}`}
+                  onFocus={showExit}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
@@ -760,6 +806,16 @@ export function WatchPage() {
                       ].join("");
                       navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
                     }
+                    // ArrowLeft moves back to season picker or exit button
+                    if (e.key === "ArrowLeft") {
+                      e.preventDefault();
+                      const playerZone = (e.currentTarget as HTMLElement).closest("[data-tv-player]");
+                      const btns = playerZone
+                        ? Array.from(playerZone.querySelectorAll<HTMLElement>("button:not([disabled])"))
+                        : [];
+                      const idx = btns.indexOf(e.currentTarget as HTMLElement);
+                      if (idx > 0) btns[idx - 1].focus();
+                    }
                   }}
                   className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
                     hover:bg-white hover:text-black hover:border-white active:bg-white active:text-black active:border-white
@@ -772,7 +828,7 @@ export function WatchPage() {
               )}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
