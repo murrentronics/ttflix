@@ -181,8 +181,6 @@ public class MainActivity extends BridgeActivity {
         }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
-            getBridge().getWebView().clearCache(true);
-
             getBridge().getWebView().setVerticalScrollBarEnabled(false);
             getBridge().getWebView().setHorizontalScrollBarEnabled(false);
 

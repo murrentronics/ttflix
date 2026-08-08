@@ -45,7 +45,7 @@ public class PlayerActivity extends Activity {
     private final Handler hideHandler = new Handler(Looper.getMainLooper());
     private final Handler fallbackHandler = new Handler(Looper.getMainLooper());
     // How long to wait for the primary source to start playing before switching to fallback
-    private static final int FALLBACK_TIMEOUT_MS = 20_000;
+    private static final int FALLBACK_TIMEOUT_MS = 12_000;
 
     private final Runnable fallbackRunnable = () -> {
         if (!playerSignalReceived && !usingFallback && fallbackUrl != null && playerWebView != null) {
@@ -141,6 +141,10 @@ public class PlayerActivity extends Activity {
         settings.setAllowFileAccess(true);
         settings.setSupportMultipleWindows(false);
         settings.setAllowContentAccess(true);
+        // Use hardware-accelerated rendering for smooth video playback
+        playerWebView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+        // Cache mode: use cache where valid, load from network only when stale
+        settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }

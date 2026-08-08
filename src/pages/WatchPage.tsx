@@ -191,6 +191,9 @@ export function WatchPage() {
     return { season, episode: episode + 1 };
   })();
 
+  // Detect Android native player — on Android we skip the iframe entirely
+  const isAndroid = typeof (window as any).AndroidPlayer !== "undefined";
+
   const providers        = getProviders(type, tmdbId, season, episode, progressParam);
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc]    = useState(() => providers[0].url);
@@ -206,6 +209,8 @@ export function WatchPage() {
 
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startFallbackTimer = useCallback(() => {
+    // No fallback logic needed on Android — native PlayerActivity handles it
+    if (isAndroid) return;
     if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
     providerSignalRef.current = false;
     fallbackTimerRef.current = setTimeout(() => {
@@ -217,7 +222,7 @@ export function WatchPage() {
         });
       }
     }, 8_000);
-  }, [providers]);
+  }, [isAndroid, providers]);
 
   useEffect(() => {
     startFallbackTimer();
@@ -333,8 +338,14 @@ export function WatchPage() {
     });
   }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop]);
 
-  // Dismiss loader after 1s
+  // Dismiss loader:
+  // - Android: dismiss quickly (500ms) — native PlayerActivity handles playback, no iframe signal needed
+  // - Web: dismiss after 1s, or wait for kids check
   useEffect(() => {
+    if (isAndroid) {
+      const t = setTimeout(() => triggerExplosion(), 500);
+      return () => clearTimeout(t);
+    }
     if (!isKidsProfile) {
       const t = setTimeout(() => triggerExplosion(), 1000);
       return () => clearTimeout(t);
@@ -348,7 +359,7 @@ export function WatchPage() {
     }, 1000);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [triggerExplosion, isKidsProfile, contentKey]);
+  }, [triggerExplosion, isKidsProfile, isAndroid, contentKey]);
 
   const persist = useCallback(async (watched: number, duration: number) => {
     if (!user || !effectiveProfile || watched < 10) return;
@@ -413,6 +424,8 @@ export function WatchPage() {
 
   // ── iframe src load ───────────────────────────────────────────────────────
   useEffect(() => {
+    // Android uses native PlayerActivity — no iframe to manage
+    if (isAndroid) return;
     const iframe = iframeRef.current;
     if (!iframe || kidsBlockedRef.current) return;
     progressRef.current.hasPostMessage = false;
@@ -420,7 +433,7 @@ export function WatchPage() {
     iframe.src = "about:blank";
     const t = setTimeout(() => { if (iframeRef.current) iframeRef.current.src = src; }, 50);
     return () => clearTimeout(t);
-  }, [src]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [src, isAndroid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Progress save interval + beforeunload ─────────────────────────────────
   useEffect(() => {
@@ -476,11 +489,12 @@ export function WatchPage() {
             const countsStr = episodeCounts.length > 0
               ? episodeCounts.join(",")
               : String(episodeCount ?? 0);
-            android.openWithNext(primaryUrl, nextUrl, episodeCount ?? 0, totalSeasons, countsStr);
+            android.openWithNext(primaryUrl, nextUrl, episodeCount ?? 0, totalSeasons ?? 0, countsStr);
             return;
           }
         }
-        android?.open(primaryUrl);      }, 500);
+        android?.open(primaryUrl);
+      }, 100);
     }
     launch();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -604,9 +618,10 @@ export function WatchPage() {
 
   return (
     <div className="fixed inset-0 bg-black" onMouseMove={showExit} onTouchStart={showExit}>
-      <TTFlixLoader key={loaderKey} explode={explodeLoader} persistent={true} backdrop={backdrop || poster} onDone={onLoaderDone} />
+      <TTFlixLoader key={loaderKey} explode={explodeLoader} persistent={!isAndroid} backdrop={backdrop || poster} onDone={onLoaderDone} />
 
-      {!kidsBlocked && (
+      {/* iframe — web only; Android uses native PlayerActivity instead */}
+      {!kidsBlocked && !isAndroid && (
         <iframe ref={iframeRef} src={src}
           className="absolute inset-0 h-full w-full border-0 z-10"
           allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
@@ -614,8 +629,9 @@ export function WatchPage() {
       )}
 
       {/* Transparent tap-catcher above the iframe — triggers controls visibility on mobile tap.
-          pointer-events-none after controls are visible so taps reach the iframe normally. */}
-      {!kidsBlocked && !exitVisible && (
+          pointer-events-none after controls are visible so taps reach the iframe normally.
+          Web only — Android has its own touch handling in PlayerActivity. */}
+      {!kidsBlocked && !isAndroid && !exitVisible && (
         <div
           className="absolute inset-0 z-20"
           onTouchStart={showExit}
