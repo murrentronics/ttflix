@@ -37,9 +37,13 @@ export async function fetchContinueWatching(userId: string, profileId: string): 
 
   if (error) console.error("[fetchContinueWatching]", error.message);
 
-  return ((data as WatchProgress[]) ?? []).filter(
-    (r) => r.duration_seconds <= 0 || r.watched_seconds / r.duration_seconds < 0.92,
-  );
+  return ((data as WatchProgress[]) ?? []).filter((r) => {
+    if (r.duration_seconds <= 0) return true;
+    const ratio = r.watched_seconds / r.duration_seconds;
+    if (ratio < 0.92) return true;
+    // Finished movies drop off. TV stays so the row can point at the next episode.
+    return r.media_type === "tv";
+  });
 }
 
 export async function removeProgress(userId: string, profileId: string, tmdbId: number, mediaType: string) {
@@ -52,11 +56,17 @@ export async function removeProgress(userId: string, profileId: string, tmdbId: 
     .eq("media_type", mediaType);
 }
 
-/** Reset progress to 0 so the item disappears from Continue Watching on next load */
+/** Reset this title to S1E1 at 0 so Start Over begins from the beginning. */
 export async function resetProgress(userId: string, profileId: string, tmdbId: number, mediaType: string) {
   await supabase
     .from("watch_progress")
-    .update({ watched_seconds: 0, updated_at: new Date().toISOString() })
+    .update({
+      watched_seconds: 0,
+      duration_seconds: 0,
+      season: mediaType === "tv" ? 1 : null,
+      episode: mediaType === "tv" ? 1 : null,
+      updated_at: new Date().toISOString(),
+    })
     .eq("user_id", userId)
     .eq("profile_id", profileId)
     .eq("tmdb_id", tmdbId)

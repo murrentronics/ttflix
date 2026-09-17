@@ -3,10 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
-import { fetchContinueWatching, removeProgress, type WatchProgress } from "@/lib/continue-watching";
+import { fetchContinueWatching, removeProgress, resetProgress, type WatchProgress } from "@/lib/continue-watching";
 import { img } from "@/lib/tmdb";
 import { ResumeModal } from "./ResumeModal";
-import { navigateVertical } from "@/lib/tv-navigation";
+import { progressPercent } from "@/lib/next-episode";
+import { subscriberCanWatch } from "@/lib/admin";
 
 // Ratings that should not appear in a kids profile's Continue Watching row
 const KIDS_BLOCKED_RATINGS = new Set(["PG-13", "R", "NC-17", "TV-14", "TV-MA", "18+", "18", "X"]);
@@ -19,7 +20,7 @@ export function ContinueWatchingRow() {
   const rowRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  const canWatch = isAdmin || profile?.status === "approved";
+  const canWatch = subscriberCanWatch(profile?.status, profile?.subscription_expires_at, profile?.role, isAdmin);
   const effectiveProfile = activeProfile ?? profiles.find((p) => p.is_default) ?? profiles[0] ?? null;
   const isKidsProfile = activeProfile?.is_kids ?? false;
 
@@ -41,8 +42,15 @@ export function ContinueWatchingRow() {
 
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === "visible") load(); };
+    const onFocus = () => load();
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("pageshow", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("pageshow", onFocus);
+    };
   }, [load]);
 
   if (!items.length) return null;
@@ -58,29 +66,38 @@ export function ContinueWatchingRow() {
     if (prompt?.tmdb_id === item.tmdb_id) setPrompt(null);
   };
 
-  const playUrl = (item: WatchProgress, s: number, ep: number) =>
-    `/watch/${item.media_type}/${item.tmdb_id}?title=${encodeURIComponent(item.title)}&poster=${encodeURIComponent(item.poster_path ?? "")}&backdrop=${encodeURIComponent(item.backdrop_path ?? "")}&season=${s}&episode=${ep}`;
+  const playUrl = (item: WatchProgress, s: number, ep: number, progress?: number) => {
+    const base = `/watch/${item.media_type}/${item.tmdb_id}?title=${encodeURIComponent(item.title)}&poster=${encodeURIComponent(item.poster_path ?? "")}&backdrop=${encodeURIComponent(item.backdrop_path ?? "")}&season=${s}&episode=${ep}`;
+    return progress !== undefined ? `${base}&progress=${Math.max(0, Math.floor(progress))}` : base;
+  };
 
   const handleContinue = (item: WatchProgress) => {
     setPrompt(null);
-    navigate(playUrl(item, item.season ?? 1, item.episode ?? 1));
+    const resumeAt = item.duration_seconds > 0 && item.watched_seconds / item.duration_seconds >= 0.92
+      ? 0
+      : item.watched_seconds;
+    navigate(playUrl(item, item.season ?? 1, item.episode ?? 1, resumeAt));
   };
 
-  const handleStartOver = (item: WatchProgress) => {
+  const handleStartOver = async (item: WatchProgress) => {
     setPrompt(null);
-    navigate(`${playUrl(item, 1, 1)}&progress=0`);
+    if (user && effectiveProfile) {
+      await resetProgress(user.id, effectiveProfile.id, item.tmdb_id, item.media_type);
+    }
+    navigate(`${playUrl(item, 1, 1, 0)}&startOver=1`);
   };
 
   const handlePlayEpisode = (item: WatchProgress, season: number, episode: number) => {
     setPrompt(null);
-    navigate(playUrl(item, season, episode));
+    const sameSpot = item.season === season && item.episode === episode;
+    navigate(playUrl(item, season, episode, sameSpot ? item.watched_seconds : 0));
   };
   return (
     <>
       <section className="group/row relative mb-8">
         <h2 className="mb-3 px-4 text-lg font-bold sm:px-8 md:text-xl">Continue Watching</h2>
 
-        <button onClick={() => scroll(-1)} className="absolute left-0 top-1/2 z-10 hidden h-32 -translate-y-1/2 items-center bg-gradient-to-r from-background/90 to-transparent px-2 opacity-0 transition-opacity group-hover/row:opacity-100 md:flex" aria-label="Scroll left">
+        <button data-tv-ignore tabIndex={-1} onClick={() => scroll(-1)} className="absolute left-0 top-1/2 z-10 hidden h-32 -translate-y-1/2 items-center bg-gradient-to-r from-background/90 to-transparent px-2 opacity-0 transition-opacity group-hover/row:opacity-100 md:flex" aria-label="Scroll left">
           <ChevronLeft className="h-8 w-8" />
         </button>
 
@@ -97,19 +114,24 @@ export function ContinueWatchingRow() {
                 <button
                   onClick={() => setPrompt(item)}
                   onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
-                  onKeyDown={(e) => {
-                    if (e.key === "ArrowDown") { e.preventDefault(); navigateVertical(e.currentTarget, "down"); }
-                    if (e.key === "ArrowUp")   { e.preventDefault(); navigateVertical(e.currentTarget, "up"); }
-                  }}
                   data-tv-card
                   className="block w-full cursor-pointer text-left overflow-hidden rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:scale-105 transition-transform duration-200"
                   aria-label={`Play ${item.title}`}
                 >
-                  <div className="aspect-[2/3] w-full overflow-hidden rounded-md bg-muted">
+                  <div className="aspect-[2/3] w-full overflow-hidden rounded-md bg-muted relative">
                     {poster
                       ? <img src={poster} alt={item.title} loading="lazy" className="h-full w-full object-cover" />
                       : <div className="flex h-full items-center justify-center px-2 text-center text-xs text-muted-foreground">{item.title}</div>
                     }
+                    {(() => {
+                      const pct = progressPercent(item.watched_seconds, item.duration_seconds);
+                      if (pct == null) return null;
+                      return (
+                        <div className="absolute inset-x-0 bottom-0 h-1 bg-white/25">
+                          <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                        </div>
+                      );
+                    })()}
                   </div>
                 </button>
 
@@ -121,6 +143,8 @@ export function ContinueWatchingRow() {
                 </div>
 
                 <button
+                  data-tv-ignore
+                  tabIndex={-1}
                   onClick={(e) => { e.stopPropagation(); handleRemove(item); }}
                   className="absolute right-0 top-0 z-10 flex items-center justify-center bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   aria-label="Remove"
@@ -133,7 +157,7 @@ export function ContinueWatchingRow() {
           })}
         </div>
 
-        <button onClick={() => scroll(1)} className="absolute right-0 top-1/2 z-10 hidden h-32 -translate-y-1/2 items-center bg-gradient-to-l from-background/90 to-transparent px-2 opacity-0 transition-opacity group-hover/row:opacity-100 md:flex" aria-label="Scroll right">
+        <button data-tv-ignore tabIndex={-1} onClick={() => scroll(1)} className="absolute right-0 top-1/2 z-10 hidden h-32 -translate-y-1/2 items-center bg-gradient-to-l from-background/90 to-transparent px-2 opacity-0 transition-opacity group-hover/row:opacity-100 md:flex" aria-label="Scroll right">
           <ChevronRight className="h-8 w-8" />
         </button>
       </section>

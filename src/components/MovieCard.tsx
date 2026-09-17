@@ -2,7 +2,6 @@ import { Star } from "lucide-react";
 import { useDetail } from "./DetailContext";
 import { img, year } from "@/lib/tmdb";
 import type { TmdbItem } from "@/lib/tmdb.functions.app";
-import { navigateVertical } from "@/lib/tv-navigation";
 
 export function MovieCard({ item }: { item: TmdbItem }) {
   const { open } = useDetail();
@@ -13,14 +12,10 @@ export function MovieCard({ item }: { item: TmdbItem }) {
       data-tv-card
       onClick={() => open(item)}
       onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
-      onKeyDown={(e) => {
-        if (e.key === "ArrowDown") { e.preventDefault(); navigateVertical(e.currentTarget, "down"); }
-        if (e.key === "ArrowUp")   { e.preventDefault(); navigateVertical(e.currentTarget, "up"); }
-      }}
       className="group relative w-[150px] shrink-0 overflow-hidden rounded-md bg-card text-left
         transition-transform duration-200
         focus-visible:outline-none focus-visible:scale-105 focus-visible:z-10
-        focus-visible:ring-2 focus-visible:ring-primary focus-visible:shadow-[0_0_0_2px_hsl(var(--primary))]
+        focus-visible:ring-2 focus-visible:ring-primary
         sm:w-[180px]"
     >
       <div className="aspect-[2/3] w-full overflow-hidden bg-muted">

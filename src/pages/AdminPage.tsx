@@ -12,7 +12,7 @@ import {
   fetchUsersByStatus, countByStatus, setUserStatus, setUserRole, makeUserAgent, removeUserAgent, deleteUserRecord,
   fetchPendingAgentBillingRequests, adminApproveAgentRequest, adminRejectAgentRequest,
   fetchAgentList, fetchAgentCustomerLinks, fetchDashboardStats, fetchPaymentHistory, adminCreateAgent,
-  fetchAgentCollections, clearAgentBalance, formatDueDate, formatDueDateStr,
+  fetchAgentCollections, clearAgentBalance, formatDueDate, formatDueDateStr, tabStatusForSubscriber,
   type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin, type AgentListItem, type DashboardStats,
   type AgentCollectionItem,
 } from "@/lib/admin";
@@ -66,13 +66,14 @@ export function AdminPage() {
   const [adminMyPassword, setAdminMyPassword] = useState("");
   const [agentMsg, setAgentMsg] = useState<{ text: string; type: "ok" | "err" } | null>(null);
   const [creatingAgent, setCreatingAgent] = useState(false);
+  const creatingAgentRef = useRef(false);
   const dashboardIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const watchingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const tabRef = useRef(tab);
   tabRef.current = tab;
 
   useEffect(() => {
-    if (!loading && (!user || !isAdmin)) navigate("/");
+    if (!loading && (!user || !isAdmin) && !creatingAgentRef.current) navigate("/");
   }, [loading, user, isAdmin, navigate]);
 
   const refreshCounts = useCallback(async () => {
@@ -105,11 +106,12 @@ export function AdminPage() {
   }, []);
 
   const loadWatching = useCallback(async () => {
-    const staleDate = new Date(Date.now() - 30 * 1000).toISOString();
+    const staleDate = new Date(Date.now() - 90 * 1000).toISOString();
     const { data } = await supabase
       .from("active_watches")
       .select("*, profiles(full_name, email, plan)")
       .gte("last_ping", staleDate)
+      .not("title", "is", null)
       .order("started_at", { ascending: false });
     const rows = (data ?? []) as any[];
     setWatchingNow(rows);
@@ -160,8 +162,8 @@ export function AdminPage() {
     refreshUpcomingRenewals();
     // Always refresh agent request count so the sidebar badge stays current
     loadAgentRequests();
-    // Always load collections silently so the badge count is current
     loadCollections(true);
+    loadWatching();
     if (tab === "dashboard") { loadDashboard(); }
     else if (tab === "billing") { /* loaded above */ }
     else if (tab === "history") { setHistoryPage(1); loadHistory(1); }
@@ -229,33 +231,19 @@ export function AdminPage() {
     };
   }, [isAdmin, tab, loadDashboard]);
 
-  // Real‑time refresh for watching now every 1 second
+  // Keep Watching Now live on every admin tab (sidebar badge + dashboard card).
   useEffect(() => {
     if (!isAdmin) return;
-    if (tab === "watching" || tab === "dashboard") {
-      watchingIntervalRef.current = setInterval(() => {
-        loadWatching();
-      }, 1000);
-    } else {
-      if (watchingIntervalRef.current) {
-        clearInterval(watchingIntervalRef.current);
-        watchingIntervalRef.current = null;
-      }
-    }
+    loadWatching();
+    watchingIntervalRef.current = setInterval(() => {
+      loadWatching();
+    }, 2000);
     return () => {
       if (watchingIntervalRef.current) {
         clearInterval(watchingIntervalRef.current);
         watchingIntervalRef.current = null;
       }
     };
-  }, [isAdmin, tab, loadWatching]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    const interval = setInterval(() => {
-      if (tabRef.current === "watching") loadWatching();
-    }, 30_000);
-    return () => clearInterval(interval);
   }, [isAdmin, loadWatching]);
 
   const changeStatus = async (u: AdminUser, status: UserStatus) => {
@@ -300,7 +288,7 @@ export function AdminPage() {
 
   const switchTab = (id: AdminTab) => { setTab(id); setSidebarOpen(false); };
 
-  if (loading || !user || !isAdmin) return (
+  if ((loading || !user || !isAdmin) && !creatingAgent) return (
     <AppShell>
       <div className="flex min-h-[60vh] items-center justify-center pt-20 text-muted-foreground">
         {(!loading && (!user || !isAdmin)) ? null : "Loading…"}
@@ -559,7 +547,7 @@ export function AdminPage() {
                           <DashCard
                             icon={<Tv className="h-5 w-5 text-white/70" />}
                             label="Live Watching Now"
-                            value={dashStats.liveWatchingCount.toString()}
+                            value={watchingCount.toString()}
                           />
                           <DashCard
                             icon={<Users className="h-5 w-5 text-white/70" />}
@@ -608,6 +596,7 @@ export function AdminPage() {
                       return;
                     }
                     setCreatingAgent(true);
+                    creatingAgentRef.current = true;
                     try {
                       await adminCreateAgent({
                         email: agentEmail.toLowerCase().trim(),
@@ -616,14 +605,17 @@ export function AdminPage() {
                         adminEmail: user!.email!,
                         adminPassword: adminMyPassword,
                       });
-                      setAgentMsg({ text: `Agent account created for ${agentName.trim()}. Temp password: 123456`, type: "ok" });
+                      const createdName = agentName.trim();
+                      setAgentMsg({ text: `Agent account created for ${createdName}. Temp password: 123456`, type: "ok" });
                       setAgentEmail(""); setAgentName(""); setAgentPhone(""); setAdminMyPassword("");
-                      // Refresh agent list so sidebar count updates
                       await loadAgentRequests();
+                      setTab("agent-list");
+                      setAgentListSubTab("active");
                     } catch (err: any) {
                       setAgentMsg({ text: err?.message ?? "Failed to create agent.", type: "err" });
                     } finally {
                       setCreatingAgent(false);
+                      creatingAgentRef.current = false;
                     }
                   }}
                   className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-4"
@@ -839,6 +831,7 @@ export function AdminPage() {
                             {agent.customers.length === 0 && <p className="px-5 py-4 text-sm text-muted-foreground">No customers linked yet.</p>}
                             {agent.customers.map((c: any) => {
                               const dueDate = c.subscription_expires_at ? formatDueDate(c.subscription_expires_at) : null;
+                              const shown = tabStatusForSubscriber(c.status, c.subscription_expires_at, c.role);
                               return (
                                 <div key={c.id} className="px-5 py-3 flex items-center justify-between gap-4 text-sm">
                                   <div className="min-w-0">
@@ -847,7 +840,7 @@ export function AdminPage() {
                                   </div>
                                   <div className="shrink-0 text-right space-y-0.5">
                                     <p className="text-xs">{PLANS[c.plan as keyof typeof PLANS]?.name ?? c.plan}</p>
-                                    <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${c.status === "approved" ? "bg-green-500/15 text-green-400" : c.status === "pending" ? "bg-yellow-500/15 text-yellow-400" : "bg-destructive/15 text-destructive"}`}>{c.status}</span>
+                                    <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${shown === "approved" ? "bg-green-500/15 text-green-400" : shown === "pending" ? "bg-yellow-500/15 text-yellow-400" : shown === "suspended" ? "bg-orange-500/15 text-orange-400" : "bg-destructive/15 text-destructive"}`}>{shown}</span>
                                     {dueDate && <p className="text-xs text-muted-foreground">Due {c.subscription_expires_at ? formatDueDateStr(c.subscription_expires_at) : ""}</p>}
                                   </div>
                                 </div>
@@ -987,7 +980,7 @@ export function AdminPage() {
             {/* ── WATCHING NOW TAB ── */}
             {tab === "watching" && (
               <div className="space-y-3 max-w-2xl">
-                <p className="text-sm text-muted-foreground">Users actively watching right now (pinged in the last 5 minutes).</p>
+                <p className="text-sm text-muted-foreground">Users actively watching right now. Updates live.</p>
                 {watchingNow.length === 0 && (
                   <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">Nobody is watching right now.</div>
                 )}

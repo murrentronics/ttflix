@@ -11,9 +11,10 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "cap:sync": "node scripts/bump-version.cjs && npm run build:app && npx cap sync android",
+    "cap:sync": "node scripts/bump-version.cjs && npm run build:app && npx cap sync android && cd android && .\\gradlew assembleRelease && cd .. && node scripts/deploy-download.cjs",
     "cap:open": "npx cap open android",
-    "cap:build": "node scripts/bump-version.cjs && npm run build:app && npx cap sync android && cd android && .\\gradlew assembleDebug"
+    "cap:build": "node scripts/bump-version.cjs && npm run build:app && npx cap sync android && cd android && .\\gradlew assembleDebug",
+    "deploy:download": "node scripts/deploy-download.cjs"
   },
   "dependencies": {
     "@capacitor/android": "6.2.0",

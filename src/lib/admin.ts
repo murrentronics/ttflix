@@ -1,4 +1,6 @@
 import { supabase, PLANS, type UserStatus, ADMIN_EMAIL, type PlanId } from "./supabase";
+import { lockAuthUpdates, unlockAuthUpdates } from "./auth-lock";
+import { ensureDefaultProfiles, fetchProfiles, updateProfile } from "./profiles";
 import type { Profile } from "./auth";
 
 /**
@@ -58,52 +60,133 @@ export type AdminUser = Profile & {
   pending_plan?: string | null;
 };
 
+/** True once the stored cutoff (midnight after the due date) has passed. */
+export function isSubscriptionLapsed(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return false;
+  return Date.parse(expiresAt) <= Date.now();
+}
+
+/**
+ * Tab status for a subscriber: approved accounts whose due date has passed
+ * (after midnight of the cutoff) belong in Suspended, even if the DB row
+ * has not been updated yet. Agents are never auto-suspended this way.
+ */
+export function tabStatusForSubscriber(
+  status: string,
+  expiresAt: string | null | undefined,
+  role?: string | null,
+): UserStatus {
+  if (role === "agent") return (status as UserStatus) || "approved";
+  if (status === "approved" && isSubscriptionLapsed(expiresAt)) return "suspended";
+  return status as UserStatus;
+}
+
+/** True when this subscriber is allowed to play titles right now. */
+export function subscriberCanWatch(
+  status: string | null | undefined,
+  expiresAt: string | null | undefined,
+  role?: string | null,
+  isAdmin?: boolean,
+): boolean {
+  if (isAdmin) return true;
+  if (role === "agent") return status === "approved";
+  return status === "approved" && !isSubscriptionLapsed(expiresAt);
+}
+
+let suspendInflight: Promise<void> | null = null;
+
+/**
+ * Persist overdue approved subscribers as suspended. Admin RLS allows this
+ * for every row; agents can only update their own (no-op for customers).
+ */
+export async function suspendExpiredSubscriptions(): Promise<void> {
+  if (suspendInflight) return suspendInflight;
+  const now = new Date().toISOString();
+  suspendInflight = supabase
+    .from("profiles")
+    .update({ status: "suspended" })
+    .eq("status", "approved")
+    .lt("subscription_expires_at", now)
+    .or("role.is.null,role.neq.agent")
+    .then(() => undefined)
+    .finally(() => {
+      suspendInflight = null;
+    });
+  return suspendInflight;
+}
+
 export async function fetchUsersByStatus(status: UserStatus): Promise<AdminUser[]> {
+  await suspendExpiredSubscriptions();
+  const now = new Date().toISOString();
+
   if (status === "pending") {
-    // Pending = new sign-ups OR approved users within 5 days of expiry (renewal due)
     const fiveDaysFromNow = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
-    let query = supabase
+    const { data, error } = await supabase
       .from("profiles")
       .select("*")
       .or(`status.eq.pending,and(status.eq.approved,subscription_expires_at.lte.${fiveDaysFromNow})`)
       .neq("email", ADMIN_EMAIL)
       .order("subscription_expires_at", { ascending: true });
-    const { data, error } = await query;
     if (error) throw error;
-    return (data as AdminUser[]) ?? [];
+    return ((data as AdminUser[]) ?? []).filter((u) => {
+      if (u.status === "pending") return true;
+      return u.status === "approved" && !isSubscriptionLapsed(u.subscription_expires_at);
+    });
   }
 
-  let query = supabase
+  if (status === "approved") {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("status", "approved")
+      .neq("email", ADMIN_EMAIL)
+      .or("role.is.null,role.neq.agent")
+      .order("email", { ascending: true });
+    if (error) throw error;
+    return ((data as AdminUser[]) ?? []).filter(
+      (u) => tabStatusForSubscriber(u.status, u.subscription_expires_at, u.role) === "approved",
+    );
+  }
+
+  if (status === "suspended") {
+    const [{ data: sus, error: e1 }, { data: expired, error: e2 }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("*")
+        .eq("status", "suspended")
+        .neq("email", ADMIN_EMAIL)
+        .order("email", { ascending: true }),
+      supabase
+        .from("profiles")
+        .select("*")
+        .eq("status", "approved")
+        .lt("subscription_expires_at", now)
+        .neq("email", ADMIN_EMAIL)
+        .or("role.is.null,role.neq.agent")
+        .order("email", { ascending: true }),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+    const byId = new Map<string, AdminUser>();
+    for (const row of [...(sus ?? []), ...(expired ?? [])] as AdminUser[]) {
+      byId.set(row.id, { ...row, status: "suspended" });
+    }
+    return [...byId.values()].sort((a, b) => (a.email ?? "").localeCompare(b.email ?? ""));
+  }
+
+  const { data, error } = await supabase
     .from("profiles")
     .select("*")
     .eq("status", status)
     .neq("email", ADMIN_EMAIL)
     .order("email", { ascending: true });
-
-  // For approved status, exclude agents (only if role is actually agent; if role is null or doesn't exist, include them)
-  if (status === "approved") {
-    query = query.or("role.is.null,role.neq.agent");
-  }
-
-  const { data, error } = await query;
   if (error) throw error;
   return (data as AdminUser[]) ?? [];
 }
 
 export async function countByStatus(status: UserStatus): Promise<number> {
-  let query = supabase
-    .from("profiles")
-    .select("*", { count: "exact", head: true })
-    .eq("status", status)
-    .neq("email", ADMIN_EMAIL); // Don't forget to exclude admin!
-
-  // For approved status, exclude agents (only if role is actually agent; if role is null or doesn't exist, include them)
-  if (status === "approved") {
-    query = query.or("role.is.null,role.neq.agent");
-  }
-
-  const { count } = await query;
-  return count ?? 0;
+  const rows = await fetchUsersByStatus(status);
+  return rows.length;
 }
 
 export async function setUserStatus(id: string, status: UserStatus) {
@@ -764,7 +847,7 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
   //       so we use .or() to capture nulls correctly.
   const { data: subs } = await supabase
     .from("profiles")
-    .select("id, plan, role")
+    .select("id, plan, role, subscription_expires_at")
     .eq("status", "approved")
     .neq("email", ADMIN_EMAIL)
     .or("role.is.null,role.neq.agent");
@@ -781,11 +864,12 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     .eq("role", "agent");
 
   // Count live watching (last 30 seconds)
-  const staleDate = new Date(Date.now() - 30 * 1000).toISOString();
+  const staleDate = new Date(Date.now() - 90 * 1000).toISOString();
   const { count: watchingCount } = await supabase
     .from("active_watches")
     .select("*", { count: "exact", head: true })
-    .gte("last_ping", staleDate);
+    .gte("last_ping", staleDate)
+    .not("title", "is", null);
 
   // Count pending agent requests
   const { count: pendingRequestsCount } = await supabase
@@ -799,7 +883,9 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
     .select("*", { count: "exact", head: true })
     .eq("status", "pending");
 
-  const subList = (subs ?? []) as any[];
+  const subList = ((subs ?? []) as any[]).filter(
+    (s) => tabStatusForSubscriber("approved", s.subscription_expires_at, s.role) === "approved",
+  );
   const allPayList = (allPayments ?? []) as any[];
 
   // Calculate monthly and yearly revenue from active subs
@@ -924,8 +1010,8 @@ export async function checkRenewal(userId: string, isAdmin: boolean): Promise<vo
   const now = Date.now();
   const expiresAt = new Date(prof.subscription_expires_at).getTime();
 
-  // Past expiry midnight → suspend
-  if (now >= expiresAt && prof.status !== "suspended") {
+  // Past expiry midnight → suspend (approved or still marked pending-renewal)
+  if (now >= expiresAt && prof.status !== "suspended" && prof.status !== "expelled") {
     await supabase.from("profiles").update({ status: "suspended" }).eq("id", userId);
   }
   // User stays "approved" and active during the 5-day window — do NOT change status
@@ -957,46 +1043,57 @@ export async function adminCreateAgent(args: {
   const { email, fullName, phone, adminEmail, adminPassword } = args;
   const TEMP_PASSWORD = "123456";
 
-  // Step 1: save the admin's current session so we can restore it after signUp
   const { data: sessionData } = await supabase.auth.getSession();
   const adminSession = sessionData.session;
 
-  // Step 2: create the auth user (this signs us in as the new agent)
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password: TEMP_PASSWORD,
-    options: {
-      data: { full_name: fullName, phone },
-    },
-  });
-  if (error) throw error;
-
-  const newUser = data.user;
-  if (!newUser) throw new Error("User creation failed — no user returned.");
-
-  // Step 3: upsert the profile as an agent while briefly signed in as them
-  const { error: profileError } = await supabase.from("profiles").upsert({
-    id: newUser.id,
-    email,
-    full_name: fullName,
-    phone,
-    country: "Trinidad & Tobago",
-    plan: null,
-    status: "approved",
-    role: "agent",
-    subscription_expires_at: null,
-    pending_plan: null,
-  });
-  if (profileError) throw profileError;
-
-  // Step 4: restore admin session
-  if (adminSession?.access_token && adminSession?.refresh_token) {
-    await supabase.auth.setSession({
-      access_token: adminSession.access_token,
-      refresh_token: adminSession.refresh_token,
+  lockAuthUpdates();
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: TEMP_PASSWORD,
+      options: {
+        data: { full_name: fullName, phone },
+      },
     });
-  } else {
-    await supabase.auth.signInWithPassword({ email: adminEmail, password: adminPassword });
+    if (error) throw error;
+
+    const newUser = data.user;
+    if (!newUser) throw new Error("User creation failed — no user returned.");
+
+    const { error: profileError } = await supabase.from("profiles").upsert({
+      id: newUser.id,
+      email,
+      full_name: fullName,
+      phone,
+      country: "Trinidad & Tobago",
+      plan: null,
+      status: "approved",
+      role: "agent",
+      subscription_expires_at: null,
+      pending_plan: null,
+    });
+    if (profileError) throw profileError;
+
+    // Watch profiles must be created as this user (RLS) with THEIR name, not Admin.
+    await ensureDefaultProfiles(newUser.id, fullName, "basic");
+    await new Promise((r) => setTimeout(r, 50));
+    const watchProfiles = await fetchProfiles(newUser.id);
+    const def = watchProfiles.find((p) => p.is_default);
+    if (def && fullName && def.name !== fullName) {
+      await updateProfile(def.id, { name: fullName });
+    }
+
+    if (adminSession?.access_token && adminSession?.refresh_token) {
+      await supabase.auth.setSession({
+        access_token: adminSession.access_token,
+        refresh_token: adminSession.refresh_token,
+      });
+    } else {
+      await supabase.auth.signInWithPassword({ email: adminEmail, password: adminPassword });
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  } finally {
+    unlockAuthUpdates();
   }
 }
 

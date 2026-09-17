@@ -15,6 +15,8 @@ export function MovieRow({ title, items }: { title: string; items: TmdbItem[] })
     <section className="group/row relative mb-8">
       <h2 className="mb-3 px-4 text-lg font-bold sm:px-8 md:text-xl">{title}</h2>
       <button
+        data-tv-ignore
+        tabIndex={-1}
         onClick={() => scroll(-1)}
         className="absolute left-0 top-1/2 z-10 hidden h-32 -translate-y-1/2 items-center bg-gradient-to-r from-background/90 to-transparent px-2 opacity-0 transition-opacity group-hover/row:opacity-100 md:flex"
         aria-label="Scroll left"
@@ -27,6 +29,8 @@ export function MovieRow({ title, items }: { title: string; items: TmdbItem[] })
         ))}
       </div>
       <button
+        data-tv-ignore
+        tabIndex={-1}
         onClick={() => scroll(1)}
         className="absolute right-0 top-1/2 z-10 hidden h-32 -translate-y-1/2 items-center bg-gradient-to-l from-background/90 to-transparent px-2 opacity-0 transition-opacity group-hover/row:opacity-100 md:flex"
         aria-label="Scroll right"

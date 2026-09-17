@@ -142,4 +142,40 @@
       transform: none !important;
     }
   }
+
+  /* Fire TV / sticks often report pointer:coarse, which would hide rings.
+     html.is-tv is set from the native leanback flag + UA — always show red rings. */
+  html.is-tv a:focus,
+  html.is-tv a:focus-visible,
+  html.is-tv button:focus,
+  html.is-tv button:focus-visible,
+  html.is-tv [data-tv-card]:focus,
+  html.is-tv [data-tv-card]:focus-visible,
+  html.is-tv [tabindex]:focus,
+  html.is-tv [tabindex]:focus-visible,
+  html.is-tv *:focus-visible {
+    outline: 3px solid #E50914 !important;
+    outline-offset: 4px !important;
+    box-shadow: 0 0 0 2px #000, 0 0 0 6px #E50914 !important;
+  }
+  html.is-tv [data-tv-card]:focus,
+  html.is-tv [data-tv-card]:focus-visible {
+    transform: scale(1.08) !important;
+    z-index: 20;
+  }
+}
+
+/* Outside @layer so Fire TV pointer:coarse cannot hide the rings. */
+html.is-tv a:focus,
+html.is-tv a:focus-visible,
+html.is-tv button:focus,
+html.is-tv button:focus-visible,
+html.is-tv [data-tv-card]:focus,
+html.is-tv [data-tv-card]:focus-visible,
+html.is-tv [tabindex]:focus,
+html.is-tv [tabindex]:focus-visible,
+html.is-tv *:focus-visible {
+  outline: 3px solid #E50914 !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 0 2px #000, 0 0 0 6px #E50914 !important;
 }

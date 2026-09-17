@@ -13,7 +13,7 @@
         android:layout_centerInParent="true"
         android:background="@drawable/splash_glow" />
 
-    <!-- TT in white, FLIX in red — Netflix style bold -->
+    <!-- TTF mark: red TT, white F — Netflix-style splash -->
     <LinearLayout
         android:id="@+id/title_layout"
         android:layout_width="wrap_content"
@@ -35,7 +35,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="FLIX"
+            android:text="F"
             android:textColor="#FFFFFF"
             android:textSize="72sp"
             android:textStyle="bold"

@@ -1,10 +1,20 @@
 package tt.ttflix.app;
 
+import android.Manifest;
+import android.app.DownloadManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.database.Cursor;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -12,12 +22,18 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
+import androidx.core.content.FileProvider;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
+import java.io.File;
+import java.util.List;
+import org.json.JSONObject;
 
 public class MainActivity extends BridgeActivity {
+
+    static MainActivity instance;
 
     /** Exposed to JavaScript as window.AndroidOrientation */
     public class OrientationBridge {
@@ -93,6 +109,17 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public void openWithNext(String url, String nextUrl, int epCount, int seasons, String episodeCounts) {
+            openPlayer(url, nextUrl, epCount, seasons, episodeCounts, false, "");
+        }
+
+        @JavascriptInterface
+        public void openWithNextEx(String url, String nextUrl, int epCount, int seasons,
+                                   String episodeCounts, boolean startOver, String tmdbId) {
+            openPlayer(url, nextUrl, epCount, seasons, episodeCounts, startOver, tmdbId);
+        }
+
+        private void openPlayer(String url, String nextUrl, int epCount, int seasons,
+                                String episodeCounts, boolean startOver, String tmdbId) {
             runOnUiThread(() -> {
                 Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
                 intent.putExtra(PlayerActivity.EXTRA_URL, url);
@@ -100,9 +127,266 @@ public class MainActivity extends BridgeActivity {
                 intent.putExtra(PlayerActivity.EXTRA_EPISODE_COUNT, epCount);
                 intent.putExtra(PlayerActivity.EXTRA_TOTAL_SEASONS, seasons);
                 intent.putExtra(PlayerActivity.EXTRA_EPISODE_COUNTS, episodeCounts);
+                intent.putExtra(PlayerActivity.EXTRA_START_OVER, startOver);
+                intent.putExtra(PlayerActivity.EXTRA_TMDB_ID, tmdbId != null ? tmdbId : "");
                 startActivity(intent);
             });
         }
+
+        /** Push full per-season episode counts after TMDB finishes loading. */
+        @JavascriptInterface
+        public void setSeasonCounts(String episodeCounts, int seasons) {
+            runOnUiThread(() -> {
+                if (PlayerActivity.current != null) {
+                    PlayerActivity.current.updateSeasonCounts(episodeCounts, seasons);
+                }
+            });
+        }
+
+        /** Latest playback position captured by PlayerActivity (JSON). */
+        @JavascriptInterface
+        public String getProgress() {
+            return "{\"season\":" + PlayerActivity.lastPlayedSeason
+                + ",\"episode\":" + PlayerActivity.lastPlayedEpisode
+                + ",\"watched\":" + PlayerActivity.lastWatchedSeconds
+                + ",\"duration\":" + PlayerActivity.lastDurationSeconds + "}";
+        }
+    }
+
+    /**
+     * Downloads the APK from ttflix.pages.dev into the device Downloads folder
+     * (same file the public download page serves) and opens it when ready.
+     */
+    public class ApkBridge {
+        private static final String PAGES_APK_PREFIX = "https://ttflix.pages.dev/ttflix.apk";
+        private volatile long lastDownloadId = -1;
+        private volatile String lastFilename = "TTFlix.apk";
+
+        private String safeName(String filename) {
+            String name = filename == null ? "" : filename.replaceAll("[^A-Za-z0-9._-]", "");
+            if (!name.toLowerCase().endsWith(".apk")) name = "TTFlix.apk";
+            if (name.length() > 80) name = "TTFlix.apk";
+            return name;
+        }
+
+        @JavascriptInterface
+        public void download(String url, String filename) {
+            if (url == null || !url.startsWith(PAGES_APK_PREFIX)) return;
+            final String name = safeName(filename);
+            lastFilename = name;
+            runOnUiThread(() -> {
+                try {
+                    DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                    if (dm == null) return;
+                    if (lastDownloadId > 0) {
+                        try { dm.remove(lastDownloadId); } catch (Exception ignored) {}
+                    }
+                    File dest = new File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                        name
+                    );
+                    if (dest.exists()) {
+                        //noinspection ResultOfMethodCallIgnored
+                        dest.delete();
+                    }
+                    DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url));
+                    req.setTitle("TTFlix");
+                    req.setDescription("Saving to Downloads");
+                    req.setMimeType("application/vnd.android.package-archive");
+                    req.setNotificationVisibility(
+                        DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    req.setAllowedOverMetered(true);
+                    req.setAllowedOverRoaming(true);
+                    req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name);
+                    lastDownloadId = dm.enqueue(req);
+                } catch (Exception ignored) {}
+            });
+        }
+
+        @JavascriptInterface
+        public String status() {
+            JSONObject o = new JSONObject();
+            try {
+                o.put("file", lastFilename);
+                if (lastDownloadId < 0) {
+                    File dest = new File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                        lastFilename
+                    );
+                    if (dest.exists() && dest.length() > 1000) {
+                        o.put("state", "done");
+                        o.put("progress", 100);
+                        return o.toString();
+                    }
+                    o.put("state", "idle");
+                    o.put("progress", 0);
+                    return o.toString();
+                }
+                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                if (dm == null) {
+                    o.put("state", "failed");
+                    o.put("progress", 0);
+                    o.put("error", "Download manager unavailable");
+                    return o.toString();
+                }
+                DownloadManager.Query q = new DownloadManager.Query().setFilterById(lastDownloadId);
+                Cursor c = dm.query(q);
+                if (c == null || !c.moveToFirst()) {
+                    if (c != null) c.close();
+                    o.put("state", "idle");
+                    o.put("progress", 0);
+                    return o.toString();
+                }
+                int status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+                long soFar = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+                long total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
+                c.close();
+                int pct = (total > 0) ? (int) Math.min(100, (soFar * 100) / total) : 0;
+                if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                    o.put("state", "done");
+                    o.put("progress", 100);
+                } else if (status == DownloadManager.STATUS_FAILED) {
+                    o.put("state", "failed");
+                    o.put("progress", pct);
+                    o.put("error", "Download failed");
+                } else {
+                    o.put("state", "running");
+                    o.put("progress", pct);
+                }
+            } catch (Exception e) {
+                try {
+                    o.put("state", "failed");
+                    o.put("progress", 0);
+                    o.put("error", e.getMessage() != null ? e.getMessage() : "error");
+                } catch (Exception ignored) {}
+            }
+            return o.toString();
+        }
+
+        @JavascriptInterface
+        public String open() {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (!getPackageManager().canRequestPackageInstalls()) {
+                        runOnUiThread(() -> {
+                            Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+                            settings.setData(Uri.parse("package:" + getPackageName()));
+                            settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            startActivity(settings);
+                        });
+                        return "need_permission";
+                    }
+                }
+                DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                Uri uri = null;
+                if (dm != null && lastDownloadId > 0) {
+                    uri = dm.getUriForDownloadedFile(lastDownloadId);
+                }
+                if (uri == null) {
+                    File dest = new File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                        lastFilename
+                    );
+                    if (!dest.exists()) return "failed";
+                    uri = FileProvider.getUriForFile(
+                        MainActivity.this,
+                        getPackageName() + ".fileprovider",
+                        dest
+                    );
+                }
+                final Uri apkUri = uri;
+                runOnUiThread(() -> {
+                    Intent install = new Intent(Intent.ACTION_VIEW);
+                    install.setDataAndType(apkUri, "application/vnd.android.package-archive");
+                    install.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    List<ResolveInfo> res = getPackageManager().queryIntentActivities(install, PackageManager.MATCH_DEFAULT_ONLY);
+                    for (ResolveInfo ri : res) {
+                        grantUriPermission(
+                            ri.activityInfo.packageName,
+                            apkUri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        );
+                    }
+                    startActivity(install);
+                });
+                return "ok";
+            } catch (Exception e) {
+                return "failed";
+            }
+        }
+    }
+
+    public class NotifyBridge {
+        @JavascriptInterface
+        public void start(String url, String anon, String token, String refresh) {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 77);
+                    }
+                }
+                try {
+                    PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+                    SharedPreferences sp = getSharedPreferences(AdminAlertService.PREFS, MODE_PRIVATE);
+                    if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())
+                        && !sp.getBoolean("asked_battery", false)) {
+                        sp.edit().putBoolean("asked_battery", true).apply();
+                        Intent batt = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                        batt.setData(Uri.parse("package:" + getPackageName()));
+                        startActivity(batt);
+                    }
+                } catch (Exception ignored) {}
+                AdminAlertService.requestStart(MainActivity.this, url, anon, token, refresh);
+            });
+        }
+
+        @JavascriptInterface
+        public void pollNow() {
+            runOnUiThread(() -> AdminAlertService.requestPollNow(MainActivity.this));
+        }
+
+        @JavascriptInterface
+        public void stop() {
+            runOnUiThread(() -> AdminAlertService.requestStop(MainActivity.this));
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != 77) return;
+        SharedPreferences sp = getSharedPreferences(AdminAlertService.PREFS, MODE_PRIVATE);
+        if (!sp.getBoolean("enabled", false)) return;
+        AdminAlertService.requestStart(
+            this,
+            sp.getString("url", ""),
+            sp.getString("anon", ""),
+            sp.getString("token", ""),
+            sp.getString("refresh", "")
+        );
+    }
+
+    void pingActiveWatch() {
+        runOnUiThread(() -> {
+            if (getBridge() == null || getBridge().getWebView() == null) return;
+            getBridge().getWebView().evaluateJavascript(
+                "window.__ttflixPingWatch && window.__ttflixPingWatch();",
+                null
+            );
+        });
+    }
+
+    /** Native Next Episode — persist the new S/E while PlayerActivity is still open. */
+    void notifyNextEpisode(int season, int episode) {
+        runOnUiThread(() -> {
+            if (getBridge() == null || getBridge().getWebView() == null) return;
+            getBridge().getWebView().evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('androidNextEpisode',{detail:{season:"
+                    + season + ",episode:" + episode + "}}));",
+                null
+            );
+        });
     }
 
     @Override
@@ -111,13 +395,16 @@ public class MainActivity extends BridgeActivity {
         // Fire androidresume into the WebView so WatchPage can save progress.
         // Pass the last played season/episode so Continue Watching saves the
         // correct episode even if the user nexted through several episodes natively.
-        final int season  = PlayerActivity.lastPlayedSeason;
-        final int episode = PlayerActivity.lastPlayedEpisode;
+        final int season   = PlayerActivity.lastPlayedSeason;
+        final int episode  = PlayerActivity.lastPlayedEpisode;
+        final int watched  = PlayerActivity.lastWatchedSeconds;
+        final int duration = PlayerActivity.lastDurationSeconds;
         runOnUiThread(() -> {
             if (getBridge() != null && getBridge().getWebView() != null) {
-                String detail = (season > 0 && episode > 0)
-                    ? "{season:" + season + ",episode:" + episode + "}"
-                    : "{}";
+                String detail = "{season:" + season
+                    + ",episode:" + episode
+                    + ",watched:" + watched
+                    + ",duration:" + duration + "}";
                 getBridge().getWebView().evaluateJavascript(
                     "window.dispatchEvent(new CustomEvent('androidresume',{detail:" + detail + "}));", null);
             }
@@ -174,6 +461,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        instance = this;
 
         // Lock portrait on phones, leave unspecified on TV (TV is always landscape)
         if (!getPackageManager().hasSystemFeature("android.software.leanback")) {
@@ -217,16 +505,13 @@ public class MainActivity extends BridgeActivity {
             // Register dial bridge so JS can call window.AndroidDial.call(number)
             getBridge().getWebView().addJavascriptInterface(new DialBridge(), "AndroidDial");
 
+            getBridge().getWebView().addJavascriptInterface(new ApkBridge(), "AndroidApk");
+            getBridge().getWebView().addJavascriptInterface(new NotifyBridge(), "AndroidNotify");
+
             getBridge().getWebView().setWebViewClient(new com.getcapacitor.BridgeWebViewClient(getBridge()) {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                     String url = request.getUrl().toString();
-                    if (url.startsWith("capacitor://") || url.startsWith("http://localhost")) {
-                        return false;
-                    }
-                    if (url.contains("videasy.net")) {
-                        return false;
-                    }
                     // Handle tel: links — open the native dialer
                     if (url.startsWith("tel:")) {
                         Intent dialIntent = new Intent(Intent.ACTION_DIAL,
@@ -235,7 +520,9 @@ public class MainActivity extends BridgeActivity {
                         startActivity(dialIntent);
                         return true;
                     }
-                    return true;
+                    // Let Capacitor serve the app origin (https://app.ttflix.tt)
+                    // and allowNavigation hosts. Returning true here blanks the WebView.
+                    return super.shouldOverrideUrlLoading(view, request);
                 }
             });
         }
@@ -286,5 +573,11 @@ public class MainActivity extends BridgeActivity {
             | View.SYSTEM_UI_FLAG_FULLSCREEN
             | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY;
         decorView.setSystemUiVisibility(flags);
+    }
+
+    @Override
+    public void onDestroy() {
+        if (instance == this) instance = null;
+        super.onDestroy();
     }
 }

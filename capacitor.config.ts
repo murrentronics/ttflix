@@ -10,6 +10,8 @@ const config: CapacitorConfig = {
     allowNavigation: [
       "*.videasy.net",
       "player.videasy.net",
+      "*.videasy.to",
+      "player.videasy.to",
     ],
   },
   android: {

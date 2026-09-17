@@ -8,7 +8,11 @@ export function getProviders(
   progress?: number,
 ): Provider[] {
   const color = "E50914";
-  const progressParam = progress !== undefined ? `&progress=${progress}` : "";
+  // Always send an explicit progress value when the caller asked for one.
+  // progress=0 is required for Start Over / next-episode so Videasy does not
+  // restore a leftover timestamp. Omit the param only when progress is unknown.
+  const progressParam =
+    progress === undefined ? "" : `&progress=${Math.max(0, Math.floor(progress))}`;
 
   if (mediaType === "tv") {
     return [

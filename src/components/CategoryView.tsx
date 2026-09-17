@@ -3,6 +3,7 @@ import { getCategory } from "@/lib/tmdb.functions.app";
 import { useProfile } from "@/lib/ProfileContext";
 import { AppShell } from "./AppShell";
 import { Browse } from "./Browse";
+import { CatalogStatus, CATALOG_QUERY_OPTIONS } from "./CatalogStatus";
 
 export function CategoryView({
   category,
@@ -14,17 +15,21 @@ export function CategoryView({
   const { activeProfile } = useProfile();
   const isKids = activeProfile?.is_kids ?? false;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ["category", category, isKids],
     queryFn: () => getCategory({ data: { category, isKids } }),
+    ...CATALOG_QUERY_OPTIONS,
   });
 
   return (
     <AppShell>
       {isLoading || !data ? (
-        <div className="flex min-h-[60vh] items-center justify-center pt-20 text-muted-foreground">
-          Loading {heading}…
-        </div>
+        <CatalogStatus
+          label={heading}
+          isError={isError}
+          isFetching={isFetching}
+          onRefresh={() => refetch()}
+        />
       ) : (
         <Browse feed={data} />
       )}

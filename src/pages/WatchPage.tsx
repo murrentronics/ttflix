@@ -5,9 +5,12 @@ import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { getProviders } from "@/lib/stream";
 import { saveProgress } from "@/lib/continue-watching";
+import { getNextEpisode, seasonCountsFor, isNearlyFinished } from "@/lib/next-episode";
 import { TTFlixLoader } from "@/components/TTFlixLoader";
 import { getDetails, getSeasonEpisodes } from "@/lib/tmdb.functions.app";
-import { supabase, PLANS } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
+import { subscriberCanWatch } from "@/lib/admin";
+import { claimScreenSlot, pingScreenSlot, screenLimitMessage, stopPlayingOnSlot } from "@/lib/screens";
 
 // Module-level caches — survive React navigation remounts within the same session
 const seasonEpCountCache: Map<string, number> = new Map(); // key: `${tmdbId}-${season}`
@@ -28,6 +31,7 @@ export function WatchPage() {
   const [loaderKey, setLoaderKey] = useState(0);
   const [exitVisible, setExitVisible] = useState(true);
   const [screenError, setScreenError] = useState<string | null>(null);
+  const [screenGate, setScreenGate] = useState<"checking" | "ok" | "blocked">("checking");
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const playerStartedRef = useRef(false);
   const watchIdRef = useRef<string | null>(null);
@@ -49,6 +53,7 @@ export function WatchPage() {
   const season     = Number(searchParams.get("season") ?? 1);
   const episode    = Number(searchParams.get("episode") ?? 1);
   const progressParam = searchParams.get("progress") !== null ? Number(searchParams.get("progress")) : undefined;
+  const startOverSession = searchParams.get("startOver") === "1";
   // Carry episode/season counts through URL so remounts don't lose them
   const urlTotalEps  = searchParams.get("totalEps")  ? Number(searchParams.get("totalEps"))  : null;
   const urlTotalSeas = searchParams.get("totalSeas") ? Number(searchParams.get("totalSeas")) : null;
@@ -58,7 +63,7 @@ export function WatchPage() {
 
   const contentKey  = `${type}-${tmdbId}-${season}-${episode}`;
   const stillLoading = loading || profileLoading;
-  const canWatch     = isAdmin || (!!user && profile?.status === "approved");
+  const canWatch     = subscriberCanWatch(profile?.status, profile?.subscription_expires_at, profile?.role, isAdmin);
   const isKidsProfile = activeProfile?.is_kids ?? false;
 
   const KIDS_BLOCKED_RATINGS = new Set(["PG-13", "R", "NC-17", "TV-14", "TV-MA", "18+", "18", "X"]);
@@ -162,45 +167,21 @@ export function WatchPage() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showSeasonPicker]);
 
-  // nextEp — two-tier logic:
-  // 1. If we have real data (from cache or fetch) → use it precisely.
-  // 2. If still loading (null) → show optimistically so button is never hidden on first load.
-  //    Optimistic cap: episode+1 always shown while episodeCount unknown.
-  //    Season+1 shown while totalSeasons unknown only if we finished this season.
-  const nextEp = (() => {
-    if (type !== "tv") return null;
-
-    // Prefer the full episodeCounts array (all seasons), fall back to single-season count
-    const curSeasonCount = episodeCounts.length >= season
-      ? episodeCounts[season - 1]
-      : episodeCount;
-
-    if (curSeasonCount !== null) {
-      // We know exactly how many episodes are in this season
-      if (episode < curSeasonCount) return { season, episode: episode + 1 };
-      // Last episode of this season — check next season
-      if (totalSeasons !== null) {
-        return season < totalSeasons ? { season: season + 1, episode: 1 } : null;
-      }
-      // totalSeasons still loading — show S+1 E1 optimistically
-      return { season: season + 1, episode: 1 };
-    }
-
-    // episodeCount still loading — show next ep optimistically
-    // This covers first-ever load before any fetch returns
-    return { season, episode: episode + 1 };
-  })();
+  const lookupCounts = seasonCountsFor(season, episodeCount, episodeCounts);
+  const nextEp = type === "tv"
+    ? getNextEpisode(season, episode, lookupCounts, totalSeasons)
+    : null;
 
   // Detect Android native player — on Android we skip the iframe entirely
   const isAndroid = typeof (window as any).AndroidPlayer !== "undefined";
 
-  const providers        = getProviders(type, tmdbId, season, episode, progressParam);
+  const providers        = getProviders(type, tmdbId, season, episode, startOverSession ? 0 : progressParam);
   const [providerIndex, setProviderIndex] = useState(0);
   const [src, setSrc]    = useState(() => providers[0].url);
   const providerSignalRef = useRef(false);
 
   useEffect(() => {
-    const freshProviders = getProviders(type, tmdbId, season, episode, progressParam);
+    const freshProviders = getProviders(type, tmdbId, season, episode, startOverSession ? 0 : progressParam);
     setProviderIndex(0);
     setSrc(freshProviders[0].url);
     providerSignalRef.current = false;
@@ -229,42 +210,65 @@ export function WatchPage() {
     return () => { if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current); };
   }, [src, startFallbackTimer]);
 
-  // ── Screen limit ──────────────────────────────────────────────────────────
+  // ── Screen limit — block playback until this device owns a live slot ─────
   useEffect(() => {
-    if (!user || !session || !profile || isAdmin) return;
-    const sessionId = session.access_token;
-    const max = PLANS[profile.plan]?.screens ?? 2;
-    async function registerWatch() {
-      const staleDate = new Date(Date.now() - 30 * 1000).toISOString();
-      await supabase.from("active_watches").delete().eq("user_id", user!.id).lt("last_ping", staleDate);
-      const { data: existing } = await supabase.from("active_watches").select("id")
-        .eq("user_id", user!.id).eq("session_id", sessionId).maybeSingle();
-      if (existing) { watchIdRef.current = existing.id; return; }
-      const { count } = await supabase.from("active_watches")
-        .select("*", { count: "exact", head: true }).eq("user_id", user!.id);
-      if ((count ?? 0) >= max) {
-        const planName  = PLANS[profile!.plan]?.name ?? profile!.plan;
-        const upgradeMsg = (profile!.plan === "basic" || profile!.plan === "basic_annual")
-          ? " Upgrade to Premium for up to 5 screens." : "";
-        setScreenError(`Too many screens watching. Your ${planName} plan allows ${max} screen${max === 1 ? "" : "s"}.${upgradeMsg}`);
+    if (isAdmin) {
+      setScreenGate("ok");
+      return;
+    }
+    if (!user || !profile || !canWatch) return;
+    let cancelled = false;
+    setScreenGate("checking");
+    setScreenError(null);
+
+    const playingTitle = title || `Title ${tmdbId}`;
+    const pingWatch = () => {
+      if (!watchIdRef.current) return;
+      pingScreenSlot(watchIdRef.current, {
+        tmdbId,
+        mediaType: type,
+        title: playingTitle,
+      }).catch(() => {});
+    };
+    (window as any).__ttflixPingWatch = pingWatch;
+
+    (async () => {
+      const slot = await claimScreenSlot({
+        userId: user.id,
+        plan: profile.plan,
+        tmdbId,
+        mediaType: type,
+        title: playingTitle,
+      });
+      if (cancelled) return;
+      if (!slot.ok) {
+        setScreenError(screenLimitMessage(profile.plan, slot.max));
+        setScreenGate("blocked");
         return;
       }
-      const { data: inserted } = await supabase.from("active_watches").insert({
-        user_id: user!.id, session_id: sessionId, tmdb_id: tmdbId, media_type: type,
-        title: title || `Title ${tmdbId}`, last_ping: new Date().toISOString(),
-      }).select("id").single();
-      if (inserted) watchIdRef.current = inserted.id;
-    }
-    registerWatch();
-    const ping = setInterval(() => {
-      if (watchIdRef.current)
-        supabase.from("active_watches").update({ last_ping: new Date().toISOString() }).eq("id", watchIdRef.current);
-    }, 3000);
+      watchIdRef.current = slot.id;
+      setScreenGate("ok");
+    })();
+
+    const ping = setInterval(pingWatch, 3000);
     return () => {
+      cancelled = true;
       clearInterval(ping);
-      if (watchIdRef.current) supabase.from("active_watches").delete().eq("id", watchIdRef.current);
+      try { delete (window as any).__ttflixPingWatch; } catch { /* ignore */ }
+      if (watchIdRef.current) {
+        stopPlayingOnSlot(watchIdRef.current).catch(() => {});
+      }
     };
-  }, [user, session, profile, isAdmin, tmdbId, type, title, season, episode]);
+  }, [user?.id, profile?.plan, isAdmin, canWatch]);
+
+  useEffect(() => {
+    if (screenGate !== "ok" || !watchIdRef.current) return;
+    pingScreenSlot(watchIdRef.current, {
+      tmdbId,
+      mediaType: type,
+      title: title || `Title ${tmdbId}`,
+    }).catch(() => {});
+  }, [tmdbId, type, title, season, episode, screenGate]);
 
   // ── Duration fetch ────────────────────────────────────────────────────────
   const durationReadyRef = useRef(false);
@@ -298,7 +302,11 @@ export function WatchPage() {
     setLoaderKey((k) => k + 1);
     playerStartedRef.current = false;
     savedInitial.current     = false;
-    progressRef.current      = { watched: 0, duration: 0, hasPostMessage: false };
+    progressRef.current      = {
+      watched: progressParam && progressParam > 0 ? progressParam : 0,
+      duration: 0,
+      hasPostMessage: !!(progressParam && progressParam > 0),
+    };
     watchStartRef.current    = Date.now();
     durationReadyRef.current = false;
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -313,6 +321,18 @@ export function WatchPage() {
       });
     }
     if (kidsBlockedRef.current) return;
+    const existing = await supabase.from("watch_progress").select("watched_seconds, duration_seconds")
+      .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
+      .eq("tmdb_id", tmdbId).eq("media_type", type).maybeSingle();
+    const resumeAt = progressParam && progressParam > 0 ? progressParam : 0;
+    // Don't clobber a real Continue Watching row with a fake 10s marker.
+    if (progressParam !== 0 && (existing.data?.watched_seconds ?? 0) >= 10 && resumeAt === 0) {
+      savedInitial.current = true;
+      if ((existing.data?.duration_seconds ?? 0) > 0 && progressRef.current.duration === 0) {
+        progressRef.current.duration = existing.data!.duration_seconds;
+      }
+      return;
+    }
     savedInitial.current = true;
     if (!durationReadyRef.current) {
       await new Promise<void>((resolve) => {
@@ -320,6 +340,9 @@ export function WatchPage() {
         setTimeout(() => { clearInterval(check); resolve(); }, 6000);
       });
     }
+    // User already jumped to another episode via Next — don't clobber it with S1E1.
+    const nowEp = currentEpisodeRef.current;
+    if (nowEp.season !== season || nowEp.episode !== episode) return;
     const duration = progressRef.current.duration;
     let safeDuration = duration > 0 ? Math.floor(duration) : 0;
     if (safeDuration === 0) {
@@ -329,14 +352,15 @@ export function WatchPage() {
       safeDuration = existing?.duration_seconds ?? 0;
     }
     if (safeDuration > 0 && progressRef.current.duration === 0) progressRef.current.duration = safeDuration;
+    const watchedStart = resumeAt > 0 ? Math.floor(resumeAt) : 10;
     await saveProgress({
       user_id: user.id, profile_id: effectiveProfile.id, tmdb_id: tmdbId, media_type: type,
       title, poster_path: poster || null, backdrop_path: backdrop || null,
-      watched_seconds: 10, duration_seconds: safeDuration,
+      watched_seconds: watchedStart, duration_seconds: safeDuration,
       season: type === "tv" ? currentEpisodeRef.current.season : null,
       episode: type === "tv" ? currentEpisodeRef.current.episode : null,
     });
-  }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop]);
+  }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop, progressParam]);
 
   // Dismiss loader:
   // - Android: dismiss quickly (500ms) — native PlayerActivity handles playback, no iframe signal needed
@@ -362,24 +386,67 @@ export function WatchPage() {
   }, [triggerExplosion, isKidsProfile, isAndroid, contentKey]);
 
   const persist = useCallback(async (watched: number, duration: number) => {
-    if (!user || !effectiveProfile || watched < 10) return;
+    if (!user || !effectiveProfile) return;
     if (kidsBlockedRef.current) return;
-    const { season: currentSeason, episode: currentEp } = currentEpisodeRef.current;
+    let { season: currentSeason, episode: currentEp } = currentEpisodeRef.current;
+    if (type === "tv" && (currentSeason < 1 || currentEp < 1)) return;
+    if (type !== "tv" && watched < 10) return;
     let safeDuration = duration > 0 ? Math.floor(duration) : 0;
-    if (safeDuration === 0) {
-      const { data: existing } = await supabase.from("watch_progress").select("duration_seconds")
-        .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
-        .eq("tmdb_id", tmdbId).eq("media_type", type).maybeSingle();
-      safeDuration = existing?.duration_seconds ?? 0;
+    const { data: existing } = await supabase.from("watch_progress")
+      .select("watched_seconds, duration_seconds, season, episode")
+      .eq("user_id", user.id).eq("profile_id", effectiveProfile.id)
+      .eq("tmdb_id", tmdbId).eq("media_type", type).maybeSingle();
+    if (safeDuration === 0) safeDuration = existing?.duration_seconds ?? 0;
+    let savedWatched = safeDuration > 0 ? Math.min(Math.floor(watched), safeDuration) : Math.floor(watched);
+
+    const sameEp = type !== "tv"
+      || ((existing?.season ?? 1) === currentSeason && (existing?.episode ?? 1) === currentEp);
+    // Don't let a 0/boot tick wipe a real resume point on the same episode.
+    if (!startOverSession && sameEp && (existing?.watched_seconds ?? 0) > savedWatched && savedWatched < 15) {
+      savedWatched = existing!.watched_seconds;
     }
+    if (type === "tv" && savedWatched < 10 && !startOverSession) savedWatched = 10;
+
+    // Finished this episode — land Continue Watching on the next one (Netflix-style).
+    if (type === "tv" && isNearlyFinished(savedWatched, safeDuration)) {
+      const counts = seasonCountsFor(currentSeason, episodeCount, episodeCounts);
+      const next = getNextEpisode(currentSeason, currentEp, counts, totalSeasons);
+      if (next) {
+        currentEpisodeRef.current = next;
+        currentSeason = next.season;
+        currentEp = next.episode;
+        savedWatched = 10;
+        safeDuration = 0;
+      }
+    }
+
     await saveProgress({
       user_id: user.id, profile_id: effectiveProfile.id, tmdb_id: tmdbId, media_type: type,
       title: title || `Title ${tmdbId}`, poster_path: poster || null, backdrop_path: backdrop || null,
-      watched_seconds: safeDuration > 0 ? Math.min(Math.floor(watched), safeDuration) : Math.floor(watched),
+      watched_seconds: savedWatched,
       duration_seconds: safeDuration,
       season: type === "tv" ? currentSeason : null, episode: type === "tv" ? currentEp : null,
     });
-  }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop]);
+  }, [user, effectiveProfile, tmdbId, type, title, poster, backdrop, episodeCount, episodeCounts, totalSeasons, startOverSession]);
+
+  const pullNativeProgress = useCallback(() => {
+    if (!isAndroid) return;
+    try {
+      const raw = (window as any).AndroidPlayer?.getProgress?.();
+      if (!raw) return;
+      const p = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (p?.season > 0 && p?.episode > 0) {
+        currentEpisodeRef.current = { season: p.season, episode: p.episode };
+      }
+      if (p?.watched > 0) {
+        progressRef.current = {
+          watched: p.watched,
+          duration: p.duration > 0 ? p.duration : progressRef.current.duration,
+          hasPostMessage: true,
+        };
+      }
+    } catch { /* ignore */ }
+  }, [isAndroid]);
 
   const persistRef = useRef(persist);
   useEffect(() => { persistRef.current = persist; }, [persist]);
@@ -439,11 +506,12 @@ export function WatchPage() {
   useEffect(() => {
     if (!user) return;
     const t = setInterval(() => {
+      pullNativeProgress();
       const wallClock = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
       const duration  = progressRef.current.duration;
       const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
       const watched   = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
-      if (watched > 10) persistRef.current(watched, duration);
+      if (type === "tv" || watched > 10) persistRef.current(watched, duration);
     }, 15_000);
     return () => clearInterval(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -451,11 +519,12 @@ export function WatchPage() {
 
   useEffect(() => {
     const save = () => {
+      pullNativeProgress();
       const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
       const duration   = progressRef.current.duration;
       const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
       const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
-      if (user && watched > 10) persistRef.current(watched, duration);
+      if (user && (type === "tv" || watched > 10)) persistRef.current(watched, duration);
     };
     window.addEventListener("beforeunload", save);
     return () => { save(); window.removeEventListener("beforeunload", save); };
@@ -466,8 +535,19 @@ export function WatchPage() {
   const playerLaunchedRef = useRef(false);
   useEffect(() => { playerLaunchedRef.current = false; }, [contentKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [tvWaitTimedOut, setTvWaitTimedOut] = useState(false);
   useEffect(() => {
-    if (stillLoading || !canWatch || !!screenError) return;
+    setTvWaitTimedOut(false);
+    if (type !== "tv") return;
+    const t = setTimeout(() => setTvWaitTimedOut(true), 4000);
+    return () => clearTimeout(t);
+  }, [contentKey, type]);
+
+  const tvCountsReady = type !== "tv" || episodeCount != null || episodeCounts.length > 0 || tvWaitTimedOut;
+
+  useEffect(() => {
+    if (stillLoading || !canWatch || screenGate !== "ok" || !!screenError) return;
+    if (!tvCountsReady) return;
     if (playerLaunchedRef.current) return;
     async function launch() {
       if (!kidsCheckDoneRef.current) {
@@ -480,93 +560,99 @@ export function WatchPage() {
       playerLaunchedRef.current = true;
       saveInitial();
       setTimeout(() => {
-        const primaryUrl = providers[0].url;
+        const playProgress = startOverSession
+          ? 0
+          : (progressParam && progressParam > 0 ? progressParam : undefined);
+        const primaryUrl = getProviders(type, tmdbId, season, episode, playProgress)[0].url;
         const android = (window as any).AndroidPlayer;
-        if (android?.openWithNext && nextEp) {
-          const nextUrl = getProviders(type, tmdbId, nextEp.season, nextEp.episode)[0]?.url;
-          if (nextUrl) {
-            // Pass all season episode counts so PlayerActivity knows when to stop
-            const countsStr = episodeCounts.length > 0
-              ? episodeCounts.join(",")
-              : String(episodeCount ?? 0);
-            android.openWithNext(primaryUrl, nextUrl, episodeCount ?? 0, totalSeasons ?? 0, countsStr);
-            return;
-          }
+        const counts = seasonCountsFor(season, episodeCount, episodeCounts);
+        const countsStr = counts.length > 0 ? counts.join(",") : String(episodeCount ?? 0);
+        const nextUrl = nextEp
+          ? getProviders(type, tmdbId, nextEp.season, nextEp.episode, startOverSession ? 0 : undefined)[0]?.url
+          : "";
+        if (android?.openWithNextEx) {
+          android.openWithNextEx(primaryUrl, nextUrl ?? "", episodeCount ?? 0, totalSeasons ?? 0, countsStr, startOverSession, String(tmdbId));
+          return;
+        }
+        if (android?.openWithNext && nextUrl) {
+          android.openWithNext(primaryUrl, nextUrl, episodeCount ?? 0, totalSeasons ?? 0, countsStr);
+          return;
+        }
+        if (android?.openWithNext && type === "tv") {
+          android.openWithNext(primaryUrl, "", episodeCount ?? 0, totalSeasons ?? 0, countsStr);
+          return;
         }
         android?.open(primaryUrl);
       }, 100);
     }
     launch();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stillLoading, canWatch, screenError]);
+  }, [stillLoading, canWatch, screenError, screenGate, tvCountsReady, episodeCount, episodeCounts, totalSeasons, nextEp]);
 
   useEffect(() => {
-    const onResume = (e: Event) => {
-      // If PlayerActivity tells us which episode it ended on, update our ref
-      // so persist() saves the correct episode to Continue Watching
-      const detail = (e as CustomEvent).detail;
-      if (detail?.season && detail?.episode) {
+    if (!isAndroid || type !== "tv") return;
+    const counts = seasonCountsFor(season, episodeCount, episodeCounts);
+    if (counts.length === 0) return;
+    (window as any).AndroidPlayer?.setSeasonCounts?.(counts.join(","), totalSeasons ?? 0);
+  }, [isAndroid, type, season, episodeCount, episodeCounts, totalSeasons]);
+
+  useEffect(() => {
+    const onResume = async (e: Event) => {
+      const detail = (e as CustomEvent).detail ?? {};
+      if (detail.season > 0 && detail.episode > 0) {
         currentEpisodeRef.current = { season: detail.season, episode: detail.episode };
       }
+      pullNativeProgress();
       const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
-      const duration   = progressRef.current.duration;
-      const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
+      const duration   = detail.duration > 0 ? detail.duration : progressRef.current.duration;
+      const nativeWatched = detail.watched > 0 ? detail.watched : 0;
+      const refWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : 0;
+      const rawWatched = Math.max(
+        nativeWatched,
+        refWatched,
+        nativeWatched < 10 && refWatched < 10 ? wallClock : 0,
+      );
       const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
-      if (user && watched > 10) persistRef.current(watched, duration);
-      navigate("/");
+      if (user) await persistRef.current(watched, duration);
+      if (window.history.length > 1) navigate(-1);
+      else navigate("/");
     };
     window.addEventListener("androidresume", onResume);
     return () => window.removeEventListener("androidresume", onResume);
-  }, [navigate, user]);
+  }, [navigate, user, pullNativeProgress]);
 
   // When native Next button is tapped, advance episode tracking and push next URL back
   useEffect(() => {
-    const onNext = () => {
-      // Save progress for the episode just finished
-      const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+    const onNext = (e: Event) => {
+      const detail = (e as CustomEvent).detail ?? {};
+      pullNativeProgress();
       const duration   = progressRef.current.duration;
-      const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
+      const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : 0;
       const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
       if (watched > 10) persistRef.current(watched, duration);
 
-      // Advance current episode ref
-      // Use per-season episode counts if available, otherwise fall back to current season count
-      const cur = currentEpisodeRef.current;
-      const curSeasonCount = episodeCounts.length >= cur.season
-        ? episodeCounts[cur.season - 1]
-        : (episodeCount ?? 0);
-      const newEp = cur.episode < curSeasonCount
-        ? { season: cur.season, episode: cur.episode + 1 }
-        : { season: cur.season + 1, episode: 1 };
-      currentEpisodeRef.current = newEp;
+      if (detail.season > 0 && detail.episode > 0) {
+        currentEpisodeRef.current = { season: detail.season, episode: detail.episode };
+      } else {
+        const cur = currentEpisodeRef.current;
+        const counts = seasonCountsFor(cur.season, episodeCount, episodeCounts);
+        const newEp = getNextEpisode(cur.season, cur.episode, counts, totalSeasons);
+        if (!newEp) {
+          (window as any).AndroidPlayer?.setSeasonCounts?.(counts.join(","), totalSeasons ?? 0);
+          return;
+        }
+        currentEpisodeRef.current = newEp;
+      }
 
-      // Reset progress tracking for new episode
       progressRef.current  = { watched: 0, duration: 0, hasPostMessage: false };
       watchStartRef.current = Date.now();
       savedInitial.current  = false;
-
-      // Save the new episode position immediately
       persistRef.current(10, 0);
-
-      // Compute next-next episode using per-season counts
-      const newSeasonCount = episodeCounts.length >= newEp.season
-        ? episodeCounts[newEp.season - 1]
-        : (episodeCount ?? 0);
-      const nextSeason  = newEp.episode < newSeasonCount ? newEp.season : newEp.season < (totalSeasons ?? 0) ? newEp.season + 1 : null;
-      const nextEpisode = newEp.episode < newSeasonCount ? newEp.episode + 1 : nextSeason ? 1 : null;
-
-      if (nextSeason && nextEpisode) {
-        const nextNextUrl = getProviders(type, tmdbId, nextSeason, nextEpisode)[0]?.url ?? "";
-        (window as any).TTFlixNative?.setNextUrl?.(nextNextUrl);
-      } else {
-        // End of series — tell native to hide the button
-        (window as any).TTFlixNative?.setNextUrl?.("");
-      }
     };
     window.addEventListener("androidNextEpisode", onNext);
     return () => window.removeEventListener("androidNextEpisode", onNext);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, type, tmdbId, episodeCount, totalSeasons]);
+  }, [user, type, tmdbId, episodeCount, episodeCounts, totalSeasons, pullNativeProgress]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -610,7 +696,7 @@ export function WatchPage() {
       <h2 className="text-xl font-bold text-white">Too Many Screens</h2>
       <p className="text-sm text-white/70 max-w-xs">{screenError}</p>
       <button onClick={() => navigate("/")} className="rounded-full bg-primary px-8 py-3 text-sm font-bold text-white">Back to Home</button>
-      {profile?.plan === "basic" && (
+      {(profile?.plan === "basic" || profile?.plan === "basic_annual") && (
         <button onClick={() => navigate("/account")} className="rounded-full border border-white/30 px-8 py-3 text-sm font-semibold text-white/80">Upgrade Plan</button>
       )}
     </div>
@@ -621,7 +707,7 @@ export function WatchPage() {
       <TTFlixLoader key={loaderKey} explode={explodeLoader} persistent={!isAndroid} backdrop={backdrop || poster} onDone={onLoaderDone} />
 
       {/* iframe — web only; Android uses native PlayerActivity instead */}
-      {!kidsBlocked && !isAndroid && (
+      {!kidsBlocked && !isAndroid && screenGate === "ok" && (
         <iframe ref={iframeRef} src={src}
           className="absolute inset-0 h-full w-full border-0 z-10"
           allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
@@ -653,9 +739,9 @@ export function WatchPage() {
         </div>
       )}
 
-      {/* Exit button — shows on tap/move/remote focus, fades after 3s */}
+      {/* Exit button — web/TV only. Android uses the native PlayerActivity X. */}
       {/* data-tv-player marks this zone so navigateVertical skips these buttons */}
-      {!loaderVisible && !kidsBlocked && (
+      {!loaderVisible && !kidsBlocked && !isAndroid && (
         <div data-tv-player>
           <button
             onTouchStart={(e) => { e.stopPropagation(); navigate("/"); }}
@@ -781,7 +867,7 @@ export function WatchPage() {
                       nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                       totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                     ].join("");
-                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
+                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}&progress=0${startOverSession ? "&startOver=1" : ""}`);
                   }}
                   onClick={() => {
                     const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
@@ -798,7 +884,7 @@ export function WatchPage() {
                       nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                       totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                     ].join("");
-                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
+                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}&progress=0${startOverSession ? "&startOver=1" : ""}`);
                   }}
                   tabIndex={0}
                   aria-label={`Next S${nextEp.season} E${nextEp.episode}`}
@@ -820,7 +906,7 @@ export function WatchPage() {
                         nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
                         totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
                       ].join("");
-                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}`);
+                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}&progress=0${startOverSession ? "&startOver=1" : ""}`);
                     }
                     // ArrowLeft moves back to season picker or exit button
                     if (e.key === "ArrowLeft") {

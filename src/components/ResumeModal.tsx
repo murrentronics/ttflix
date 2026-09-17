@@ -4,6 +4,7 @@ import { X, Play, ChevronDown } from "lucide-react";
 import { img } from "@/lib/tmdb";
 import { getSeasonEpisodes, getDetails } from "@/lib/tmdb.functions.app";
 import type { WatchProgress } from "@/lib/continue-watching";
+import { progressPercent } from "@/lib/next-episode";
 
 type Props = {
   item: WatchProgress | null;
@@ -70,15 +71,13 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
   const backdrop = img(item.backdrop_path ?? item.poster_path, "w780");
   const poster   = img(item.poster_path ?? item.backdrop_path, "w500");
 
-  const progress =
-    item.duration_seconds > 0
-      ? Math.min(Math.round((item.watched_seconds / item.duration_seconds) * 100), 99)
-      : null;
+  const progress = progressPercent(item.watched_seconds, item.duration_seconds);
 
   const totalSeasons = details?.number_of_seasons ?? 1;
 
   return (
     <div
+      data-tv-zone="modal"
       className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-sm"
       style={{ paddingTop: "72px" }}
       onClick={onClose}

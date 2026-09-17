@@ -10,8 +10,24 @@ export default defineConfig(({ mode }) => {
     ...loadEnv(mode, path.resolve(__dirname), "VITE_"),
   };
 
+  if (!env.VITE_SUPABASE_URL || !env.VITE_SUPABASE_ANON_KEY || !env.VITE_TMDB_API_KEY) {
+    throw new Error(
+      "Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY / VITE_TMDB_API_KEY in .env. A bundle without these boots blank or never loads movies."
+    );
+  }
+
   return {
-    plugins: [react(), tailwindcss(), tsconfigPaths()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      tsconfigPaths(),
+      {
+        name: "capacitor-no-crossorigin",
+        transformIndexHtml(html) {
+          return html.replace(/\s+crossorigin(?:="[^"]*")?/g, "");
+        },
+      },
+    ],
     define: {
       "import.meta.env.VITE_TMDB_API_KEY": JSON.stringify(env.VITE_TMDB_API_KEY ?? ""),
       "import.meta.env.VITE_APP_MODE": JSON.stringify("capacitor"),

@@ -10,6 +10,9 @@ import {
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase, PLANS, ADMIN_EMAIL, type PlanId, type UserStatus } from "./supabase";
 import { checkRenewal } from "./admin";
+import { isAuthLocked } from "./auth-lock";
+import { startAdminAlerts, stopAdminAlerts } from "./admin-alerts";
+import { claimScreenSlot, pingScreenSlot, releaseScreenSlot, screenLimitMessage } from "./screens";
 
 export type Profile = {
   id: string;
@@ -83,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+      if (isAuthLocked()) return;
       setSession(sess);
       setUser(sess?.user ?? null);
       if (!sess) {
@@ -135,6 +139,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       supabase.removeChannel(channel);
     };
   }, [user, session]);
+
+  // Re-check expiry when the app comes back to the foreground (midnight cutoff).
+  useEffect(() => {
+    if (!user) return;
+    const run = () => {
+      const isAdminUser = (user.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
+      checkRenewal(user.id, isAdminUser).then(() => refreshProfile());
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") run();
+    };
+    window.addEventListener("focus", run);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", run);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [user, refreshProfile]);
 
   const signUp: AuthContextValue["signUp"] = async ({
     email, password, fullName, phone, country, plan,
@@ -217,21 +239,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       prof = await loadProfile(signedIn.id);
     }
 
-    try {
-      const isAdminEmailCheck = signedIn.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-      if (!isAdminEmailCheck) {
-        // Screen limit is enforced in WatchPage via active_watches table
+    const isAdminEmailCheck = signedIn.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    if (!isAdminEmailCheck) {
+      const slot = await claimScreenSlot({ userId: signedIn.id, plan: prof?.plan });
+      if (!slot.ok) {
+        await supabase.auth.signOut();
+        throw new Error(screenLimitMessage(prof?.plan, slot.max));
       }
-    } catch (e: any) {
-      await supabase.auth.signOut();
-      throw new Error(e?.message ?? "Max screens already in use. Sign out of another device first.");
     }
-    setProfile(prof);
-
     setProfile(prof);
   };
 
   const signOut: AuthContextValue["signOut"] = async () => {
+    stopAdminAlerts();
+    if (userRef.current) {
+      try { await releaseScreenSlot(userRef.current.id); } catch { /* ignore */ }
+    }
     await supabase.auth.signOut();
     setProfile(null);
     localStorage.removeItem("ttflix_active_profile");
@@ -251,6 +274,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = (user?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
   const isAgent = !isAdmin && (profile?.role === "agent");
+
+  const screenIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!user || !session || !profile || isAdmin) return;
+    let stopped = false;
+    (async () => {
+      if (isAuthLocked()) return;
+      const slot = await claimScreenSlot({ userId: user.id, plan: profile.plan });
+      if (stopped) return;
+      if (!slot.ok) {
+        await supabase.auth.signOut();
+        setUser(null);
+        setSession(null);
+        setProfile(null);
+        return;
+      }
+      screenIdRef.current = slot.id;
+    })();
+    const t = window.setInterval(() => {
+      if (isAuthLocked() || !screenIdRef.current) return;
+      pingScreenSlot(screenIdRef.current).catch(() => {});
+    }, 15_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible" && screenIdRef.current) {
+        pingScreenSlot(screenIdRef.current).catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      stopped = true;
+      window.clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [user?.id, session?.access_token, profile?.plan, isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin && session?.access_token) startAdminAlerts();
+    else stopAdminAlerts();
+  }, [isAdmin, session?.access_token]);
 
   return (
     <AuthContext.Provider

@@ -20,9 +20,9 @@
         <item name="windowNoTitle">true</item>
     </style>
 
-    <!-- Launch theme — shown instantly before SplashActivity loads -->
+    <!-- Launch theme — same black splash as the in-app TTF hold -->
     <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
-        <item name="android:windowBackground">#000000</item>
+        <item name="android:windowBackground">@drawable/splash_screen</item>
     </style>
 
     <!-- Splash screen theme -->

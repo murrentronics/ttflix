@@ -122,69 +122,14 @@ jobs:
           echo "Found APK: $APK"
           mv "$APK" android/app/build/outputs/apk/release/ttflix.apk
 
-      # ── 16. Build download page ───────────────────────────────────────────
-      - name: Build download page
-        run: |
-          VERSION=${{ steps.version.outputs.VERSION }}
-          APK_URL="https://github.com/murrentronics/ttflix/releases/download/v${VERSION}/ttflix.apk"
-          mkdir -p download-page/functions
+      # ── 16. Assemble download page (HTML + APK + version.json) ────────────
+      - name: Assemble download page + APK
+        run: node scripts/deploy-download.cjs --apk android/app/build/outputs/apk/release/ttflix.apk --no-deploy
 
-          # version.json — fetched by the app on launch to check for updates
-          cat > download-page/version.json << EOF
-          {
-            "versionName": "${VERSION}",
-            "versionCode": $(grep 'versionCode' android/app/build.gradle | grep -o '[0-9]*'),
-            "releaseNotes": "Bug fixes and improvements",
-            "apkUrl": "${APK_URL}"
-          }
-          EOF
-
-          # Cloudflare Pages Function — geo-blocks non-TT visitors at the edge
-          cat > download-page/functions/_middleware.js << 'JSEOF'
-          export async function onRequest(context) {
-            const country = context.request.headers.get("CF-IPCountry") || "";
-            if (country !== "TT" && country !== "XX" && country !== "") {
-              return new Response(
-                `<!DOCTYPE html><html><head><meta charset="utf-8"/>
-                <title>Not Available</title>
-                <style>*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;height:100dvh;overflow:hidden;background:#141414;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;text-align:center}.logo{font-size:2.2rem;font-weight:900;margin-bottom:12px}.logo span{color:#e50914}p{color:#888;font-size:.9rem}</style>
-                </head><body>
-                <div>
-                  <div class="logo"><span>TT</span>FLIX</div>
-                  <p>TTFlix is only available in Trinidad &amp; Tobago.</p>
-                </div>
-                </body></html>`,
-                { status: 403, headers: { "Content-Type": "text/html;charset=utf-8" } }
-              );
-            }
-            return context.next();
-          }
-          JSEOF
-
-          # Stamp version + APK URL into the committed template
-          sed \
-            -e "s|VVERSION_PLACEHOLDER|${VERSION}|g" \
-            -e "s|APKURL_PLACEHOLDER|${APK_URL}|g" \
-            download-page-template.html > download-page/index.html
-
-      # ── 17. Deploy download page to Cloudflare Pages ──────────────────────
+      # ── 17. Deploy to Cloudflare Pages (kellymarshall2026 / ttflix.pages.dev)
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy download-page --project-name=ttflix --commit-dirty=true
-
-      # ── 18. Create GitHub Release ─────────────────────────────────────────
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.TAG }}
-          name: TTFlix ${{ steps.version.outputs.TAG }}
-          body: "TTFlix ${{ steps.version.outputs.TAG }}"
-          files: android/app/build/outputs/apk/release/ttflix.apk
-          make_latest: true
-          prerelease: false
-          fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

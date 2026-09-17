@@ -89,6 +89,7 @@ export function Navbar() {
         aria-hidden="true"
       />
     <header
+      data-tv-zone="header"
       className={`fixed inset-x-0 top-0 z-40 transition-colors duration-300 ${
         scrolled ? "bg-background/95 backdrop-blur" : "bg-gradient-to-b from-black/80 to-transparent"
       }`}
@@ -98,7 +99,7 @@ export function Navbar() {
           <Link to="/" className="rounded text-2xl font-extrabold tracking-tight text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             TT<span className="text-foreground">FLIX</span>
           </Link>
-          <nav className="hidden gap-5 text-sm md:flex">
+          <nav data-tv-desktop-nav className="hidden gap-5 text-sm md:flex">
             {LINKS.map((l) => (
               <NavLink
                 key={l.to}
@@ -226,7 +227,7 @@ export function Navbar() {
             </Link>
           )}
 
-          <div className="relative md:hidden">
+          <div data-tv-mobile-only className="relative md:hidden">
             <button onClick={() => { setProfileOpen(false); setMobileOpen((o) => !o); }} aria-label="Menu" className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded p-1">
               {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>

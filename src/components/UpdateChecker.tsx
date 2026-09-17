@@ -6,8 +6,8 @@ import { Capacitor } from "@capacitor/core";
 const VERSION_URL = "https://ttflix.pages.dev/version.json";
 
 // Current version — patched automatically by the CI version bump script
-const CURRENT_VERSION_NAME = "1.1.263";
-const CURRENT_VERSION_CODE = 265;
+const CURRENT_VERSION_NAME = "1.1.279";
+const CURRENT_VERSION_CODE = 281;
 
 type VersionInfo = {
   versionName: string;
@@ -16,14 +16,10 @@ type VersionInfo = {
   apkUrl: string;
 };
 
-// Use versionCode (integer) for comparison — more reliable than string versionName
 function isNewer(latestVersionCode: number, currentVersionCode: number): boolean {
   return latestVersionCode > currentVersionCode;
 }
 
-// Detect Android TV using the native bridge registered in MainActivity.
-// window.AndroidDevice.isTV() reads android.software.leanback — 100% reliable.
-// Falls back to UA sniff only if the bridge isn't available yet.
 function isAndroidTV(): boolean {
   try {
     const bridge = (window as any).AndroidDevice;
@@ -39,9 +35,8 @@ export function UpdateChecker() {
   const downloadBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    // Only run inside Capacitor (Android phone/tablet), not TV or browser
     if (!Capacitor.isNativePlatform()) return;
-    if (isAndroidTV()) return; // TV can't sideload — suppress the popup
+    if (isAndroidTV()) return;
 
     fetch(`${VERSION_URL}?t=${Date.now()}`)
       .then((r) => r.json())
@@ -53,7 +48,6 @@ export function UpdateChecker() {
       .catch(() => {});
   }, []);
 
-  // Auto-focus download button when shown, Back/Escape dismisses
   useEffect(() => {
     if (!update || dismissed) return;
     const t = setTimeout(() => downloadBtnRef.current?.focus(), 50);
@@ -64,7 +58,7 @@ export function UpdateChecker() {
         setDismissed(true);
       }
     };
-    document.addEventListener("keydown", onKey, true); // capture so it fires before anything else
+    document.addEventListener("keydown", onKey, true);
     return () => {
       clearTimeout(t);
       document.removeEventListener("keydown", onKey, true);
@@ -91,7 +85,6 @@ export function UpdateChecker() {
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 px-5 backdrop-blur-sm">
       <div className="w-full max-w-sm overflow-hidden rounded-2xl bg-[#1f1f1f] shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between bg-[#e50914] px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-white/70">
@@ -110,7 +103,6 @@ export function UpdateChecker() {
           </button>
         </div>
 
-        {/* Body */}
         <div className="px-5 py-4">
           <p className="mb-4 text-sm leading-relaxed text-[#aaa]">
             {update.releaseNotes}
@@ -125,13 +117,6 @@ export function UpdateChecker() {
           >
             <Download className="h-5 w-5" />
             {downloading ? "Opening…" : `Download v${update.versionName}`}
-          </button>
-
-          <button
-            onClick={() => setDismissed(true)}
-            className="mt-3 w-full rounded-xl py-2.5 text-sm text-[#666] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-          >
-            Not now
           </button>
         </div>
       </div>

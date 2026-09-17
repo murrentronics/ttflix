@@ -5,6 +5,7 @@ import { useDetail } from "./DetailContext";
 import { useAuth } from "@/lib/auth";
 import { img } from "@/lib/tmdb";
 import type { TmdbItem } from "@/lib/tmdb.functions.app";
+import { subscriberCanWatch } from "@/lib/admin";
 
 export function Hero({ items }: { items: TmdbItem[] }) {
   const [index, setIndex] = useState(0);
@@ -12,7 +13,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
   const navigate = useNavigate();
   const { user, profile, isAdmin } = useAuth();
 
-  const canWatch = isAdmin || (!!user && profile?.status === "approved");
+  const canWatch = subscriberCanWatch(profile?.status, profile?.subscription_expires_at, profile?.role, isAdmin);
 
   useEffect(() => {
     if (items.length <= 1) return;
@@ -38,7 +39,7 @@ export function Hero({ items }: { items: TmdbItem[] }) {
       <div className="absolute inset-0" style={{ background: "var(--gradient-hero)" }} />
       <div className="absolute inset-0" style={{ background: "var(--gradient-hero-left)" }} />
 
-      <div className="absolute bottom-[18%] left-0 max-w-2xl px-4 sm:px-8">
+      <div data-tv-zone="hero" className="absolute bottom-[18%] left-0 max-w-2xl px-4 sm:px-8">
         <h1 className="text-balance text-3xl font-extrabold drop-shadow-lg sm:text-5xl md:text-6xl">
           {item.title}
         </h1>
@@ -54,10 +55,6 @@ export function Hero({ items }: { items: TmdbItem[] }) {
         <div className="mt-5 flex gap-3">
           <button
             onClick={handlePlay}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowDown") { e.preventDefault(); const first = document.querySelector<HTMLElement>("[data-tv-card]"); first?.focus(); }
-              if (e.key === "ArrowUp") { e.preventDefault(); const nav = document.querySelector<HTMLElement>("nav a, header a, header button"); nav?.focus(); }
-            }}
             className="flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
             {canWatch ? <Play className="h-5 w-5 fill-current" /> : <Lock className="h-5 w-5" />}
@@ -65,10 +62,6 @@ export function Hero({ items }: { items: TmdbItem[] }) {
           </button>
           <button
             onClick={() => open(item)}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowDown") { e.preventDefault(); const first = document.querySelector<HTMLElement>("[data-tv-card]"); first?.focus(); }
-              if (e.key === "ArrowUp") { e.preventDefault(); const nav = document.querySelector<HTMLElement>("nav a, header a, header button"); nav?.focus(); }
-            }}
             className="flex items-center gap-2 rounded-md bg-secondary/80 px-6 py-2.5 font-semibold backdrop-blur transition hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
             <Info className="h-5 w-5" /> More Info
@@ -77,12 +70,13 @@ export function Hero({ items }: { items: TmdbItem[] }) {
 
         {/* Dots sit below the buttons, inside the hero, well above the content overlap */}
         {items.length > 1 && (
-          <div className="mt-5 flex justify-center gap-1.5">
+          <div className="mt-5 flex justify-center gap-1.5" data-tv-ignore>
             {items.map((_, i) => (
               <button
                 key={i}
                 onClick={() => setIndex(i)}
                 className={`h-1 rounded-full transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${i === index ? "w-6 bg-primary" : "w-3 bg-foreground/40"}`}
+                tabIndex={-1}
                 aria-label={`Slide ${i + 1}`}
               />
             ))}

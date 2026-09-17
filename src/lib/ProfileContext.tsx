@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useAuth } from "./auth";
 import { fetchProfiles, ensureDefaultProfiles, type UserProfile } from "./profiles";
+import { isAuthLocked } from "./auth-lock";
 
 type ProfileContextValue = {
   profiles: UserProfile[];
@@ -62,6 +63,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loading && user && authProfile) {
+      if (isAuthLocked()) return;
       const currentUserId = user.id;
       if (lastUserIdRef.current !== null && lastUserIdRef.current !== currentUserId) {
         // A different user was signed in — only reset if we're settling on this new user

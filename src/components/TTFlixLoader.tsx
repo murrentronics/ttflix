@@ -6,74 +6,88 @@ export function TTFlixLoader({
   onDone,
   backdrop,
   persistent = false,
+  frozen = false,
 }: {
   explode: boolean;
   onDone: () => void;
   backdrop?: string;
-  persistent?: boolean; // if true, never auto-dismiss via hard timeout
+  persistent?: boolean;
+  /** Boot splash: logo sits still, overlay stays opaque until explode. */
+  frozen?: boolean;
 }) {
-  const [phase, setPhase] = useState<"entering" | "idle" | "exploding" | "done">("entering");
-  // How long we've been waiting — drives the "still loading" message
+  const [phase, setPhase] = useState<"entering" | "idle" | "exploding" | "done">(
+    frozen ? "idle" : "entering"
+  );
   const [elapsed, setElapsed] = useState(0);
   const onDoneRef = useRef(onDone);
   useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
 
   useEffect(() => {
-    const t = setTimeout(() => setPhase("idle"), 50);
+    if (frozen) return;
+    const t = setTimeout(() => setPhase("idle"), 520);
     return () => clearTimeout(t);
-  }, []);
+  }, [frozen]);
 
-  // Tick every second so we can show helpful status messages
   useEffect(() => {
+    if (frozen) return;
     const t = setInterval(() => setElapsed((s) => s + 1), 1000);
     return () => clearInterval(t);
-  }, []);  useEffect(() => {
-    if (explode && (phase === "idle" || phase === "entering")) {
-      setPhase("exploding");
-      const t = setTimeout(() => {
-        setPhase("done");
-        onDoneRef.current();
-      }, 400);
-      return () => clearTimeout(t);
-    }
-  }, [explode, phase]);
+  }, [frozen]);
 
-  // Hard timeout — runs ONCE on mount, never resets — always clears the loader
-  // Skipped when persistent=true (e.g. waiting for PlayerActivity to open)
   useEffect(() => {
-    if (persistent) return;
+    if (!explode) return;
+    if (phase === "exploding" || phase === "done") return;
+    if (!frozen && phase === "entering") return;
+    setPhase("exploding");
+    const t = setTimeout(() => {
+      setPhase("done");
+      onDoneRef.current();
+    }, 450);
+    return () => clearTimeout(t);
+  }, [explode, phase, frozen]);
+
+  useEffect(() => {
+    if (persistent || frozen) return;
     const t = setTimeout(() => {
       setPhase("done");
       onDoneRef.current();
     }, 2500);
     return () => clearTimeout(t);
-  }, []);
+  }, [persistent, frozen]);
 
   if (phase === "done") return null;
 
   const isExploding = phase === "exploding";
+  const isEntering = !frozen && phase === "entering";
   const backdropUrl = backdrop ? img(backdrop, "w780") : null;
 
-  // Status message based on elapsed time
-  const statusMsg =
+  const statusMsg = frozen || !backdrop ? null :
     elapsed < 3 ? null :
     elapsed < 7 ? "Finding the best source…" :
     "Almost there…";
 
+  const stage = isExploding
+    ? { opacity: 0, transform: "scale(5.5)" }
+    : frozen
+      ? { opacity: 1, transform: "scale(1)" }
+      : isEntering
+        ? { opacity: 0, transform: "scale(0.28)" }
+        : { opacity: 1, transform: "scale(1)" };
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className={`fixed inset-0 flex items-center justify-center ${frozen ? "z-[9998]" : "z-[80]"}`}
       style={{
-        opacity: isExploding ? 0 : 1,
-        transform: isExploding ? "scale(4)" : "scale(1)",
+        ...stage,
         transition: isExploding
-          ? "opacity 0.35s ease-out, transform 0.35s ease-out"
-          : "opacity 0.3s ease",
+          ? "opacity 0.42s ease-out, transform 0.42s cubic-bezier(0.4, 0, 1, 1)"
+          : frozen
+            ? "none"
+            : "opacity 0.5s ease-out, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1)",
         pointerEvents: "none",
         backgroundColor: "#000",
       }}
     >
-      {/* Movie backdrop */}
       {backdropUrl && (
         <img
           src={backdropUrl}
@@ -82,10 +96,9 @@ export function TTFlixLoader({
           style={{ opacity: 0.35 }}
         />
       )}
-      <div className="absolute inset-0 bg-black/50" />
+      {!frozen && <div className="absolute inset-0 bg-black/50" />}
 
       <div className="relative z-10 flex flex-col items-center gap-6">
-        {/* Logo */}
         <span
           style={{
             fontFamily: "'Arial Black', 'Impact', sans-serif",
@@ -94,23 +107,21 @@ export function TTFlixLoader({
             letterSpacing: "0.04em",
             lineHeight: 1,
             userSelect: "none",
-            animation: isExploding ? "none" : "ttflix-pulse 1.6s ease-in-out infinite",
+            animation: frozen || isExploding || isEntering ? "none" : "ttflix-pulse 1.6s ease-in-out infinite",
           }}
         >
           <span style={{ color: "#E50914" }}>TT</span>
-          <span style={{ color: "#FFFFFF" }}>FLIX</span>
+          <span style={{ color: "#FFFFFF" }}>F</span>
         </span>
 
-        {/* Spinner — shows after 2s so fast loads don't flash it */}
-        {!isExploding && elapsed >= 2 && (
+        {!frozen && !isExploding && elapsed >= 2 && (
           <div
             className="h-7 w-7 rounded-full border-2 border-white/20 border-t-white/80"
             style={{ animation: "ttflix-spin 0.8s linear infinite" }}
           />
         )}
 
-        {/* Status message */}
-        {!isExploding && statusMsg && (
+        {!frozen && !isExploding && statusMsg && (
           <p
             className="text-sm text-white/50 text-center"
             style={{ animation: "ttflix-fadein 0.4s ease" }}
@@ -120,8 +131,7 @@ export function TTFlixLoader({
         )}
       </div>
 
-      {/* Progress bar */}
-      {!isExploding && (
+      {!frozen && !isExploding && (
         <div
           className="absolute bottom-0 left-0 h-0.5 bg-primary"
           style={{ animation: "ttflix-bar 8s ease-in-out forwards" }}

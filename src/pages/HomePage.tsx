@@ -8,7 +8,9 @@ import { getHomeFeed } from "@/lib/tmdb.functions.app";
 import { Landing } from "@/components/Landing";
 import { AppShell } from "@/components/AppShell";
 import { Browse } from "@/components/Browse";
+import { CatalogStatus, CATALOG_QUERY_OPTIONS } from "@/components/CatalogStatus";
 import type { UserStatus } from "@/lib/supabase";
+import { subscriberCanWatch, isSubscriptionLapsed } from "@/lib/admin";
 
 export function HomePage() {
   const { user, loading, profileLoading, profile, isAdmin, isAgent } = useAuth();
@@ -19,7 +21,7 @@ export function HomePage() {
   // Agents and admins don't need profile selection — skip for them
   useEffect(() => {
     if (!loading && !profileLoading && user && profile) {
-      const canWatch = isAdmin || profile.status === "approved";
+      const canWatch = subscriberCanWatch(profile.status, profile.subscription_expires_at, profile.role, isAdmin);
       if (canWatch && !profileSelected && !isAdmin && !isAgent) {
         navigate("/profiles");
       }
@@ -27,14 +29,17 @@ export function HomePage() {
   }, [loading, profileLoading, user, profile, isAdmin, isAgent, profileSelected, navigate]);
 
   if (loading || profileLoading) {
-    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>;
+    return <div className="min-h-screen bg-black" />;
   }
 
   if (!user) return <Landing />;
   if (isAdmin || isAgent) return <HomeFeed />;
 
   const status = profile?.status;
-  if (status !== "approved") return <StatusWall status={status ?? "pending"} />;
+  const lapsed = isSubscriptionLapsed(profile?.subscription_expires_at);
+  if (status !== "approved" || lapsed) {
+    return <StatusWall status={lapsed && status === "approved" ? "suspended" : (status ?? "pending")} />;
+  }
 
   if (!profileSelected) return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading profiles…</div>;
 
@@ -45,9 +50,10 @@ function HomeFeed() {
   const { profile: authProfile } = useAuth();
   const { activeProfile } = useProfile();
   const isKids = activeProfile?.is_kids ?? false;
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ["home-feed", isKids],
     queryFn: () => getHomeFeed(isKids),
+    ...CATALOG_QUERY_OPTIONS,
   });
 
   return (
@@ -60,7 +66,12 @@ function HomeFeed() {
         </div>
       )}
       {isLoading || !data
-        ? <div className="flex min-h-[60vh] items-center justify-center pt-20 text-muted-foreground">Loading content…</div>
+        ? <CatalogStatus
+            label="content"
+            isError={isError}
+            isFetching={isFetching}
+            onRefresh={() => refetch()}
+          />
         : <Browse feed={data} />
       }
     </AppShell>

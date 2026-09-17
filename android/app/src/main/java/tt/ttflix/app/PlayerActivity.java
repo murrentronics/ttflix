@@ -23,6 +23,13 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.TextView;
+import android.graphics.Typeface;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.util.TypedValue;
+import android.view.Gravity;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -36,6 +43,7 @@ public class PlayerActivity extends Activity {
     private FrameLayout customViewContainer;
     private FrameLayout exitContainer;
     private ImageButton exitBtn;
+    private TextView exitLogo;
     private String fallbackUrl = null;
     private boolean usingFallback = false;
     private boolean playerSignalReceived = false;
@@ -50,7 +58,7 @@ public class PlayerActivity extends Activity {
     private final Runnable fallbackRunnable = () -> {
         if (!playerSignalReceived && !usingFallback && fallbackUrl != null && playerWebView != null) {
             usingFallback = true;
-            playerWebView.loadUrl(fallbackUrl);
+            loadPlayerUrl(fallbackUrl);
         }
     };
     private static final int HIDE_DELAY_MS = 4000;
@@ -60,46 +68,109 @@ public class PlayerActivity extends Activity {
     public static final String EXTRA_EPISODE_COUNT = "player_episode_count";
     public static final String EXTRA_TOTAL_SEASONS = "player_total_seasons";
     public static final String EXTRA_EPISODE_COUNTS = "player_episode_counts";
+    public static final String EXTRA_START_OVER = "player_start_over";
+    public static final String EXTRA_TMDB_ID = "player_tmdb_id";
     // Static: survives activity finish so MainActivity can read it on resume
     public static int lastPlayedSeason  = 0;
     public static int lastPlayedEpisode = 0;
+    public static int lastWatchedSeconds = 0;
+    public static int lastDurationSeconds = 0;
+    public static PlayerActivity current = null;
     private String nextUrl = null;
+    private String urlPrefix = null; // https://player.videasy.net/tv/12345/
+    private String urlQuery = "";    // ?color=... without progress
+    private boolean endedHandled = false;
+    private String currentPlayerUrl = null;
     private android.widget.Button nextBtn = null;
     private boolean shouldAutoplay = false;
     private int episodeCount = 0;
     private int totalSeasons = 0;
     private int currentSeason  = 1;
     private int currentEpisode = 1;
+    private long lastBackAt = 0;
+    private static final int BACK_EXIT_MS = 2000;
     private int[] seasonEpisodeCounts = null; // index 0 = season 1 episode count
+    private boolean leaving = false;
 
-    // Single shared hide delay for the X button.
+    private boolean isTV() {
+        return getPackageManager().hasSystemFeature("android.software.leanback");
+    }
+
+    // Single shared hide delay for the chrome. X stays hittable at low alpha.
     private final Runnable hideExitRunnable = () -> {
-        if (exitContainer != null) {
-            exitContainer.animate().alpha(0f).setDuration(300).start();
-            exitContainer.postDelayed(() -> exitContainer.setVisibility(View.GONE), 300);
-        }
+        if (leaving || exitContainer == null) return;
+        exitContainer.animate().cancel();
+        exitContainer.animate().alpha(0.01f).setDuration(280).start();
+        if (exitBtn != null) exitBtn.setAlpha(0.01f);
+        if (nextBtn != null && nextBtn.getVisibility() == View.VISIBLE) nextBtn.setAlpha(0.01f);
     };
 
     private void showExitButton() {
+        if (leaving) return;
         hideHandler.removeCallbacks(hideExitRunnable);
         if (exitContainer != null) {
             exitContainer.setVisibility(View.VISIBLE);
-            exitContainer.animate().alpha(1f).setDuration(200).start();
+            exitContainer.animate().cancel();
+            exitContainer.animate().alpha(1f).setDuration(160).start();
+            if (exitBtn != null) exitBtn.setAlpha(1f);
+            if (nextBtn != null && nextBtn.getVisibility() == View.VISIBLE) nextBtn.setAlpha(1f);
             hideHandler.postDelayed(hideExitRunnable, HIDE_DELAY_MS);
-            // On TV: auto-focus the Next button if visible, else the Exit button
-            // so D-pad can reach them without touching the screen
-            if (nextBtn != null && nextBtn.getVisibility() == View.VISIBLE) {
-                nextBtn.requestFocus();
-            } else if (exitBtn != null) {
-                exitBtn.requestFocus();
+            if (isTV()) {
+                if (nextBtn != null && nextBtn.getVisibility() == View.VISIBLE) {
+                    nextBtn.requestFocus();
+                } else if (exitBtn != null) {
+                    exitBtn.requestFocus();
+                }
             }
         }
+    }
+
+    private void leavePlayer() {
+        if (leaving) return;
+        leaving = true;
+        hideHandler.removeCallbacks(hideExitRunnable);
+        fallbackHandler.removeCallbacks(fallbackRunnable);
+        if (exitContainer != null) exitContainer.setVisibility(View.GONE);
+        if (playerWebView != null) {
+            try { playerWebView.onPause(); } catch (Exception ignored) {}
+            playerWebView.animate().alpha(0f).setDuration(160).start();
+        }
+        if (exitLogo == null) {
+            finish();
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+            return;
+        }
+        exitLogo.setVisibility(View.VISIBLE);
+        exitLogo.setScaleX(0.92f);
+        exitLogo.setScaleY(0.92f);
+        exitLogo.setAlpha(0f);
+        exitLogo.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(140)
+            .withEndAction(() -> exitLogo.animate()
+                .scaleX(7.5f)
+                .scaleY(7.5f)
+                .alpha(0f)
+                .setDuration(420)
+                .setInterpolator(new android.view.animation.AccelerateInterpolator(1.8f))
+                .withEndAction(() -> {
+                    finish();
+                    overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+                })
+                .start())
+            .start();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        current = this;
+        lastWatchedSeconds = 0;
+        lastDurationSeconds = 0;
+        endedHandled = false;
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().setFlags(
@@ -154,7 +225,7 @@ public class PlayerActivity extends Activity {
             "Chrome/124.0.0.0 Mobile Safari/537.36"
         );
 
-        // JS bridge — lets the page signal that video is actually playing
+        // JS bridge — player wrapper posts progress / episode / ended here
         playerWebView.addJavascriptInterface(new Object() {
             @JavascriptInterface
             public void onPlayerReady() {
@@ -162,6 +233,31 @@ public class PlayerActivity extends Activity {
                     playerSignalReceived = true;
                     fallbackHandler.removeCallbacks(fallbackRunnable);
                 });
+            }
+
+            @JavascriptInterface
+            public void onProgress(int timestamp, int duration) {
+                if (timestamp < 0) return;
+                if (duration > 0) lastDurationSeconds = duration;
+                // Videasy posts 0 as the embed boots. Never clobber a real resume
+                // point (or in-progress time) with that startup tick.
+                if (timestamp < 3 && lastWatchedSeconds > 8) return;
+                lastWatchedSeconds = timestamp;
+                runOnUiThread(() -> {
+                    playerSignalReceived = true;
+                    fallbackHandler.removeCallbacks(fallbackRunnable);
+                });
+            }
+
+            @JavascriptInterface
+            public void onEpisodeChange(int season, int episode) {
+                if (season < 1 || episode < 1) return;
+                runOnUiThread(() -> applyEpisode(season, episode, false));
+            }
+
+            @JavascriptInterface
+            public void onEnded() {
+                runOnUiThread(() -> autoAdvanceIfNeeded());
             }
 
             /** Called by React WatchPage to push the next episode URL after an episode change */
@@ -188,14 +284,18 @@ public class PlayerActivity extends Activity {
         ));
         customViewContainer.setVisibility(View.GONE);
 
-        // Layer 3: exit button — starts hidden, shows on tap, auto-hides
+        // Layer 3: top chrome — X (always hittable) + Next Episode. Not a
+        // full-screen overlay so video taps still reach the WebView.
         exitContainer = new FrameLayout(this);
-        exitContainer.setLayoutParams(new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-        exitContainer.setAlpha(0f);
-        exitContainer.setVisibility(View.GONE);
+        FrameLayout.LayoutParams chromeParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(72)
+        );
+        chromeParams.gravity = android.view.Gravity.TOP;
+        exitContainer.setLayoutParams(chromeParams);
+        exitContainer.setClickable(false);
+        exitContainer.setFocusable(false);
+        exitContainer.setAlpha(1f);
+        exitContainer.setVisibility(View.VISIBLE);
 
         exitBtn = new ImageButton(this);
         exitBtn.setId(android.R.id.button1);
@@ -204,29 +304,31 @@ public class PlayerActivity extends Activity {
         exitBtn.setColorFilter(Color.WHITE);
         exitBtn.setContentDescription("Exit");
         exitBtn.setFocusable(true);
-        exitBtn.setFocusableInTouchMode(true);
-        int btnSize = dpToPx(48);
-        int margin = dpToPx(12);
+        exitBtn.setFocusableInTouchMode(isTV());
+        exitBtn.setClickable(true);
+        int btnSize = dpToPx(56);
+        int margin = dpToPx(8);
         FrameLayout.LayoutParams btnParams = new FrameLayout.LayoutParams(btnSize, btnSize);
         btnParams.leftMargin = margin;
         btnParams.topMargin = margin;
         exitBtn.setLayoutParams(btnParams);
-        exitBtn.setPadding(dpToPx(10), dpToPx(10), dpToPx(10), dpToPx(10));
-        exitBtn.setOnClickListener(v -> {
-            // Show black overlay immediately to hide the rotation/transition glitch
-            View blackOut = new View(PlayerActivity.this);
-            blackOut.setBackgroundColor(Color.BLACK);
-            blackOut.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ));
-            rootLayout.addView(blackOut);
-            // Small delay so black screen renders before activity finishes
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                finish();
-                // Override transition — no slide animation, just black
-                overridePendingTransition(0, 0);
-            }, 150);
+        exitBtn.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12));
+        exitBtn.setOnClickListener(v -> leavePlayer());
+        exitBtn.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                v.setPressed(true);
+                return true;
+            }
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                v.setPressed(false);
+                v.performClick();
+                return true;
+            }
+            if (event.getAction() == MotionEvent.ACTION_CANCEL) {
+                v.setPressed(false);
+                return true;
+            }
+            return false;
         });
         exitContainer.addView(exitBtn);
 
@@ -248,39 +350,10 @@ public class PlayerActivity extends Activity {
         nextBtn.setLayoutParams(nextParams);
         // Make focusable for TV remote D-pad navigation
         nextBtn.setFocusable(true);
-        nextBtn.setFocusableInTouchMode(true);
+        nextBtn.setFocusableInTouchMode(isTV());
         nextBtn.setNextFocusLeftId(android.R.id.content); // D-pad left goes to exit btn
         nextBtn.setVisibility(View.GONE);
-        nextBtn.setOnClickListener(v -> {
-            if (nextUrl != null) {
-                String currentNext = nextUrl;
-                playerSignalReceived = false;
-                usingFallback = false;
-                shouldAutoplay = true;
-                startFallbackTimer();
-                playerWebView.loadUrl(currentNext);
-                playerWebView.evaluateJavascript(
-                    "window.dispatchEvent(new CustomEvent('androidNextEpisode'));", null
-                );
-                // Update current episode tracking
-                try {
-                    java.util.regex.Matcher m = java.util.regex.Pattern.compile(
-                        "/tv/\\d+/(\\d+)/(\\d+)").matcher(currentNext);
-                    if (m.find()) {
-                        currentSeason  = Integer.parseInt(m.group(1));
-                        currentEpisode = Integer.parseInt(m.group(2));
-                        lastPlayedSeason  = currentSeason;
-                        lastPlayedEpisode = currentEpisode;
-                    }
-                } catch (Exception e) { /* ignore */ }
-                nextUrl = computeNextEpisodeUrl(currentNext);
-                if (nextUrl != null) {
-                    nextBtn.setVisibility(View.VISIBLE);
-                } else {
-                    nextBtn.setVisibility(View.GONE);
-                }
-            }
-        });
+        nextBtn.setOnClickListener(v -> goToNextEpisode());
         exitContainer.addView(nextBtn);
 
         // Use the WebView's own touch listener to catch every tap — including taps
@@ -299,6 +372,24 @@ public class PlayerActivity extends Activity {
         rootLayout.addView(playerWebView);
         rootLayout.addView(customViewContainer);
         rootLayout.addView(exitContainer);
+
+        exitLogo = new TextView(this);
+        SpannableString ttf = new SpannableString("TTF");
+        ttf.setSpan(new ForegroundColorSpan(Color.parseColor("#E50914")), 0, 2, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        ttf.setSpan(new ForegroundColorSpan(Color.WHITE), 2, 3, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        exitLogo.setText(ttf);
+        exitLogo.setTextSize(TypedValue.COMPLEX_UNIT_SP, 84);
+        exitLogo.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
+        exitLogo.setLetterSpacing(0.04f);
+        exitLogo.setGravity(Gravity.CENTER);
+        exitLogo.setAlpha(0f);
+        exitLogo.setVisibility(View.GONE);
+        exitLogo.setClickable(false);
+        exitLogo.setFocusable(false);
+        rootLayout.addView(exitLogo, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
 
         playerWebView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -358,67 +449,28 @@ public class PlayerActivity extends Activity {
             } catch (Exception e) { seasonEpisodeCounts = null; }
         }
 
+        startOverTmdbId = getIntent().getStringExtra(EXTRA_TMDB_ID);
+        startOverEnabled = getIntent().getBooleanExtra(EXTRA_START_OVER, false);
+        if (startOverTmdbId == null || startOverTmdbId.isEmpty()) {
+            startOverTmdbId = tmdbIdFromUrl(url);
+        }
+
         // Parse starting season/episode from the URL so we can track progress
         String startUrl = getIntent().getStringExtra(EXTRA_URL);
-        if (startUrl != null) {
-            try {
-                java.util.regex.Matcher m = java.util.regex.Pattern.compile(
-                    "/tv/\\d+/(\\d+)/(\\d+)").matcher(startUrl);
-                if (m.find()) {
-                    currentSeason  = Integer.parseInt(m.group(1));
-                    currentEpisode = Integer.parseInt(m.group(2));
-                }
-            } catch (Exception e) { /* ignore */ }
-        }
+        parsePlayerUrl(startUrl);
         lastPlayedSeason  = currentSeason;
         lastPlayedEpisode = currentEpisode;
-
-        if (nextUrl != null && nextBtn != null) {
-            nextBtn.setVisibility(View.VISIBLE);
-        }        startOverTmdbId = getIntent().getStringExtra("tmdb_id");
-        startOverEnabled = getIntent().getBooleanExtra("start_over", false);
-
-        if (startOverEnabled && startOverTmdbId != null) {
-            // Load about:blank first — this gives us a clean same-origin context
-            // where we can wipe localStorage/sessionStorage for this title
-            // BEFORE Videasy ever loads and reads its resume data.
-            final String targetUrl = url;
-            final String id = startOverTmdbId;
-            playerWebView.setWebViewClient(new WebViewClient() {
-                private boolean wiped = false;
-                @Override
-                public void onPageFinished(WebView view, String pageUrl) {
-                    if (!wiped && pageUrl.equals("about:blank")) {
-                        wiped = true;
-                        // Wipe all storage keys containing this tmdbId
-                        view.evaluateJavascript(
-                            "(function(){" +
-                            "  try{" +
-                            "    [localStorage,sessionStorage].forEach(function(s){" +
-                            "      Object.keys(s).forEach(function(k){" +
-                            "        if(k.indexOf('" + id + "')>=0)s.removeItem(k);" +
-                            "      });" +
-                            "    });" +
-                            "  }catch(e){}" +
-                            "})()",
-                            result -> {
-                                // Storage wiped — now load the real player URL
-                                runOnUiThread(() -> {
-                                    // Restore the real WebViewClient then load
-                                    playerWebView.setWebViewClient(buildRealWebViewClient());
-                                    startFallbackTimer();
-                                    playerWebView.loadUrl(targetUrl);
-                                });
-                            });
-                    }
-                }
-            });
-            playerWebView.loadUrl("about:blank");
+        if (startOverEnabled) {
+            lastWatchedSeconds = 0;
         } else {
-            playerWebView.setWebViewClient(buildRealWebViewClient());
-            startFallbackTimer();
-            if (url != null) playerWebView.loadUrl(url);
+            int resumeAt = progressFromUrl(url);
+            if (resumeAt > lastWatchedSeconds) lastWatchedSeconds = resumeAt;
         }
+        applyEpisode(currentSeason, currentEpisode, false);
+
+        playerWebView.setWebViewClient(buildRealWebViewClient());
+        startFallbackTimer();
+        if (url != null) loadPlayerUrl(forceStartOverProgress(url));
     }
 
     @Override
@@ -427,17 +479,29 @@ public class PlayerActivity extends Activity {
         return super.onTouchEvent(event);
     }
 
+    private final Handler watchPingHandler = new Handler(Looper.getMainLooper());
+    private final Runnable watchPingRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (MainActivity.instance != null) MainActivity.instance.pingActiveWatch();
+            watchPingHandler.postDelayed(this, 5000);
+        }
+    };
+
     @Override
     protected void onResume() {
         super.onResume();
         setupImmersiveMode();
         if (playerWebView != null) playerWebView.onResume();
+        watchPingHandler.removeCallbacks(watchPingRunnable);
+        watchPingHandler.post(watchPingRunnable);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         hideHandler.removeCallbacks(hideExitRunnable);
+        watchPingHandler.removeCallbacks(watchPingRunnable);
         if (playerWebView != null) playerWebView.onPause();
     }
 
@@ -446,6 +510,8 @@ public class PlayerActivity extends Activity {
         super.onDestroy();
         hideHandler.removeCallbacks(hideExitRunnable);
         fallbackHandler.removeCallbacks(fallbackRunnable);
+        watchPingHandler.removeCallbacks(watchPingRunnable);
+        if (current == this) current = null;
         if (playerWebView != null) {
             playerWebView.stopLoading();
             playerWebView.destroy();
@@ -495,16 +561,19 @@ public class PlayerActivity extends Activity {
             final String key = jsKey;
             playerWebView.evaluateJavascript(
                 "(function(){" +
-                "  var el = document.activeElement || document.body;" +
+                "  var iframe = document.getElementById('p');" +
+                "  var win = (iframe && iframe.contentWindow) ? iframe.contentWindow : window;" +
+                "  var doc = win.document || document;" +
+                "  var el = doc.activeElement || doc.body || document.body;" +
                 "  var e = new KeyboardEvent('" + eventType + "', {" +
                 "    key: '" + key + "'," +
                 "    code: '" + key + "'," +
                 "    bubbles: true," +
                 "    cancelable: true" +
                 "  });" +
-                "  el.dispatchEvent(e);" +
-                "  document.dispatchEvent(e);" +
-                "  window.dispatchEvent(e);" +
+                "  try { el.dispatchEvent(e); } catch (ex) {}" +
+                "  try { doc.dispatchEvent(e); } catch (ex) {}" +
+                "  try { win.dispatchEvent(e); } catch (ex) {}" +
                 "})()",
                 null
             );
@@ -520,65 +589,298 @@ public class PlayerActivity extends Activity {
             mCustomViewCallback.onCustomViewHidden();
             return;
         }
-        // Black out before finishing to hide rotation glitch
-        if (rootLayout != null) {
-            View blackOut = new View(this);
-            blackOut.setBackgroundColor(Color.BLACK);
-            blackOut.setLayoutParams(new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ));
-            rootLayout.addView(blackOut);
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastBackAt > BACK_EXIT_MS) {
+            lastBackAt = now;
+            showExitButton();
+            return;
         }
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            finish();
-            overridePendingTransition(0, 0);
-        }, 150);
+        // Second Back within 2s — leave the player
+        leavePlayer();
     }
 
     /**
-     * Given a TV episode URL like:
-     *   https://player.videasy.net/tv/12345/1/3?color=...
-     * Returns the next episode URL, or null if we're at the last episode.
-     * Uses episodeCount and totalSeasons to know when to stop.
+     * Next episode URL, Netflix-style: E+1, or next season E1, skipping empty seasons.
+     * Matches player.videasy.net and player.videasy.to. Strips leftover progress params.
      */
     private String computeNextEpisodeUrl(String url) {
-        if (url == null) return null;
+        EpisodePos next = nextEpisodePos(currentSeason, currentEpisode);
+        if (next == null) return null;
+        return episodeUrl(next.season, next.episode);
+    }
+
+    private static class EpisodePos {
+        final int season;
+        final int episode;
+        EpisodePos(int season, int episode) {
+            this.season = season;
+            this.episode = episode;
+        }
+    }
+
+    private int countForSeason(int season) {
+        if (seasonEpisodeCounts != null && season >= 1 && season - 1 < seasonEpisodeCounts.length) {
+            return seasonEpisodeCounts[season - 1];
+        }
+        if (season == currentSeason && episodeCount > 0) return episodeCount;
+        return -1; // unknown
+    }
+
+    private EpisodePos nextEpisodePos(int season, int episode) {
+        if (urlPrefix == null) return null; // movies have no next episode
+        int seasons = totalSeasons > 0 ? totalSeasons
+            : (seasonEpisodeCounts != null ? seasonEpisodeCounts.length : season);
+        int curCount = countForSeason(season);
+        if (curCount < 0) {
+            return new EpisodePos(season, episode + 1);
+        }
+        if (curCount > 0 && episode < curCount) {
+            return new EpisodePos(season, episode + 1);
+        }
+        for (int nextSeason = season + 1; nextSeason <= seasons; nextSeason++) {
+            int n = countForSeason(nextSeason);
+            if (n == 0) continue;
+            return new EpisodePos(nextSeason, 1);
+        }
+        return null;
+    }
+
+    private void parsePlayerUrl(String url) {
+        if (url == null) return;
+        currentPlayerUrl = url;
         try {
-            java.util.regex.Pattern p = java.util.regex.Pattern.compile(
-                "(https://player\\.videasy\\.net/tv/\\d+/)(\\d+)/(\\d+)(.*)"
-            );
-            java.util.regex.Matcher m = p.matcher(url);
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "(https://player\\.videasy\\.(?:net|to)/tv/\\d+/)(\\d+)/(\\d+)(.*)"
+            ).matcher(url);
             if (m.find()) {
-                String base  = m.group(1);
-                int season   = Integer.parseInt(m.group(2));
-                int episode  = Integer.parseInt(m.group(3));
-                String query = m.group(4);
-
-                // Look up episode count for this season from the full counts array
-                int count = 0;
-                if (seasonEpisodeCounts != null && season - 1 < seasonEpisodeCounts.length) {
-                    count = seasonEpisodeCounts[season - 1];
-                } else if (episodeCount > 0) {
-                    count = episodeCount;
-                }
-
-                int nextEp     = episode + 1;
-                int nextSeason = season;
-
-                if (count > 0 && nextEp > count) {
-                    // End of this season — move to next season E1
-                    nextSeason = season + 1;
-                    nextEp = 1;
-                    if (totalSeasons > 0 && nextSeason > totalSeasons) {
-                        return null; // end of series — hide button
-                    }
-                }
-
-                return base + nextSeason + "/" + nextEp + query;
+                urlPrefix = m.group(1);
+                currentSeason  = Integer.parseInt(m.group(2));
+                currentEpisode = Integer.parseInt(m.group(3));
+                urlQuery = stripProgress(m.group(4));
             }
         } catch (Exception e) { /* ignore */ }
+    }
+
+    private String stripProgress(String query) {
+        if (query == null || query.isEmpty()) return "";
+        String q = query.replaceAll("([?&])progress=\\d+", "$1")
+            .replace("&&", "&")
+            .replace("?&", "?");
+        if (q.endsWith("?") || q.endsWith("&")) q = q.substring(0, q.length() - 1);
+        return q;
+    }
+
+    private static int progressFromUrl(String url) {
+        if (url == null) return 0;
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("[?&]progress=(\\d+)").matcher(url);
+            if (m.find()) return Integer.parseInt(m.group(1));
+        } catch (Exception ignored) {}
+        return 0;
+    }
+
+    private String episodeUrl(int season, int episode) {
+        String url;
+        if (urlPrefix != null) url = urlPrefix + season + "/" + episode + urlQuery;
+        else if (currentPlayerUrl == null) return null;
+        else url = currentPlayerUrl.replaceAll(
+            "/tv/(\\d+)/\\d+/\\d+",
+            "/tv/$1/" + season + "/" + episode
+        );
+        return startOverEnabled ? forceStartOverProgress(url) : url;
+    }
+
+    private String forceStartOverProgress(String url) {
+        if (url == null) return null;
+        if (!startOverEnabled) return url;
+        String stripped = url.replaceAll("([?&])progress=\\d+", "$1")
+            .replace("&&", "&")
+            .replace("?&", "?");
+        if (stripped.endsWith("?") || stripped.endsWith("&")) {
+            stripped = stripped.substring(0, stripped.length() - 1);
+        }
+        return stripped + (stripped.contains("?") ? "&" : "?") + "progress=0";
+    }
+
+    private String tmdbIdFromUrl(String url) {
+        if (url == null) return null;
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                "/(?:tv|movie)/(\\d+)").matcher(url);
+            if (m.find()) return m.group(1);
+        } catch (Exception ignored) {}
         return null;
+    }
+
+    private void goToNextEpisode() {
+        EpisodePos next = nextEpisodePos(currentSeason, currentEpisode);
+        if (next == null) {
+            nextUrl = null;
+            if (nextBtn != null) nextBtn.setVisibility(View.GONE);
+            return;
+        }
+        String url = episodeUrl(next.season, next.episode);
+        if (url == null) return;
+        applyEpisode(next.season, next.episode, true);
+        shouldAutoplay = true;
+        playerSignalReceived = false;
+        usingFallback = false;
+        if (MainActivity.instance != null) {
+            MainActivity.instance.notifyNextEpisode(next.season, next.episode);
+        }
+        startFallbackTimer();
+        loadPlayerUrl(url);
+    }
+
+    private void autoAdvanceIfNeeded() {
+        if (endedHandled) return;
+        if (nextEpisodePos(currentSeason, currentEpisode) == null) return;
+        endedHandled = true;
+        goToNextEpisode();
+    }
+
+    private void applyEpisode(int season, int episode, boolean resetProgress) {
+        currentSeason = season;
+        currentEpisode = episode;
+        lastPlayedSeason = season;
+        lastPlayedEpisode = episode;
+        if (resetProgress) {
+            lastWatchedSeconds = 0;
+            lastDurationSeconds = 0;
+            endedHandled = true; // ignore stale ended events while the next embed loads
+        }
+        EpisodePos following = nextEpisodePos(season, episode);
+        if (following != null) {
+            nextUrl = episodeUrl(following.season, following.episode);
+            if (nextBtn != null) nextBtn.setVisibility(View.VISIBLE);
+        } else {
+            nextUrl = null;
+            if (nextBtn != null) nextBtn.setVisibility(View.GONE);
+        }
+    }
+
+    void updateSeasonCounts(String countsStr, int seasons) {
+        if (seasons > 0) totalSeasons = seasons;
+        if (countsStr != null && !countsStr.isEmpty()) {
+            try {
+                String[] parts = countsStr.split(",");
+                seasonEpisodeCounts = new int[parts.length];
+                for (int i = 0; i < parts.length; i++) {
+                    seasonEpisodeCounts[i] = Integer.parseInt(parts[i].trim());
+                }
+                if (currentSeason >= 1 && currentSeason - 1 < seasonEpisodeCounts.length) {
+                    episodeCount = seasonEpisodeCounts[currentSeason - 1];
+                }
+            } catch (Exception e) { /* keep previous */ }
+        }
+        applyEpisode(currentSeason, currentEpisode, false);
+    }
+
+    private void loadPlayerUrl(String url) {
+        if (playerWebView == null || url == null) return;
+        currentPlayerUrl = url;
+        parsePlayerUrl(url);
+        String html = wrapPlayerHtml(forceStartOverProgress(url));
+        String base = playerBaseUrl(url);
+        playerWebView.loadDataWithBaseURL(base, html, "text/html", "UTF-8", null);
+    }
+
+    private String playerBaseUrl(String url) {
+        try {
+            android.net.Uri u = android.net.Uri.parse(url);
+            String host = u.getHost();
+            if (host != null && (host.endsWith("videasy.net") || host.endsWith("videasy.to"))) {
+                return u.getScheme() + "://" + host + "/";
+            }
+        } catch (Exception ignored) {}
+        return "https://player.videasy.net/";
+    }
+
+    private static String escapeHtml(String s) {
+        return s.replace("&", "&amp;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;")
+            .replace("<", "&lt;");
+    }
+
+    /**
+     * Videasy now blanks the page unless it is inside an iframe. Load it as an
+     * embed and forward postMessage progress up to TTFlixNative.
+     * During Start Over, wipe this title's saved timestamps BEFORE the embed
+     * loads, force progress=0 on the URL, and pin currentTime at 0 if Videasy
+     * tries to seek back to an old position.
+     */
+    private String wrapPlayerHtml(String url) {
+        String src = escapeHtml(url);
+        String id = startOverTmdbId != null ? startOverTmdbId.replaceAll("[^0-9]", "") : "";
+        boolean wipe = startOverEnabled && !id.isEmpty();
+        StringBuilder html = new StringBuilder();
+        html.append("<!DOCTYPE html><html><head>");
+        html.append("<meta name='viewport' content='width=device-width,initial-scale=1,maximum-scale=1'>");
+        html.append("<style>html,body{margin:0;padding:0;background:#000;width:100%;height:100%;overflow:hidden}");
+        html.append("iframe{border:0;position:fixed;inset:0;width:100%;height:100%}</style>");
+        html.append("</head><body>");
+        html.append("<iframe id='p' allow='autoplay; fullscreen; picture-in-picture; encrypted-media' allowfullscreen></iframe>");
+        html.append("<script>(function(){");
+        html.append("function wipeStore(store){try{Object.keys(store).forEach(function(k){");
+        html.append("var val='';try{val=String(store.getItem(k)||'')}catch(e){}");
+        if (wipe) {
+            html.append("if(k.indexOf('").append(id).append("')>=0||val.indexOf('").append(id).append("')>=0)store.removeItem(k);");
+        }
+        html.append("})}catch(e){}}");
+        html.append("function wipeAll(){wipeStore(localStorage);wipeStore(sessionStorage);");
+        html.append("try{var w=document.getElementById('p').contentWindow;");
+        html.append("if(w){wipeStore(w.localStorage);wipeStore(w.sessionStorage)}}catch(e){}}");
+        if (wipe) html.append("wipeAll();");
+        html.append("document.getElementById('p').src=\"").append(src).append("\";");
+        html.append("window.open=function(){return null};");
+        int resumeAt = startOverEnabled ? 0 : progressFromUrl(url);
+        html.append("var resumeAt=").append(resumeAt).append(";");
+        html.append("if(resumeAt>2){var __seekUntil=Date.now()+12000;");
+        html.append("setInterval(function(){if(Date.now()>__seekUntil)return;");
+        html.append("try{var iframe=document.getElementById('p');");
+        html.append("if(iframe&&iframe.contentWindow)iframe.contentWindow.postMessage(");
+        html.append("{type:'seek',event:'seek',timestamp:resumeAt,progress:resumeAt,currentTime:resumeAt},'*');");
+        html.append("}catch(e){}},500);}");
+        html.append("function scrub(doc){if(!doc)return;");
+        html.append("var els=doc.querySelectorAll('iframe,div,a,ins,aside');");
+        html.append("for(var i=0;i<els.length;i++){var el=els[i];if(el.id==='p')continue;");
+        html.append("var blob=((el.id||'')+' '+(el.className||'')+' '+(el.src||'')+' '+(el.href||'')).toLowerCase();");
+        html.append("if(/doubleclick|googlesyndication|adservice|adnxs|popads|popcash|exoclick|propeller|adsterra|taboola|outbrain|ima3|imasdk|prebid|adsystem|popunder/.test(blob)){try{el.remove()}catch(e){}}");
+        html.append("}}");
+        html.append("setInterval(function(){scrub(document)},700);");
+        if (wipe) {
+            html.append("var __forceUntil=Date.now()+8000;");
+            html.append("setInterval(function(){wipeAll();if(Date.now()>__forceUntil)return;");
+            html.append("try{var v=document.getElementById('p').contentDocument.querySelector('video');");
+            html.append("if(v&&v.currentTime>20){v.currentTime=0;try{v.play()}catch(e){}}}catch(e){}");
+            html.append("},400);");
+        }
+        html.append("function ready(){try{TTFlixNative.onPlayerReady()}catch(e){}}");
+        html.append("function progress(t,d){try{TTFlixNative.onProgress(Math.floor(t||0),Math.floor(d||0))}catch(e){}}");
+        html.append("function episode(s,e){try{TTFlixNative.onEpisodeChange(s|0,e|0)}catch(e){}}");
+        html.append("function ended(){try{TTFlixNative.onEnded()}catch(e){}}");
+        html.append("function handle(d){");
+        html.append("if(!d||typeof d!=='object')return;");
+        html.append("var t=d.type||d.event;");
+        html.append("if(t==='ready'||t==='play')ready();");
+        html.append("if(t==='ended'||t==='complete')ended();");
+        html.append("if(t==='episodeChange'&&d.season&&d.episode)episode(d.season,d.episode);");
+        html.append("var ts=d.timestamp!=null?d.timestamp:d.currentTime;");
+        html.append("var dur=d.duration;");
+        html.append("if(ts!=null&&dur!=null){progress(ts,dur);ready()}");
+        html.append("}");
+        html.append("window.addEventListener('message',function(e){");
+        html.append("try{var d=typeof e.data==='string'?JSON.parse(e.data):e.data;handle(d)}catch(ex){}");
+        html.append("});");
+        html.append("setInterval(function(){try{");
+        html.append("var doc=document.getElementById('p').contentDocument;if(!doc)return;");
+        html.append("var v=doc.querySelector('video');");
+        html.append("if(v&&v.duration&&isFinite(v.duration)&&v.duration>0){");
+        html.append("progress(v.currentTime,v.duration);ready();if(v.ended)ended()}");
+        html.append("}catch(e){}},1000);");
+        html.append("})();</script></body></html>");
+        return html.toString();
     }
 
     private void startFallbackTimer() {
@@ -592,6 +894,8 @@ public class PlayerActivity extends Activity {
 
     private static final java.util.Set<String> AD_HOSTS = new java.util.HashSet<>(java.util.Arrays.asList(
         "doubleclick.net", "googlesyndication.com", "adservice.google.com",
+        "googleadservices.com", "googletagservices.com", "googletagmanager.com",
+        "imasdk.googleapis.com", "2mdn.net", "adtrafficquality.google",
         "amazon-adsystem.com", "moatads.com", "outbrain.com", "taboola.com",
         "ads.yahoo.com", "adnxs.com", "adsrvr.org", "advertising.com",
         "casalemedia.com", "pubmatic.com", "rubiconproject.com", "openx.net",
@@ -599,15 +903,44 @@ public class PlayerActivity extends Activity {
         "sharethrough.com", "media.net", "indexexchange.com",
         "lijit.com", "rhythmone.com", "sovrn.com", "triplelift.com",
         "aliexpress.com", "ae01.alicdn.com", "lazada.com", "shopee.com",
-        "temu.com", "wish.com", "banggood.com"
+        "temu.com", "wish.com", "banggood.com",
+        "popads.net", "popcash.net", "exoclick.com", "propellerads.com",
+        "adsterra.com", "hilltopads.net", "onclickads.net", "ad-maven.com",
+        "mgid.com", "revcontent.com", "spotxchange.com", "spotx.tv",
+        "teads.tv", "tremorhub.com", "innovid.com", "serving-sys.com",
+        "adsafeprotected.com", "appnexus.com", "adform.net", "bidr.io",
+        "vidazoo.com", "exosrv.com", "realsrv.com", "tsyndicate.com"
     ));
 
     private boolean isAdHost(String host) {
         if (host == null) return false;
+        String h = host.toLowerCase();
         for (String blocked : AD_HOSTS) {
-            if (host.equals(blocked) || host.endsWith("." + blocked)) return true;
+            if (h.equals(blocked) || h.endsWith("." + blocked)) return true;
         }
         return false;
+    }
+
+    private boolean isPlayerHost(String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase();
+        return h.equals("videasy.net") || h.endsWith(".videasy.net")
+            || h.equals("videasy.to") || h.endsWith(".videasy.to");
+    }
+
+    private boolean isAdRequest(WebResourceRequest request) {
+        android.net.Uri u = request.getUrl();
+        if (isAdHost(u.getHost())) return true;
+        String hay = ((u.getHost() != null ? u.getHost() : "") + u.getPath()
+            + (u.getQuery() != null ? u.getQuery() : "")).toLowerCase();
+        return hay.contains("googlesyndication")
+            || hay.contains("doubleclick")
+            || hay.contains("/ads/")
+            || hay.contains("ima3.js")
+            || hay.contains("imasdk")
+            || hay.contains("/vast/")
+            || hay.contains("vast.xml")
+            || hay.contains("prebid");
     }
 
     private static final WebResourceResponse EMPTY_RESPONSE =
@@ -618,17 +951,21 @@ public class PlayerActivity extends Activity {
         return new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                String host = request.getUrl().getHost() != null
-                    ? request.getUrl().getHost() : "";
-                if (isAdHost(host)) return true;
+                android.net.Uri u = request.getUrl();
+                String host = u.getHost() != null ? u.getHost() : "";
+                String url = u.toString();
+                if (isAdRequest(request)) return true;
+                if (request.isForMainFrame()) {
+                    if (url.startsWith("about:") || url.startsWith("data:")) return false;
+                    if (isPlayerHost(host)) return false;
+                    return true;
+                }
                 return false;
             }
 
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                String host = request.getUrl().getHost() != null
-                    ? request.getUrl().getHost() : "";
-                if (isAdHost(host)) return EMPTY_RESPONSE;
+                if (isAdRequest(request)) return EMPTY_RESPONSE;
                 return null;
             }
 
@@ -637,6 +974,7 @@ public class PlayerActivity extends Activity {
                 super.onPageFinished(view, url);
                 setupImmersiveMode();
                 showExitButton();
+                fallbackHandler.postDelayed(() -> endedHandled = false, 2500);
 
                 // Inject a postMessage listener that bridges player events to the
                 // native JS interface so we can cancel the fallback timer once
@@ -665,6 +1003,13 @@ public class PlayerActivity extends Activity {
                     "  if(window.__ttflixAdsBlocked) return;" +
                     "  window.__ttflixAdsBlocked = true;" +
                     "  window.open = function(){ return null; };" +
+                    "  window.alert = function(){};" +
+                    "  document.addEventListener('click', function(e){" +
+                    "    var t = e.target;" +
+                    "    if (t && t.closest && t.closest('iframe#p')) return;" +
+                    "    var a = t && t.closest ? t.closest('a') : null;" +
+                    "    if (a && a.href && a.href.indexOf('videasy') < 0) { e.preventDefault(); e.stopPropagation(); }" +
+                    "  }, true);" +
                     "})()",
                     null
                 );
@@ -677,28 +1022,22 @@ public class PlayerActivity extends Activity {
                         if (playerWebView != null) {
                             playerWebView.evaluateJavascript(
                                 "(function(){" +
-                                "  // Try Videasy play button selectors" +
-                                "  var selectors = [" +
-                                "    'video'," +
-                                "    'button[aria-label*=\"play\" i]'," +
-                                "    'button[aria-label*=\"Play\" i]'," +
-                                "    '.play-button'," +
-                                "    '[class*=\"play\"]'," +
-                                "    'iframe'" +
-                                "  ];" +
-                                "  // First try to play any video element directly" +
-                                "  var videos = document.querySelectorAll('video');" +
-                                "  for(var i=0;i<videos.length;i++){" +
-                                "    try{ videos[i].play(); return; }catch(e){}" +
-                                "  }" +
-                                "  // Fallback: click play buttons" +
-                                "  for(var s=0;s<selectors.length;s++){" +
-                                "    var el = document.querySelector(selectors[s]);" +
-                                "    if(el && el.tagName!=='VIDEO' && el.tagName!=='IFRAME'){" +
-                                "      el.click(); return;" +
+                                "  function playIn(doc){" +
+                                "    if(!doc) return false;" +
+                                "    var videos = doc.querySelectorAll('video');" +
+                                "    for(var i=0;i<videos.length;i++){" +
+                                "      try{ videos[i].play(); return true; }catch(e){}" +
                                 "    }" +
+                                "    var selectors = ['button[aria-label*=\"play\" i]','.play-button','[class*=\"play\"]'];" +
+                                "    for(var s=0;s<selectors.length;s++){" +
+                                "      var el = doc.querySelector(selectors[s]);" +
+                                "      if(el && el.tagName!=='VIDEO' && el.tagName!=='IFRAME'){ el.click(); return true; }" +
+                                "    }" +
+                                "    return false;" +
                                 "  }" +
-                                "  // Last resort: send Space keypress (play/pause toggle)" +
+                                "  if(playIn(document)) return;" +
+                                "  var iframe = document.getElementById('p');" +
+                                "  try{ if(iframe && playIn(iframe.contentDocument)) return; }catch(e){}" +
                                 "  var e = new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true});" +
                                 "  document.dispatchEvent(e);" +
                                 "})()",
@@ -719,7 +1058,7 @@ public class PlayerActivity extends Activity {
                                     playerSignalReceived = true; // stop fallback timer
                                     fallbackHandler.removeCallbacks(fallbackRunnable);
                                     usingFallback = true;
-                                    runOnUiThread(() -> playerWebView.loadUrl(fallbackUrl));
+                                    runOnUiThread(() -> loadPlayerUrl(fallbackUrl));
                                 }
                             }
                         }

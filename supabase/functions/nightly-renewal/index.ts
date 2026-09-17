@@ -46,6 +46,7 @@ Deno.serve(async (req) => {
     .update({ status: "suspended" })
     .eq("status", "approved")
     .lt("subscription_expires_at", now)
+    .or("role.is.null,role.neq.agent")
     .select("id, email, subscription_expires_at");
 
   if (error) {

@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth";
 import { supabase, PLANS, type PlanId } from "@/lib/supabase";
 import { AppShell } from "@/components/AppShell";
 import { requestPlanUpgrade, formatDueDate, formatDueDateStr } from "@/lib/admin";
+import { liveSlotCount } from "@/lib/screens";
 
 const PW_RULES = [
   { key: "length",  label: "At least 8 characters",       test: (v: string) => v.length >= 8 },
@@ -62,13 +63,7 @@ export function AccountPage() {
   }, [profile]);
   useEffect(() => {
     if (!user) return;
-    // Show currently active watches (pinged in last 5 min)
-    const staleDate = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    supabase.from("active_watches")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .gte("last_ping", staleDate)
-      .then(({ count }) => setScreens(count ?? 0));
+    liveSlotCount(user.id).then((n) => setScreens(n));
   }, [user]);
 
   if (loading || !user || !profile) return (

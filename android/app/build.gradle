@@ -7,8 +7,8 @@ android {
         applicationId "tt.ttflix.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 265
-        versionName "1.1.263"
+        versionCode 281
+        versionName "1.1.279"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
@@ -16,10 +16,15 @@ android {
     }
     signingConfigs {
         release {
-            storeFile file("ttflix.jks")
-            storePassword System.getenv("KEYSTORE_PASSWORD") ?: ""
-            keyAlias System.getenv("KEY_ALIAS") ?: ""
-            keyPassword System.getenv("KEY_PASSWORD") ?: ""
+            def ksFile = rootProject.file("keystore.properties")
+            def ks = new Properties()
+            if (ksFile.exists()) {
+                ks.load(new FileInputStream(ksFile))
+            }
+            storeFile file(ks["storeFile"] ?: "ttflix.jks")
+            storePassword ks["storePassword"] ?: System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyAlias ks["keyAlias"] ?: System.getenv("KEY_ALIAS") ?: "ttflix"
+            keyPassword ks["keyPassword"] ?: System.getenv("KEY_PASSWORD") ?: ""
         }
     }
     buildTypes {

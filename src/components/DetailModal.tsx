@@ -9,6 +9,7 @@ import { getDetails, getSeasonEpisodes, type TmdbItem } from "@/lib/tmdb.functio
 import { img, year } from "@/lib/tmdb";
 import { MovieCard } from "./MovieCard";
 import { fetchProgressForTitle, type WatchProgress } from "@/lib/continue-watching";
+import { subscriberCanWatch } from "@/lib/admin";
 
 export function DetailModal() {
   const { current, close } = useDetail();
@@ -22,7 +23,7 @@ export function DetailModal() {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  const canWatch = isAdmin || (!!user && profile?.status === "approved");
+  const canWatch = subscriberCanWatch(profile?.status, profile?.subscription_expires_at, profile?.role, isAdmin);
 
   // Watch progress for this title (drives the "Continue" button + episode badges)
   const [watchProgress, setWatchProgress] = useState<WatchProgress | null>(null);
@@ -125,6 +126,7 @@ export function DetailModal() {
 
   return (
     <div
+      data-tv-zone="modal"
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-4 py-10 backdrop-blur-sm"
       onClick={close}
     >
@@ -204,7 +206,11 @@ export function DetailModal() {
                     const title = data?.title ?? current.title ?? "";
                     const s = watchProgress.season ?? 1;
                     const ep = watchProgress.episode ?? 1;
-                    navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=${ep}`);
+                    const resumeAt = watchProgress.duration_seconds > 0
+                      && watchProgress.watched_seconds / watchProgress.duration_seconds >= 0.92
+                      ? 0
+                      : Math.max(0, Math.floor(watchProgress.watched_seconds));
+                    navigate(`/watch/${current.mediaType}/${current.id}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${s}&episode=${ep}&progress=${resumeAt}`);
                   }}
                   className={`flex items-center gap-2 rounded-md bg-primary px-6 py-2.5 font-semibold text-primary-foreground transition hover:bg-primary/85 ${focusStyle}`}
                 >

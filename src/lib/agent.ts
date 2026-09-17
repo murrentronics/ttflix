@@ -1,4 +1,6 @@
 import { supabase, PLANS, type PlanId } from "./supabase";
+import { lockAuthUpdates, unlockAuthUpdates } from "./auth-lock";
+import { ensureDefaultProfiles, fetchProfiles, updateProfile } from "./profiles";
 
 // ── Commission structure ──────────────────────────────────────────────────────
 // basic monthly  TT$60:   agent $25, admin $35
@@ -146,52 +148,63 @@ export async function agentCreateCustomer(
   //    (Supabase client-side signUp auto-signs-in the new user, booting the agent)
   const { data: sessionData } = await supabase.auth.getSession();
   const agentSession = sessionData.session;
+  let userId = "";
 
-  // 2. Sign up the new customer
-  const { data: authData, error: signUpErr } = await supabase.auth.signUp({
-    email: data.email,
-    password: TEMP_PASSWORD,
-    options: {
-      data: {
-        full_name: data.fullName,
-        phone: data.phone,
-        country: "Trinidad & Tobago",
-        plan: data.plan,
+  lockAuthUpdates();
+  try {
+    const { data: authData, error: signUpErr } = await supabase.auth.signUp({
+      email: data.email,
+      password: TEMP_PASSWORD,
+      options: {
+        data: {
+          full_name: data.fullName,
+          phone: data.phone,
+          country: "Trinidad & Tobago",
+          plan: data.plan,
+        },
       },
-    },
-  });
-  if (signUpErr) throw signUpErr;
-  const newUser = authData.user;
-  if (!newUser) throw new Error("User creation failed");
-
-  // 3. Upsert profile row (we're briefly signed in as the new user — that's fine,
-  //    the upsert uses newUser.id so RLS (id = auth.uid()) passes)
-  const { error: profileErr } = await supabase.from("profiles").upsert({
-    id: newUser.id,
-    email: data.email.toLowerCase(),
-    full_name: data.fullName,
-    phone: data.phone,
-    country: "Trinidad & Tobago",
-    plan: data.plan,
-    status: "pending",
-  });
-  if (profileErr) throw profileErr;
-
-  // 4. Restore agent session immediately
-  if (agentSession?.access_token && agentSession?.refresh_token) {
-    await supabase.auth.setSession({
-      access_token: agentSession.access_token,
-      refresh_token: agentSession.refresh_token,
     });
-  } else {
-    // Fallback: re-sign in with agent credentials
-    await supabase.auth.signInWithPassword({ email: agentEmail, password: agentPassword });
+    if (signUpErr) throw signUpErr;
+    const newUser = authData.user;
+    if (!newUser) throw new Error("User creation failed");
+    userId = newUser.id;
+
+    const { error: profileErr } = await supabase.from("profiles").upsert({
+      id: newUser.id,
+      email: data.email.toLowerCase(),
+      full_name: data.fullName,
+      phone: data.phone,
+      country: "Trinidad & Tobago",
+      plan: data.plan,
+      status: "pending",
+    });
+    if (profileErr) throw profileErr;
+
+    await ensureDefaultProfiles(newUser.id, data.fullName, data.plan);
+    await new Promise((r) => setTimeout(r, 50));
+    const watchProfiles = await fetchProfiles(newUser.id);
+    const def = watchProfiles.find((p) => p.is_default);
+    if (def && data.fullName && def.name !== data.fullName) {
+      await updateProfile(def.id, { name: data.fullName });
+    }
+
+    if (agentSession?.access_token && agentSession?.refresh_token) {
+      await supabase.auth.setSession({
+        access_token: agentSession.access_token,
+        refresh_token: agentSession.refresh_token,
+      });
+    } else {
+      await supabase.auth.signInWithPassword({ email: agentEmail, password: agentPassword });
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  } finally {
+    unlockAuthUpdates();
   }
 
   // 5. Now signed in as agent — link customer and create billing request
   const { error: linkErr } = await supabase.from("agent_customers").insert({
     agent_id: agentId,
-    customer_id: newUser.id,
+    customer_id: userId,
   });
   if (linkErr) throw linkErr;
 
@@ -203,7 +216,7 @@ export async function agentCreateCustomer(
   const now = new Date().toISOString();
   await supabase.from("agent_billing_requests").insert({
     agent_id: agentId,
-    customer_id: newUser.id,
+    customer_id: userId,
     plan: data.plan,
     amount: proRata,
     agent_commission: agentCut,
@@ -213,7 +226,7 @@ export async function agentCreateCustomer(
     agent_approved_at: now,
   });
 
-  return { userId: newUser.id };
+  return { userId };
 }
 
 // Agent approves a billing request (confirms they collected cash)

@@ -19,6 +19,7 @@ dist-ssr
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
+download-page/
 
 # Environment variables (never commit secrets)
 .env

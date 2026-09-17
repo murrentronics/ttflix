@@ -8,7 +8,7 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { PLANS, type PlanId, supabase } from "@/lib/supabase";
-import { formatDueDate, formatDueDateStr } from "@/lib/admin";
+import { formatDueDate, formatDueDateStr, tabStatusForSubscriber, suspendExpiredSubscriptions } from "@/lib/admin";
 import {
   fetchAgentCustomers, agentCreateCustomer,
   fetchAgentBillingRequests, fetchAgentSummary, fetchAgentUpcomingRenewals,
@@ -101,7 +101,10 @@ export function AgentPage() {
     setUpcomingRenewals(u);
   }, [user]);
 
-  useEffect(() => { if (user && (isAgent || isAdmin)) refresh(); }, [user, isAgent, isAdmin, refresh]);
+  useEffect(() => {
+    if (!(user && (isAgent || isAdmin))) return;
+    suspendExpiredSubscriptions().finally(() => refresh());
+  }, [user, isAgent, isAdmin, refresh]);
 
   // Realtime refresh every 1 second
   useEffect(() => {
@@ -176,10 +179,11 @@ export function AgentPage() {
       });
   };
 
-  const custPending   = sortAndFilter(customers.filter((c) => c.status === "pending"));
-  const custActive    = sortAndFilter(customers.filter((c) => c.status === "approved"));
-  const custSuspended = sortAndFilter(customers.filter((c) => c.status === "suspended"));
-  const custExpelled  = sortAndFilter(customers.filter((c) => c.status === "expelled"));
+  const customerTab = (c: AgentCustomer) => tabStatusForSubscriber(c.status, c.subscription_expires_at);
+  const custPending   = sortAndFilter(customers.filter((c) => customerTab(c) === "pending"));
+  const custActive    = sortAndFilter(customers.filter((c) => customerTab(c) === "approved"));
+  const custSuspended = sortAndFilter(customers.filter((c) => customerTab(c) === "suspended"));
+  const custExpelled  = sortAndFilter(customers.filter((c) => customerTab(c) === "expelled"));
 
   const badges: Partial<Record<AgentTab, number>> = {
     pending:   custPending.length,
@@ -267,7 +271,7 @@ export function AgentPage() {
     }
   };
 
-  if (loading || !user || !profile) return (
+  if ((loading || !user || !profile) && !creating) return (
     <AppShell>
       <div className="flex min-h-[60vh] items-center justify-center pt-20 text-muted-foreground">Loading…</div>
     </AppShell>
@@ -533,6 +537,7 @@ export function AgentPage() {
                     </div>
                   )}
                   {list.map((c) => {
+                    const shownStatus = customerTab(c);
                     const dueDate = c.subscription_expires_at ? formatDueDate(c.subscription_expires_at) : null;
                     const daysLeft = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
                     const isDueSoon = daysLeft !== null && daysLeft <= 5 && daysLeft >= 0;
@@ -556,11 +561,11 @@ export function AgentPage() {
                               <p className="text-xs text-muted-foreground truncate">{c.email}</p>
                               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                                 <span className={`rounded-full px-2 py-0.5 font-semibold ${
-                                  c.status === "approved"  ? "bg-green-500/15 text-green-400"
-                                  : c.status === "pending"   ? "bg-yellow-500/15 text-yellow-400"
-                                  : c.status === "suspended" ? "bg-orange-500/15 text-orange-400"
+                                  shownStatus === "approved"  ? "bg-green-500/15 text-green-400"
+                                  : shownStatus === "pending"   ? "bg-yellow-500/15 text-yellow-400"
+                                  : shownStatus === "suspended" ? "bg-orange-500/15 text-orange-400"
                                   : "bg-destructive/15 text-destructive"
-                                }`}>{c.status === "approved" ? "active" : c.status}</span>
+                                }`}>{shownStatus === "approved" ? "active" : shownStatus}</span>
                                 <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
                                   {PLANS[c.plan as PlanId]?.name ?? c.plan}
                                 </span>
@@ -618,11 +623,11 @@ export function AgentPage() {
                               <div>
                                 <p className="text-xs text-muted-foreground">Status</p>
                                 <p className={`font-semibold capitalize ${
-                                  c.status === "approved"  ? "text-green-400"
-                                  : c.status === "pending"   ? "text-yellow-400"
-                                  : c.status === "suspended" ? "text-orange-400"
+                                  shownStatus === "approved"  ? "text-green-400"
+                                  : shownStatus === "pending"   ? "text-yellow-400"
+                                  : shownStatus === "suspended" ? "text-orange-400"
                                   : "text-destructive"
-                                }`}>{c.status === "approved" ? "active" : c.status}</p>
+                                }`}>{shownStatus === "approved" ? "active" : shownStatus}</p>
                               </div>
                               <div>
                                 <p className="text-xs text-muted-foreground">Next Due</p>
