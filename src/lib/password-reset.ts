@@ -41,6 +41,5 @@ export async function resetPassword(
   if (error) throw new Error("Failed to update password. Please try again.");
 
   // Sign out after reset so they go through the normal sign-in flow
-  try { localStorage.removeItem("ttflix_session_backup"); } catch { /* ignore */ }
   await supabase.auth.signOut();
 }

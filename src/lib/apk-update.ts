@@ -11,6 +11,7 @@ export type VersionInfo = {
 export type ApkStatus = {
   state: "idle" | "running" | "done" | "failed";
   progress: number;
+  bytes?: number;
   file?: string;
   error?: string;
 };
@@ -53,6 +54,7 @@ export function readApkStatus(): ApkStatus {
     return {
       state,
       progress: Math.max(0, Math.min(100, Number(p.progress) || 0)),
+      bytes: Number(p.bytes) > 0 ? Number(p.bytes) : undefined,
       file: p.file || undefined,
       error: p.error || undefined,
     };

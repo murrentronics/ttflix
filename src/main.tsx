@@ -11,6 +11,35 @@ import { ScrollToTop } from "./components/ScrollToTop";
 import { UpdateChecker } from "./components/UpdateChecker";
 import "./styles.css";
 
+function bindAndroidKeyboard() {
+  const bridge = () => (window as any).AndroidKeyboard;
+  let closeTimer = 0;
+  const isField = (el: EventTarget | Element | null) => {
+    const t = el as HTMLElement | null;
+    return !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA");
+  };
+  document.addEventListener("focusin", (e) => {
+    if (!isField(e.target)) return;
+    window.clearTimeout(closeTimer);
+    bridge()?.open?.();
+  });
+  document.addEventListener("focusout", () => {
+    window.clearTimeout(closeTimer);
+    closeTimer = window.setTimeout(() => {
+      if (isField(document.activeElement)) return;
+      bridge()?.close?.();
+    }, 200);
+  });
+  // Coming back from the player must not leave the keyboard open behind the app.
+  window.addEventListener("androidresume", () => {
+    window.clearTimeout(closeTimer);
+    const active = document.activeElement as HTMLElement | null;
+    if (isField(active)) active.blur();
+    bridge()?.close?.();
+  });
+}
+bindAndroidKeyboard();
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

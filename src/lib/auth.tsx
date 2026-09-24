@@ -53,33 +53,6 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const ALLOWED_COUNTRY = "Trinidad & Tobago";
-const SESSION_BACKUP_KEY = "ttflix_session_backup";
-
-function saveSessionBackup(sess: Session | null) {
-  try {
-    if (!sess?.access_token || !sess.refresh_token) return;
-    localStorage.setItem(
-      SESSION_BACKUP_KEY,
-      JSON.stringify({ access_token: sess.access_token, refresh_token: sess.refresh_token }),
-    );
-  } catch { /* ignore */ }
-}
-
-function readSessionBackup(): { access_token: string; refresh_token: string } | null {
-  try {
-    const raw = localStorage.getItem(SESSION_BACKUP_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { access_token?: string; refresh_token?: string };
-    if (!parsed.access_token || !parsed.refresh_token) return null;
-    return { access_token: parsed.access_token, refresh_token: parsed.refresh_token };
-  } catch {
-    return null;
-  }
-}
-
-function clearSessionBackup() {
-  try { localStorage.removeItem(SESSION_BACKUP_KEY); } catch { /* ignore */ }
-}
 
 async function loadProfile(userId: string): Promise<Profile | null> {
   const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
@@ -96,7 +69,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const userRef = useRef(user);
   userRef.current = user;
   const signingOutRef = useRef(false);
-  const recoveringRef = useRef(false);
   const screenIdRef = useRef<string | null>(null);
   const [screensBlocked, setScreensBlocked] = useState(false);
 
@@ -106,105 +78,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(p);
   }, []);
 
-  // 1. Restore session on mount and keep the JWT alive after Android sleeps.
+  // Restore the saved login once. Do not stop or restart the refresh timer
+  // when the screen sleeps — that second refresh is what signs people out.
   useEffect(() => {
-    const dropSession = () => {
-      setSession(null);
-      setUser(null);
-      setProfile(null);
-      setProfileLoading(false);
-      setScreensBlocked(false);
-    };
+    let alive = true;
 
     supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
       setSession(data.session);
       setUser(data.session?.user ?? null);
-      if (data.session) saveSessionBackup(data.session);
       setLoading(false);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
       if (isAuthLocked()) return;
-      if (sess) {
-        recoveringRef.current = false;
-        saveSessionBackup(sess);
-      }
-      if (!sess && event === "SIGNED_OUT" && !signingOutRef.current) {
-        if (recoveringRef.current) {
-          recoveringRef.current = false;
-          clearSessionBackup();
-          dropSession();
-          return;
-        }
-        const backup = readSessionBackup();
-        if (!backup) {
-          dropSession();
-          return;
-        }
-        // A failed refresh while the screen was off clears storage but the
-        // refresh token is often still valid. Put that session back.
-        recoveringRef.current = true;
-        void supabase.auth.setSession(backup).then(({ data, error }) => {
-          if (!error && data.session) {
-            recoveringRef.current = false;
-            saveSessionBackup(data.session);
-            setSession(data.session);
-            setUser(data.session.user);
-            return;
-          }
-          recoveringRef.current = false;
-          clearSessionBackup();
-          dropSession();
-        });
-        return;
-      }
       setSession(sess);
       setUser(sess?.user ?? null);
-      if (!sess) dropSession();
+      if (!sess) {
+        setProfile(null);
+        setProfileLoading(false);
+        setScreensBlocked(false);
+      }
     });
 
-    let resumeTimer = 0;
-    const onForeground = () => {
-      window.clearTimeout(resumeTimer);
-      // visibility, focus, and pageshow all fire together on wake.
-      // One refresh only — a second call burns the refresh token and signs out.
-      resumeTimer = window.setTimeout(() => {
-        void supabase.auth.startAutoRefresh();
-      }, 300);
-    };
-    const onBackground = () => {
-      window.clearTimeout(resumeTimer);
-      supabase.auth.stopAutoRefresh();
-    };
-    const onVis = () => {
-      if (document.visibilityState === "visible") onForeground();
-      else onBackground();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("focus", onForeground);
-    window.addEventListener("online", onForeground);
-    window.addEventListener("pageshow", onForeground);
-    window.addEventListener("androidresume", onForeground);
-
     return () => {
-      window.clearTimeout(resumeTimer);
+      alive = false;
       sub.subscription.unsubscribe();
-      document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("focus", onForeground);
-      window.removeEventListener("online", onForeground);
-      window.removeEventListener("pageshow", onForeground);
-      window.removeEventListener("androidresume", onForeground);
     };
   }, []);
 
-  // 2. Load profile whenever user changes
+  // 2. Load profile when the account changes. Token refresh keeps the same id,
+  // so it must not flip the app back to the loading screen.
   useEffect(() => {
-    if (user) {
+    const userId = user?.id;
+    if (userId) {
       setProfileLoading(true);
-      loadProfile(user.id).then(async () => {
-        const isAdminUser = (user.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
-        await checkRenewal(user.id, isAdminUser);
-        const fresh = await loadProfile(user.id);
+      const email = user?.email ?? "";
+      loadProfile(userId).then(async () => {
+        const isAdminUser = email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+        await checkRenewal(userId, isAdminUser);
+        const fresh = await loadProfile(userId);
         setProfile(fresh);
         setProfileLoading(false);
       });
@@ -212,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(null);
       setProfileLoading(false);
     }
-  }, [user]);
+  }, [user?.id]);
 
   // 3. Realtime profile sync
   useEffect(() => {
@@ -298,7 +211,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const geoData = geoRes.data as { allowed: boolean; reason?: string } | null;
         if (geoData && !geoData.allowed) {
           signingOutRef.current = true;
-          clearSessionBackup();
           await supabase.auth.signOut();
           signingOutRef.current = false;
           throw new Error(geoData.reason ?? "TTFlix is only available in Trinidad & Tobago.");
@@ -327,7 +239,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (prof && prof.country !== ALLOWED_COUNTRY) {
       signingOutRef.current = true;
-      clearSessionBackup();
       await supabase.auth.signOut();
       signingOutRef.current = false;
       throw new Error("TTFlix is only available in Trinidad & Tobago.");
@@ -350,7 +261,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!slot.ok) {
         if (slot.reason === "limit") {
           signingOutRef.current = true;
-          clearSessionBackup();
           await supabase.auth.signOut();
           signingOutRef.current = false;
           throw new Error(screenLimitMessage(prof?.plan, slot.max));
@@ -363,7 +273,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut: AuthContextValue["signOut"] = async () => {
     signingOutRef.current = true;
-    clearSessionBackup();
     try {
       stopAdminAlerts();
       if (userRef.current) {

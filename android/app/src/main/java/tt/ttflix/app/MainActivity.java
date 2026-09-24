@@ -18,12 +18,14 @@ import android.provider.Settings;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import androidx.core.content.FileProvider;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -163,6 +165,11 @@ public class MainActivity extends BridgeActivity {
         private static final String PAGES_APK_PREFIX = "https://ttflix.pages.dev/ttflix.apk";
         private volatile long lastDownloadId = -1;
         private volatile String lastFilename = "TTFlix.apk";
+        private volatile String failReason = null;
+        private volatile long lastBytes = 0;
+        private volatile long lastProgressAt = 0;
+        private volatile long startedAt = 0;
+        private static final long STALL_MS = 45_000;
 
         private String safeName(String filename) {
             String name = filename == null ? "" : filename.replaceAll("[^A-Za-z0-9._-]", "");
@@ -176,6 +183,10 @@ public class MainActivity extends BridgeActivity {
             if (url == null || !url.startsWith(PAGES_APK_PREFIX)) return;
             final String name = safeName(filename);
             lastFilename = name;
+            failReason = null;
+            lastBytes = 0;
+            startedAt = System.currentTimeMillis();
+            lastProgressAt = startedAt;
             // Mark pending before the UI-thread enqueue so status() doesn't
             // report an older APK as already finished.
             final long previousId = lastDownloadId;
@@ -183,7 +194,11 @@ public class MainActivity extends BridgeActivity {
             runOnUiThread(() -> {
                 try {
                     DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-                    if (dm == null) return;
+                    if (dm == null) {
+                        failReason = "Download manager unavailable";
+                        lastDownloadId = -1;
+                        return;
+                    }
                     if (previousId > 0) {
                         try { dm.remove(previousId); } catch (Exception ignored) {}
                     }
@@ -203,9 +218,17 @@ public class MainActivity extends BridgeActivity {
                         DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                     req.setAllowedOverMetered(true);
                     req.setAllowedOverRoaming(true);
+                    req.setAllowedNetworkTypes(
+                        DownloadManager.Request.NETWORK_WIFI | DownloadManager.Request.NETWORK_MOBILE);
                     req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name);
                     lastDownloadId = dm.enqueue(req);
-                } catch (Exception ignored) {}
+                    startedAt = System.currentTimeMillis();
+                    lastProgressAt = startedAt;
+                    lastBytes = 0;
+                } catch (Exception e) {
+                    failReason = "Couldn't start the download";
+                    lastDownloadId = -1;
+                }
             });
         }
 
@@ -214,7 +237,21 @@ public class MainActivity extends BridgeActivity {
             JSONObject o = new JSONObject();
             try {
                 o.put("file", lastFilename);
+                if (failReason != null && lastDownloadId < 0) {
+                    o.put("state", "failed");
+                    o.put("progress", 0);
+                    o.put("error", failReason);
+                    return o.toString();
+                }
                 if (lastDownloadId == -2) {
+                    if (System.currentTimeMillis() - startedAt > 8_000) {
+                        failReason = "Couldn't start the download";
+                        lastDownloadId = -1;
+                        o.put("state", "failed");
+                        o.put("progress", 0);
+                        o.put("error", failReason);
+                        return o.toString();
+                    }
                     o.put("state", "running");
                     o.put("progress", 0);
                     return o.toString();
@@ -244,22 +281,41 @@ public class MainActivity extends BridgeActivity {
                 Cursor c = dm.query(q);
                 if (c == null || !c.moveToFirst()) {
                     if (c != null) c.close();
-                    o.put("state", "idle");
+                    failReason = "Download stopped";
+                    lastDownloadId = -1;
+                    o.put("state", "failed");
                     o.put("progress", 0);
+                    o.put("error", failReason);
                     return o.toString();
                 }
                 int status = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+                int reason = c.getInt(c.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON));
                 long soFar = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
                 long total = c.getLong(c.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
                 c.close();
-                int pct = (total > 0) ? (int) Math.min(100, (soFar * 100) / total) : 0;
+                int pct = (total > 0) ? (int) Math.min(99, (soFar * 100) / total) : 0;
+                o.put("bytes", soFar);
+                long now = System.currentTimeMillis();
+                if (soFar > lastBytes) {
+                    lastBytes = soFar;
+                    lastProgressAt = now;
+                }
+                boolean stalled = now - Math.max(lastProgressAt, startedAt) > STALL_MS;
                 if (status == DownloadManager.STATUS_SUCCESSFUL) {
                     o.put("state", "done");
                     o.put("progress", 100);
-                } else if (status == DownloadManager.STATUS_FAILED) {
+                } else if (status == DownloadManager.STATUS_FAILED || stalled) {
+                    try { dm.remove(lastDownloadId); } catch (Exception ignored) {}
+                    lastDownloadId = -1;
+                    failReason = stalled ? "Download stalled" : "Download failed";
                     o.put("state", "failed");
                     o.put("progress", pct);
-                    o.put("error", "Download failed");
+                    o.put("error", failReason);
+                } else if (status == DownloadManager.STATUS_PAUSED
+                    && reason == DownloadManager.PAUSED_WAITING_FOR_NETWORK) {
+                    o.put("state", "running");
+                    o.put("progress", pct);
+                    o.put("error", "Waiting for connection");
                 } else {
                     o.put("state", "running");
                     o.put("progress", pct);
@@ -426,6 +482,9 @@ public class MainActivity extends BridgeActivity {
     }
 
     private boolean justResumed = false;
+    private boolean imeWasOpen = false;
+    private boolean keyboardWanted = false;
+    private int keyboardGen = 0;
 
     /**
      * Intercept the hardware Back key (TV remote Back button).
@@ -490,6 +549,8 @@ public class MainActivity extends BridgeActivity {
             // Disable long-press context menu (image save, copy link etc.)
             getBridge().getWebView().setLongClickable(false);
             getBridge().getWebView().setOnLongClickListener(v -> true);
+            getBridge().getWebView().setFocusable(true);
+            getBridge().getWebView().setFocusableInTouchMode(true);
 
             // Register orientation bridge
             getBridge().getWebView().addJavascriptInterface(new OrientationBridge(), "AndroidOrientation");
@@ -518,6 +579,7 @@ public class MainActivity extends BridgeActivity {
 
             getBridge().getWebView().addJavascriptInterface(new ApkBridge(), "AndroidApk");
             getBridge().getWebView().addJavascriptInterface(new NotifyBridge(), "AndroidNotify");
+            getBridge().getWebView().addJavascriptInterface(new KeyboardBridge(), "AndroidKeyboard");
 
             getBridge().getWebView().setWebViewClient(new com.getcapacitor.BridgeWebViewClient(getBridge()) {
                 @Override
@@ -598,10 +660,15 @@ public class MainActivity extends BridgeActivity {
 
         applyImmersiveFlags(decorView);
 
-        decorView.setOnSystemUiVisibilityChangeListener(visibility -> {
-            if ((visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0) {
-                decorView.postDelayed(() -> applyImmersiveFlags(decorView), 300);
+        ViewCompat.setOnApplyWindowInsetsListener(decorView, (v, insets) -> {
+            boolean ime = insets.isVisible(WindowInsetsCompat.Type.ime());
+            if (ime && !imeWasOpen) {
+                v.post(this::revealKeyboard);
+            } else if (imeWasOpen && !ime && !keyboardWanted) {
+                v.post(this::restoreImmersive);
             }
+            imeWasOpen = ime;
+            return insets;
         });
 
         WindowInsetsControllerCompat controller =
@@ -613,6 +680,66 @@ public class MainActivity extends BridgeActivity {
             controller.setSystemBarsBehavior(
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             );
+        }
+    }
+
+    /** Drop fullscreen so the soft keyboard draws on top of the app, not behind it. */
+    private void revealKeyboard() {
+        Window window = getWindow();
+        View decorView = window.getDecorView();
+        WindowCompat.setDecorFitsSystemWindows(window, true);
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        WindowInsetsControllerCompat controller =
+            WindowCompat.getInsetsController(window, decorView);
+        if (controller != null) {
+            controller.show(WindowInsetsCompat.Type.navigationBars());
+            controller.show(WindowInsetsCompat.Type.ime());
+        }
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        WebView webView = getBridge().getWebView();
+        webView.requestFocus();
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.showSoftInput(webView, InputMethodManager.SHOW_IMPLICIT);
+    }
+
+    private void restoreImmersive() {
+        Window window = getWindow();
+        WindowCompat.setDecorFitsSystemWindows(window, false);
+        applyImmersiveFlags(window.getDecorView());
+        WindowInsetsControllerCompat controller =
+            WindowCompat.getInsetsController(window, window.getDecorView());
+        if (controller != null) {
+            controller.hide(WindowInsetsCompat.Type.navigationBars());
+        }
+    }
+
+    /** Exposed to JavaScript as window.AndroidKeyboard */
+    public class KeyboardBridge {
+        @JavascriptInterface
+        public void open() {
+            keyboardWanted = true;
+            final int gen = ++keyboardGen;
+            runOnUiThread(() -> {
+                if (gen != keyboardGen) return;
+                revealKeyboard();
+            });
+        }
+
+        @JavascriptInterface
+        public void close() {
+            keyboardWanted = false;
+            final int gen = ++keyboardGen;
+            runOnUiThread(() -> {
+                if (gen != keyboardGen || keyboardWanted) return;
+                if (getBridge() != null && getBridge().getWebView() != null) {
+                    InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                    if (imm != null) {
+                        imm.hideSoftInputFromWindow(getBridge().getWebView().getWindowToken(), 0);
+                    }
+                }
+                restoreImmersive();
+            });
         }
     }
 

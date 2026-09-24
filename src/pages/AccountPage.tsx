@@ -146,7 +146,6 @@ export function AccountPage() {
     await supabase.from("my_list").delete().eq("user_id", user.id);
     await supabase.from("active_watches").delete().eq("user_id", user.id);
     await supabase.from("profiles").delete().eq("id", user.id);
-    try { localStorage.removeItem("ttflix_session_backup"); } catch { /* ignore */ }
     await supabase.auth.signOut();
     navigate("/");
   };

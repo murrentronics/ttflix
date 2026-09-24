@@ -12,8 +12,8 @@ import {
 } from "@/lib/apk-update";
 
 // Current version — patched automatically by the CI version bump script
-const CURRENT_VERSION_NAME = "1.1.291";
-const CURRENT_VERSION_CODE = 293;
+const CURRENT_VERSION_NAME = "1.1.297";
+const CURRENT_VERSION_CODE = 299;
 
 function isAndroidTV(): boolean {
   try {
@@ -90,11 +90,18 @@ export function UpdateChecker() {
             setStatus("Opening installer…");
           }
         }
-      } else if (s.state === "failed") {
+      } else if (s.state === "failed" || s.state === "idle") {
         setPhase("failed");
-        setStatus(s.error || "Download failed");
+        setStatus(s.error === "Download stalled"
+          ? "Download stalled. Tap Try again."
+          : s.error === "Waiting for connection"
+            ? "Waiting for connection…"
+            : (s.error || "Download stopped. Tap Try again."));
       } else if (s.state === "running") {
-        setStatus(s.progress > 0 ? `Downloading… ${s.progress}%` : "Downloading update…");
+        if (s.error === "Waiting for connection") setStatus("Waiting for connection…");
+        else if (s.progress > 0) setStatus(`Downloading… ${s.progress}%`);
+        else if (s.bytes && s.bytes > 0) setStatus(`Downloading… ${Math.max(1, Math.round(s.bytes / (1024 * 1024)))} MB`);
+        else setStatus("Downloading update…");
       }
     };
     tick();

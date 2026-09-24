@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigationType } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Search as SearchIcon, X } from "lucide-react";
 import { searchContent, type TmdbItem } from "@/lib/tmdb.functions.app";
@@ -6,21 +7,35 @@ import { useProfile } from "@/lib/ProfileContext";
 import { AppShell } from "@/components/AppShell";
 import { MovieCard } from "@/components/MovieCard";
 
+let savedSearch = "";
+
 export function SearchPage() {
-  const [input, setInput] = useState("");
-  const [query, setQuery] = useState("");
+  const [input, setInput] = useState(savedSearch);
+  const [query, setQuery] = useState(savedSearch.trim());
   const { activeProfile } = useProfile();
   const isKids = activeProfile?.is_kids ?? false;
   const inputRef = useRef<HTMLInputElement>(null);
+  const navType = useNavigationType();
 
-  // Focus the input after mount — delayed so the keyboard reliably appears
-  // on Android (both phone and TV with a connected keyboard/remote)
+  // Open the keyboard only when search is opened on purpose.
+  // Coming back from a title that didn't play is a back navigation, and
+  // forcing the keyboard then puts it behind the app again.
   useEffect(() => {
-    const t = setTimeout(() => inputRef.current?.focus(), 150);
-    return () => clearTimeout(t);
+    if (navType === "POP") return;
+    const show = () => {
+      window.scrollTo(0, 0);
+      inputRef.current?.focus({ preventScroll: true });
+    };
+    const t = window.setTimeout(show, 50);
+    return () => window.clearTimeout(t);
+  }, [navType]);
+
+  useEffect(() => {
+    return () => { inputRef.current?.blur(); };
   }, []);
 
   useEffect(() => {
+    savedSearch = input;
     const t = setTimeout(() => setQuery(input.trim()), 400);
     return () => clearTimeout(t);
   }, [input]);
@@ -38,8 +53,11 @@ export function SearchPage() {
           <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
           <input
             ref={inputRef}
+            type="text"
+            enterKeyHint="search"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onFocus={() => { window.scrollTo(0, 0); }}
             placeholder={isKids ? "Search cartoons, animal shows, adventures…" : "Search movies, TV shows…"}
             className="w-full rounded-md border border-border bg-input py-3 pl-12 pr-12 text-lg outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary"
           />
@@ -57,7 +75,7 @@ export function SearchPage() {
           <p className="text-muted-foreground">Search for your favourite cartoon or animal show 🐾</p>
         )}
         {!isKids && query.length <= 1 && <p className="text-muted-foreground">Type at least 2 characters to search.</p>}
-        {isFetching && <p className="text-muted-foreground">Searching…</p>}
+        {isFetching && !data && <p className="text-muted-foreground">Searching…</p>}
         {data && data.results.length === 0 && query.length > 1 && !isFetching && <p className="text-muted-foreground">No results for "{query}".</p>}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
           {data?.results.map((item: TmdbItem) => (
