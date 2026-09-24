@@ -155,7 +155,7 @@ export function ResetPasswordPage() {
   };
 
   return (
-    <div className="relative min-h-screen">
+    <div data-tv-zone="main" className="relative min-h-screen">
       <img
         src={heroBg}
         alt=""

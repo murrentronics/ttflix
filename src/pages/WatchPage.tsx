@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { X, SkipForward, ChevronDown } from "lucide-react";
+import { X, SkipBack, SkipForward, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { getProviders } from "@/lib/stream";
 import { saveProgress } from "@/lib/continue-watching";
-import { getNextEpisode, seasonCountsFor, isNearlyFinished } from "@/lib/next-episode";
+import { getNextEpisode, getPrevEpisode, seasonCountsFor, isNearlyFinished } from "@/lib/next-episode";
 import { TTFlixLoader } from "@/components/TTFlixLoader";
 import { getDetails, getSeasonEpisodes } from "@/lib/tmdb.functions.app";
 import { supabase } from "@/lib/supabase";
 import { subscriberCanWatch } from "@/lib/admin";
 import { claimScreenSlot, pingScreenSlot, screenLimitMessage, stopPlayingOnSlot } from "@/lib/screens";
+import { useDetail } from "@/components/DetailContext";
+import { isTvDevice, isTvActivateKey, arrowDir } from "@/lib/tv-navigation";
 
 // Module-level caches — survive React navigation remounts within the same session
 const seasonEpCountCache: Map<string, number> = new Map(); // key: `${tmdbId}-${season}`
@@ -23,6 +25,7 @@ export function WatchPage() {
   const { activeProfile, profiles } = useProfile();
   const effectiveProfile = activeProfile ?? profiles.find((p) => p.is_default) ?? profiles[0] ?? null;
   const navigate = useNavigate();
+  const { open: openPreview } = useDetail();
   const progressRef = useRef({ watched: 0, duration: 0, hasPostMessage: false });
   const watchStartRef = useRef<number>(Date.now());
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -60,6 +63,25 @@ export function WatchPage() {
 
   const type   = mediaType === "tv" ? "tv" : "movie";
   const tmdbId = Number(id);
+
+  const exitToPreview = useCallback(() => {
+    if (tmdbId) openPreview({ id: tmdbId, mediaType: type, title });
+    if (window.history.length > 1) navigate(-1);
+    else navigate("/");
+  }, [tmdbId, type, title, openPreview, navigate]);
+
+  const focusExitButton = useCallback(() => {
+    const btn = document.querySelector<HTMLElement>("[data-tv-exit]");
+    if (!btn) return false;
+    showExit();
+    btn.focus();
+    return true;
+  }, [showExit]);
+
+  const leaveExitButton = useCallback(() => {
+    const active = document.activeElement as HTMLElement | null;
+    if (active?.hasAttribute("data-tv-exit")) active.blur();
+  }, []);
 
   const contentKey  = `${type}-${tmdbId}-${season}-${episode}`;
   const stillLoading = loading || profileLoading;
@@ -171,6 +193,27 @@ export function WatchPage() {
   const nextEp = type === "tv"
     ? getNextEpisode(season, episode, lookupCounts, totalSeasons)
     : null;
+  const prevEp = type === "tv"
+    ? getPrevEpisode(season, episode, lookupCounts)
+    : null;
+
+  const goToEpisode = (pos: { season: number; episode: number }) => {
+    const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
+    const duration   = progressRef.current.duration;
+    const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
+    const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
+    if (watched > 10) persistRef.current(watched, duration);
+    const seasonCount = pos.season === season
+      ? episodeCount
+      : episodeCounts.length >= pos.season
+        ? episodeCounts[pos.season - 1]
+        : seasonEpCountCache.get(`${tmdbId}-${pos.season}`) ?? null;
+    const countParams = [
+      seasonCount != null ? `&totalEps=${seasonCount}` : "",
+      totalSeasons != null ? `&totalSeas=${totalSeasons}` : "",
+    ].join("");
+    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${pos.season}&episode=${pos.episode}${countParams}&progress=0${startOverSession ? "&startOver=1" : ""}`);
+  };
 
   // Detect Android native player — on Android we skip the iframe entirely
   const isAndroid = typeof (window as any).AndroidPlayer !== "undefined";
@@ -656,15 +699,30 @@ export function WatchPage() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "GoBack" || e.key === "Back" || e.key === "BrowserBack") { e.preventDefault(); navigate("/"); return; }
+      if (e.key === "GoBack" || e.key === "Back" || e.key === "BrowserBack" || e.key === "Escape") {
+        e.preventDefault();
+        exitToPreview();
+        return;
+      }
+
+      const active = document.activeElement as HTMLElement | null;
+      const onExit = !!active?.hasAttribute("data-tv-exit");
+      const onPlayerControl = !!active?.closest("[data-tv-player]") && !onExit;
+
+      // Leave the X so the next OK / Enter plays instead of exiting.
+      if (onExit && arrowDir(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        leaveExitButton();
+        return;
+      }
 
       // Centre button (OK/Select on TV remote) or dedicated media key → play/pause
       // Only fire when focus is not on one of the overlay control buttons (those handle Enter themselves)
-      const active = document.activeElement as HTMLElement | null;
-      const onPlayerControl = active?.closest("[data-tv-player]");
       if (
         !onPlayerControl &&
-        (e.key === "MediaPlayPause" || e.key === "MediaPlay" || e.key === "MediaPause" ||
+        !onExit &&
+        (isTvActivateKey(e) || e.key === "MediaPlayPause" || e.key === "MediaPlay" || e.key === "MediaPause" ||
          e.key === "Enter" || e.key === " ")
       ) {
         e.preventDefault();
@@ -672,9 +730,17 @@ export function WatchPage() {
         showExit();
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [navigate, showExit]);
+    window.addEventListener("keydown", handler, true);
+    return () => window.removeEventListener("keydown", handler, true);
+  }, [exitToPreview, leaveExitButton, showExit]);
+
+  useEffect(() => {
+    if (kidsBlocked || isAndroid) return;
+    const id = window.setTimeout(() => {
+      if (isTvDevice()) focusExitButton();
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [kidsBlocked, isAndroid, contentKey, focusExitButton]);
 
   useEffect(() => {
     const android = (window as any).AndroidOrientation;
@@ -709,6 +775,7 @@ export function WatchPage() {
       {/* iframe — web only; Android uses native PlayerActivity instead */}
       {!kidsBlocked && !isAndroid && screenGate === "ok" && (
         <iframe ref={iframeRef} src={src}
+          tabIndex={-1}
           className="absolute inset-0 h-full w-full border-0 z-10"
           allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
           allowFullScreen title={title || "TTFlix Player"} />
@@ -741,34 +808,27 @@ export function WatchPage() {
 
       {/* Exit button — web/TV only. Android uses the native PlayerActivity X. */}
       {/* data-tv-player marks this zone so navigateVertical skips these buttons */}
-      {!loaderVisible && !kidsBlocked && !isAndroid && (
+      {!kidsBlocked && !isAndroid && (
         <div data-tv-player>
           <button
-            onTouchStart={(e) => { e.stopPropagation(); navigate("/"); }}
-            onClick={() => navigate("/")}
+            data-tv-exit
+            data-tv-chrome
+            onTouchStart={(e) => { e.stopPropagation(); exitToPreview(); }}
+            onClick={exitToPreview}
             tabIndex={0}
-            aria-label="Exit player"
+            aria-label="Back to preview"
             onFocus={showExit}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/"); }
-              // ArrowRight moves to the season picker / next episode button
-              if (e.key === "ArrowRight") {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); exitToPreview(); }
+              if (arrowDir(e)) {
                 e.preventDefault();
-                const playerZone = (e.currentTarget as HTMLElement).closest("[data-tv-player]");
-                const btns = playerZone
-                  ? Array.from(playerZone.querySelectorAll<HTMLElement>("button:not([disabled])"))
-                  : [];
-                const idx = btns.indexOf(e.currentTarget as HTMLElement);
-                if (idx >= 0 && idx < btns.length - 1) btns[idx + 1].focus();
+                (e.currentTarget as HTMLElement).blur();
               }
             }}
-            className={`absolute left-4 top-4 z-40 flex items-center justify-center rounded-full bg-black/60 p-3 text-white transition
-              hover:bg-black/90 active:bg-white active:text-black
-              focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black
-              ${exitVisible ? "opacity-100" : "opacity-0 pointer-events-none"}`}
-            style={{ WebkitTapHighlightColor: "rgba(255,255,255,0.3)" }}
+            className="absolute left-4 top-4 z-[90] flex h-10 w-10 items-center justify-center rounded-md bg-white text-black shadow-lg transition hover:bg-white/90 active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
+            style={{ WebkitTapHighlightColor: "transparent" }}
           >
-            <X className="h-6 w-6" />
+            <X className="h-5 w-5" strokeWidth={2.5} />
           </button>
 
           {/* Top-right controls — season picker + next episode — fade with exit button */}
@@ -811,6 +871,7 @@ export function WatchPage() {
                   )}
                   {/* Trigger */}
                   <button
+                    data-tv-chrome
                     tabIndex={0}
                     aria-label="Season picker"
                     aria-expanded={showSeasonPicker}
@@ -848,67 +909,54 @@ export function WatchPage() {
                   </button>
                 </div>
 
-              {/* Next Episode button */}
-              {nextEp && (
+              {prevEp && (
                 <button
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
-                    const duration   = progressRef.current.duration;
-                    const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
-                    const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
-                    if (watched > 10) persistRef.current(watched, duration);
-                    const nextSeasonCount = nextEp.season === season
-                      ? episodeCount
-                      : episodeCounts.length >= nextEp.season
-                        ? episodeCounts[nextEp.season - 1]
-                        : seasonEpCountCache.get(`${tmdbId}-${nextEp.season}`) ?? null;
-                    const countParams = [
-                      nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
-                      totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
-                    ].join("");
-                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}&progress=0${startOverSession ? "&startOver=1" : ""}`);
-                  }}
-                  onClick={() => {
-                    const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
-                    const duration   = progressRef.current.duration;
-                    const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
-                    const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
-                    if (watched > 10) persistRef.current(watched, duration);
-                    const nextSeasonCount = nextEp.season === season
-                      ? episodeCount
-                      : episodeCounts.length >= nextEp.season
-                        ? episodeCounts[nextEp.season - 1]
-                        : seasonEpCountCache.get(`${tmdbId}-${nextEp.season}`) ?? null;
-                    const countParams = [
-                      nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
-                      totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
-                    ].join("");
-                    navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}&progress=0${startOverSession ? "&startOver=1" : ""}`);
-                  }}
+                  data-tv-chrome
+                  onTouchStart={(e) => { e.stopPropagation(); goToEpisode(prevEp); }}
+                  onClick={() => goToEpisode(prevEp)}
                   tabIndex={0}
-                  aria-label={`Next S${nextEp.season} E${nextEp.episode}`}
+                  aria-label={`Previous episode ${prevEp.episode}`}
                   onFocus={showExit}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goToEpisode(prevEp); }
+                    if (e.key === "ArrowLeft") {
                       e.preventDefault();
-                      const wallClock  = watchStartRef.current > 0 ? Math.floor((Date.now() - watchStartRef.current) / 1000) : 0;
-                      const duration   = progressRef.current.duration;
-                      const rawWatched = progressRef.current.hasPostMessage ? progressRef.current.watched : wallClock;
-                      const watched    = duration > 0 ? Math.min(rawWatched, duration) : rawWatched;
-                      if (watched > 10) persistRef.current(watched, duration);
-                      const nextSeasonCount = nextEp.season === season
-                        ? episodeCount
-                        : episodeCounts.length >= nextEp.season
-                          ? episodeCounts[nextEp.season - 1]
-                          : seasonEpCountCache.get(`${tmdbId}-${nextEp.season}`) ?? null;
-                      const countParams = [
-                        nextSeasonCount != null ? `&totalEps=${nextSeasonCount}` : "",
-                        totalSeasons != null    ? `&totalSeas=${totalSeasons}`   : "",
-                      ].join("");
-                      navigate(`/watch/tv/${tmdbId}?title=${encodeURIComponent(title)}&poster=${encodeURIComponent(poster)}&backdrop=${encodeURIComponent(backdrop)}&season=${nextEp.season}&episode=${nextEp.episode}${countParams}&progress=0${startOverSession ? "&startOver=1" : ""}`);
+                      const playerZone = (e.currentTarget as HTMLElement).closest("[data-tv-player]");
+                      const btns = playerZone
+                        ? Array.from(playerZone.querySelectorAll<HTMLElement>("button:not([disabled])"))
+                        : [];
+                      const idx = btns.indexOf(e.currentTarget as HTMLElement);
+                      if (idx > 0) btns[idx - 1].focus();
                     }
-                    // ArrowLeft moves back to season picker or exit button
+                    if (e.key === "ArrowRight") {
+                      e.preventDefault();
+                      const playerZone = (e.currentTarget as HTMLElement).closest("[data-tv-player]");
+                      const btns = playerZone
+                        ? Array.from(playerZone.querySelectorAll<HTMLElement>("button:not([disabled])"))
+                        : [];
+                      const idx = btns.indexOf(e.currentTarget as HTMLElement);
+                      if (idx >= 0 && idx < btns.length - 1) btns[idx + 1].focus();
+                    }
+                  }}
+                  className="flex items-center gap-2 rounded-full border-2 border-white/50 bg-black/80 px-5 py-3 text-sm font-bold text-white transition
+                    hover:bg-white hover:text-black hover:border-white active:bg-white active:text-black active:border-white
+                    focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white"
+                  style={{ WebkitTapHighlightColor: "rgba(255,255,255,0.3)" }}
+                >
+                  <SkipBack className="h-5 w-5 shrink-0" />
+                  prev ep.{prevEp.episode}
+                </button>
+              )}
+              {nextEp && (
+                <button
+                  data-tv-chrome
+                  onTouchStart={(e) => { e.stopPropagation(); goToEpisode(nextEp); }}
+                  onClick={() => goToEpisode(nextEp)}
+                  tabIndex={0}
+                  aria-label={`Next episode ${nextEp.episode}`}
+                  onFocus={showExit}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goToEpisode(nextEp); }
                     if (e.key === "ArrowLeft") {
                       e.preventDefault();
                       const playerZone = (e.currentTarget as HTMLElement).closest("[data-tv-player]");
@@ -925,7 +973,7 @@ export function WatchPage() {
                   style={{ WebkitTapHighlightColor: "rgba(255,255,255,0.3)" }}
                 >
                   <SkipForward className="h-5 w-5 shrink-0" />
-                  Next Episode
+                  next ep.{nextEp.episode}
                 </button>
               )}
             </div>

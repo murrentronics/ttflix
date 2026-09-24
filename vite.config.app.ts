@@ -48,5 +48,10 @@ export default defineConfig(({ mode }) => {
       },
     },
     base: "./",
+    server: {
+      watch: {
+        ignored: ["**/android/**", "**/download-page/**"],
+      },
+    },
   };
 });

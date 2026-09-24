@@ -60,10 +60,51 @@ export type AdminUser = Profile & {
   pending_plan?: string | null;
 };
 
-/** True once the stored cutoff (midnight after the due date) has passed. */
-export function isSubscriptionLapsed(expiresAt: string | null | undefined): boolean {
+const TT_TZ = "America/Port_of_Spain";
+
+function trinidadYmd(now = new Date()): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TT_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const [year, month, day] = parts.split("-").map(Number);
+  return { year, month, day };
+}
+
+/** True once the displayed due date (last day of the billing month) has passed in Trinidad. */
+export function isSubscriptionLapsed(expiresAt: string | null | undefined, now = new Date()): boolean {
   if (!expiresAt) return false;
-  return Date.parse(expiresAt) <= Date.now();
+  const due = formatDueDate(expiresAt);
+  const dueY = due.getUTCFullYear();
+  const dueM = due.getUTCMonth() + 1;
+  const dueD = due.getUTCDate();
+  const t = trinidadYmd(now);
+  if (t.year !== dueY) return t.year > dueY;
+  if (t.month !== dueM) return t.month > dueM;
+  return t.day > dueD;
+}
+
+/** 23rd through the last day of the month in Trinidad. Every account renews this week. */
+export function isBillingWeek(now = new Date()): boolean {
+  return trinidadYmd(now).day >= 23;
+}
+
+/**
+ * Pro-rata signups lock every account to the last day of the month.
+ * From the 23rd, every still-active subscriber is due unless they already
+ * renewed into a later month.
+ */
+export function isInPayWindow(expiresAt: string | null | undefined, now = new Date()): boolean {
+  if (!isBillingWeek(now)) return false;
+  if (isSubscriptionLapsed(expiresAt, now)) return false;
+  if (!expiresAt) return true;
+  const due = formatDueDate(expiresAt);
+  const t = trinidadYmd(now);
+  if (due.getUTCFullYear() > t.year) return false;
+  if (due.getUTCFullYear() === t.year && due.getUTCMonth() + 1 > t.month) return false;
+  return true;
 }
 
 /**
@@ -101,37 +142,52 @@ let suspendInflight: Promise<void> | null = null;
  */
 export async function suspendExpiredSubscriptions(): Promise<void> {
   if (suspendInflight) return suspendInflight;
-  const now = new Date().toISOString();
-  suspendInflight = supabase
-    .from("profiles")
-    .update({ status: "suspended" })
-    .eq("status", "approved")
-    .lt("subscription_expires_at", now)
-    .or("role.is.null,role.neq.agent")
-    .then(() => undefined)
-    .finally(() => {
-      suspendInflight = null;
-    });
+  suspendInflight = (async () => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, subscription_expires_at, role")
+      .eq("status", "approved")
+      .neq("email", ADMIN_EMAIL);
+    const ids = ((data ?? []) as { id: string; subscription_expires_at: string | null; role?: string | null }[])
+      .filter((u) => u.role !== "agent" && isSubscriptionLapsed(u.subscription_expires_at))
+      .map((u) => u.id);
+    if (!ids.length) return;
+    await supabase.from("profiles").update({ status: "suspended" }).in("id", ids);
+  })().finally(() => {
+    suspendInflight = null;
+  });
   return suspendInflight;
+}
+
+export async function fetchUpcomingDueUsers(): Promise<AdminUser[]> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("status", "approved")
+    .neq("email", ADMIN_EMAIL)
+    .or("role.is.null,role.neq.agent");
+  if (error) throw error;
+  return ((data as AdminUser[]) ?? [])
+    .filter(
+      (u) =>
+        isInPayWindow(u.subscription_expires_at) &&
+        tabStatusForSubscriber(u.status, u.subscription_expires_at, u.role) === "approved",
+    )
+    .sort((a, b) => (a.subscription_expires_at ?? "").localeCompare(b.subscription_expires_at ?? ""));
 }
 
 export async function fetchUsersByStatus(status: UserStatus): Promise<AdminUser[]> {
   await suspendExpiredSubscriptions();
-  const now = new Date().toISOString();
 
   if (status === "pending") {
-    const fiveDaysFromNow = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from("profiles")
       .select("*")
-      .or(`status.eq.pending,and(status.eq.approved,subscription_expires_at.lte.${fiveDaysFromNow})`)
+      .eq("status", "pending")
       .neq("email", ADMIN_EMAIL)
       .order("subscription_expires_at", { ascending: true });
     if (error) throw error;
-    return ((data as AdminUser[]) ?? []).filter((u) => {
-      if (u.status === "pending") return true;
-      return u.status === "approved" && !isSubscriptionLapsed(u.subscription_expires_at);
-    });
+    return (data as AdminUser[]) ?? [];
   }
 
   if (status === "approved") {
@@ -149,7 +205,7 @@ export async function fetchUsersByStatus(status: UserStatus): Promise<AdminUser[
   }
 
   if (status === "suspended") {
-    const [{ data: sus, error: e1 }, { data: expired, error: e2 }] = await Promise.all([
+    const [{ data: sus, error: e1 }, { data: approved, error: e2 }] = await Promise.all([
       supabase
         .from("profiles")
         .select("*")
@@ -160,7 +216,6 @@ export async function fetchUsersByStatus(status: UserStatus): Promise<AdminUser[
         .from("profiles")
         .select("*")
         .eq("status", "approved")
-        .lt("subscription_expires_at", now)
         .neq("email", ADMIN_EMAIL)
         .or("role.is.null,role.neq.agent")
         .order("email", { ascending: true }),
@@ -168,8 +223,13 @@ export async function fetchUsersByStatus(status: UserStatus): Promise<AdminUser[
     if (e1) throw e1;
     if (e2) throw e2;
     const byId = new Map<string, AdminUser>();
-    for (const row of [...(sus ?? []), ...(expired ?? [])] as AdminUser[]) {
-      byId.set(row.id, { ...row, status: "suspended" });
+    for (const row of (sus ?? []) as AdminUser[]) {
+      byId.set(row.id, row);
+    }
+    for (const row of (approved ?? []) as AdminUser[]) {
+      if (tabStatusForSubscriber(row.status, row.subscription_expires_at, row.role) === "suspended") {
+        byId.set(row.id, { ...row, status: "suspended" });
+      }
     }
     return [...byId.values()].sort((a, b) => (a.email ?? "").localeCompare(b.email ?? ""));
   }
@@ -226,7 +286,10 @@ export async function setUserStatus(id: string, status: UserStatus) {
     // If the billing request was already approved by adminApproveAgentRequest,
     // that function already wrote the payment_history row and updated the profile.
     // Skip everything here to prevent a duplicate record.
-    if ((billingRequest as any)?.status === "approved") {
+    if (
+      (billingRequest as any)?.status === "approved" &&
+      !isSubscriptionLapsed((prof as any)?.subscription_expires_at)
+    ) {
       const { error } = await supabase.from("profiles").update(patch).eq("id", id);
       if (error) throw error;
       return;
@@ -988,10 +1051,7 @@ export async function fetchPendingUpgrades(): Promise<AdminUser[]> {
 
 /**
  * Renewal lifecycle — called on every app load for the signed-in user.
- *
- * Rules:
- *  - 5 days before expiry:  set status → "pending"  (admin sees it, collects cash)
- *
+ * After the displayed due date, persist status as suspended.
  * Admin is always exempt.
  */
 export async function checkRenewal(userId: string, isAdmin: boolean): Promise<void> {
@@ -1007,14 +1067,13 @@ export async function checkRenewal(userId: string, isAdmin: boolean): Promise<vo
   if (prof.status === "expelled") return;
   if (prof.role === "agent") return; // agents don't have subscription expiry
 
-  const now = Date.now();
-  const expiresAt = new Date(prof.subscription_expires_at).getTime();
-
-  // Past expiry midnight → suspend (approved or still marked pending-renewal)
-  if (now >= expiresAt && prof.status !== "suspended" && prof.status !== "expelled") {
+  if (
+    isSubscriptionLapsed(prof.subscription_expires_at) &&
+    prof.status !== "suspended" &&
+    prof.status !== "expelled"
+  ) {
     await supabase.from("profiles").update({ status: "suspended" }).eq("id", userId);
   }
-  // User stays "approved" and active during the 5-day window — do NOT change status
 }
 
 // ── Admin: create a new agent account directly ────────────────────────────────

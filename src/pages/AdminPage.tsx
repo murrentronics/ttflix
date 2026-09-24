@@ -13,6 +13,7 @@ import {
   fetchPendingAgentBillingRequests, adminApproveAgentRequest, adminRejectAgentRequest,
   fetchAgentList, fetchAgentCustomerLinks, fetchDashboardStats, fetchPaymentHistory, adminCreateAgent,
   fetchAgentCollections, clearAgentBalance, formatDueDate, formatDueDateStr, tabStatusForSubscriber,
+  fetchUpcomingDueUsers,
   type AdminUser, type PaymentRecord, type AgentBillingRequestAdmin, type AgentListItem, type DashboardStats,
   type AgentCollectionItem,
 } from "@/lib/admin";
@@ -90,19 +91,9 @@ export function AdminPage() {
   }, []);
 
   const refreshUpcomingRenewals = useCallback(async () => {
-    const now = new Date().toISOString();
-    const in5Days = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
-    const { data, count } = await supabase
-      .from("profiles")
-      .select("*", { count: "exact" })
-      .eq("status", "approved")
-      .neq("role", "agent")
-      .neq("email", "kellymarshall2026@gmail.com")
-      .lte("subscription_expires_at", in5Days)
-      .gte("subscription_expires_at", now)
-      .order("subscription_expires_at", { ascending: true });
-    setUpcomingRenewals((data as AdminUser[]) ?? []);
-    setRenewalCount(count ?? 0);
+    const data = await fetchUpcomingDueUsers();
+    setUpcomingRenewals(data);
+    setRenewalCount(data.length);
   }, []);
 
   const loadWatching = useCallback(async () => {
@@ -1145,7 +1136,7 @@ export function AdminPage() {
               <div className="space-y-3 max-w-2xl">
                 {tab === "billing" && (
                   <p className="text-sm text-muted-foreground">
-                    Approved subscribers due within 5 days. Collect cash, then hit Approve to reset their cycle.
+                    From the 23rd through the last day of the month, every account is due. Collect cash, then Approve to keep them active.
                   </p>
                 )}
                 {filteredTableRows.length === 0 && (
@@ -1153,7 +1144,7 @@ export function AdminPage() {
                     {q
                       ? `No results for "${search}".`
                       : tab === "billing"
-                        ? "No upcoming renewals in the next 5 days."
+                        ? "No subscribers due this billing week yet."
                         : `No ${STATUS_LABELS[tab as UserStatus]?.toLowerCase()} users.`}
                   </div>
                 )}

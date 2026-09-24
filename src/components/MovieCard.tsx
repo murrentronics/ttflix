@@ -12,9 +12,10 @@ export function MovieCard({ item }: { item: TmdbItem }) {
       data-tv-card
       onClick={() => open(item)}
       onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
-      className="group relative w-[150px] shrink-0 overflow-hidden rounded-md bg-card text-left
+      className="group relative z-0 w-[150px] shrink-0 rounded-md bg-card text-left
         transition-transform duration-200
-        focus-visible:outline-none focus-visible:scale-105 focus-visible:z-10
+        md:hover:z-30 md:hover:scale-105
+        focus-visible:z-30 focus-visible:scale-105 focus-visible:outline-none
         focus-visible:ring-2 focus-visible:ring-primary
         sm:w-[180px]"
     >

@@ -8,7 +8,7 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
 import { PLANS, type PlanId, supabase } from "@/lib/supabase";
-import { formatDueDate, formatDueDateStr, tabStatusForSubscriber, suspendExpiredSubscriptions } from "@/lib/admin";
+import { formatDueDate, formatDueDateStr, tabStatusForSubscriber, suspendExpiredSubscriptions, isInPayWindow } from "@/lib/admin";
 import {
   fetchAgentCustomers, agentCreateCustomer,
   fetchAgentBillingRequests, fetchAgentSummary, fetchAgentUpcomingRenewals,
@@ -590,7 +590,7 @@ export function AgentPage() {
                               {tab === "suspended" && <p className="text-xs text-orange-400 font-semibold">Suspended</p>}
                               {tab === "expelled"  && <p className="text-xs text-destructive font-semibold">Expelled</p>}
 
-                              {tab === "active" && (
+                              {((tab === "suspended") || (tab === "active" && isInPayWindow(c.subscription_expires_at))) && (
                                 alreadyPending ? (
                                   <span className="rounded-full bg-yellow-500/15 px-2.5 py-1 text-xs font-bold text-yellow-400">Pending admin</span>
                                 ) : (
@@ -598,7 +598,7 @@ export function AgentPage() {
                                     onClick={(e) => { e.stopPropagation(); if (isPayOpen) { setPayOpen(null); setPayAmount(""); setPayError(""); } else { setPayOpen(c.id); setPayAmount(""); setPayError(""); } }}
                                     className={`rounded-md px-4 py-1.5 text-sm font-bold transition ${isPayOpen ? "border border-border text-muted-foreground hover:bg-accent" : "bg-[#c0001a] text-white hover:bg-[#a30016]"}`}
                                   >
-                                    {isPayOpen ? "Cancel" : "Pay"}
+                                    {isPayOpen ? "Cancel" : tab === "suspended" ? "Paid" : "Pay"}
                                   </button>
                                 )
                               )}
@@ -671,7 +671,7 @@ export function AgentPage() {
               <div className="space-y-4 max-w-2xl">
                 <h2 className="text-lg font-bold">Renewals Due</h2>
                 <p className="text-sm text-muted-foreground">
-                  Customers expiring in the next 5 days. Collect cash and tap Collect & Request.
+                  From the 23rd through the last day of the month, every account is due. Collect cash and tap Pay.
                 </p>
                 {/* Search input for renewals */}
                 <div className="relative max-w-sm">
@@ -697,7 +697,7 @@ export function AgentPage() {
                     <>
                       {filteredRenewals.length === 0 && (
                         <div className="rounded-xl border border-border bg-card p-10 text-center text-muted-foreground">
-                          {search ? "No results found" : "No renewals due in the next 5 days."}
+                          {search ? "No results found" : "No customers due this billing week yet."}
                         </div>
                       )}
                       {filteredRenewals.map((c) => {

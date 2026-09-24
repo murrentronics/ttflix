@@ -10,6 +10,7 @@ import { img, year } from "@/lib/tmdb";
 import { MovieCard } from "./MovieCard";
 import { fetchProgressForTitle, type WatchProgress } from "@/lib/continue-watching";
 import { subscriberCanWatch } from "@/lib/admin";
+import { isTvBackKey } from "@/lib/tv-navigation";
 
 export function DetailModal() {
   const { current, close } = useDetail();
@@ -22,6 +23,8 @@ export function DetailModal() {
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const trailerRef = useRef<HTMLIFrameElement>(null);
+  const [trailerPlaying, setTrailerPlaying] = useState(false);
 
   const canWatch = subscriberCanWatch(profile?.status, profile?.subscription_expires_at, profile?.role, isAdmin);
 
@@ -41,7 +44,10 @@ export function DetailModal() {
 
   // Reset season when modal opens
   useEffect(() => {
-    if (current) setSelectedSeason(1);
+    if (current) {
+      setSelectedSeason(1);
+      setTrailerPlaying(false);
+    }
   }, [current?.id]);
 
   const { data: episodes, isLoading: episodesLoading } = useQuery({
@@ -67,7 +73,7 @@ export function DetailModal() {
   useEffect(() => {
     if (!current) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "GoBack") {
+      if (isTvBackKey(e)) {
         e.preventDefault();
         close();
       }
@@ -138,7 +144,7 @@ export function DetailModal() {
         <button
           ref={closeButtonRef}
           onClick={close}
-          className={`absolute right-3 top-3 z-10 rounded-full bg-black/60 p-2 transition hover:bg-black/80 ${focusStyle}`}
+          className={`absolute right-3 top-3 z-30 rounded-full bg-black/60 p-2 transition hover:bg-black/80 ${focusStyle}`}
           aria-label="Close"
         >
           <X className="h-5 w-5" />
@@ -149,17 +155,42 @@ export function DetailModal() {
           {isLoading ? (
             <div className="flex h-full items-center justify-center text-muted-foreground">Loading…</div>
           ) : data?.trailerKey ? (
-            <iframe
-              className="h-full w-full"
-              src={`https://www.youtube.com/embed/${data.trailerKey}?rel=0`}
-              title="Trailer"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-            />
+            <>
+              <iframe
+                ref={trailerRef}
+                tabIndex={-1}
+                className="h-full w-full"
+                src={`https://www.youtube.com/embed/${data.trailerKey}?rel=0&enablejsapi=1${trailerPlaying ? "&autoplay=1" : ""}`}
+                title="Trailer"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+              {!trailerPlaying && (
+                <button
+                  type="button"
+                  aria-label="Play trailer"
+                  onClick={() => {
+                    setTrailerPlaying(true);
+                    const frame = trailerRef.current;
+                    if (frame?.contentWindow) {
+                      frame.contentWindow.postMessage(
+                        JSON.stringify({ event: "command", func: "playVideo", args: [] }),
+                        "*"
+                      );
+                    }
+                  }}
+                  className={`absolute inset-0 z-20 flex items-center justify-center bg-black/20 ${focusStyle}`}
+                >
+                  <span className="flex h-20 w-20 items-center justify-center rounded-full bg-white text-black shadow-lg transition hover:scale-105">
+                    <Play className="h-10 w-10 fill-current" />
+                  </span>
+                </button>
+              )}
+            </>
           ) : (
             <img src={img(data?.backdrop_path, "w780")} alt={data?.title} className="h-full w-full object-cover" />
           )}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card to-transparent" />
+          <div className="pointer-events-none absolute inset-0 z-[15] bg-gradient-to-t from-card to-transparent" />
         </div>
 
         {data && (

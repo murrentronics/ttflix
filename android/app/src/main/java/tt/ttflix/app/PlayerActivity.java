@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.pm.ActivityInfo;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -82,6 +83,7 @@ public class PlayerActivity extends Activity {
     private boolean endedHandled = false;
     private String currentPlayerUrl = null;
     private android.widget.Button nextBtn = null;
+    private android.widget.Button prevBtn = null;
     private boolean shouldAutoplay = false;
     private int episodeCount = 0;
     private int totalSeasons = 0;
@@ -102,6 +104,7 @@ public class PlayerActivity extends Activity {
         exitContainer.animate().cancel();
         exitContainer.animate().alpha(0.01f).setDuration(280).start();
         if (exitBtn != null) exitBtn.setAlpha(0.01f);
+        if (prevBtn != null && prevBtn.getVisibility() == View.VISIBLE) prevBtn.setAlpha(0.01f);
         if (nextBtn != null && nextBtn.getVisibility() == View.VISIBLE) nextBtn.setAlpha(0.01f);
     };
 
@@ -113,15 +116,68 @@ public class PlayerActivity extends Activity {
             exitContainer.animate().cancel();
             exitContainer.animate().alpha(1f).setDuration(160).start();
             if (exitBtn != null) exitBtn.setAlpha(1f);
+            if (prevBtn != null && prevBtn.getVisibility() == View.VISIBLE) prevBtn.setAlpha(1f);
             if (nextBtn != null && nextBtn.getVisibility() == View.VISIBLE) nextBtn.setAlpha(1f);
             hideHandler.postDelayed(hideExitRunnable, HIDE_DELAY_MS);
-            if (isTV()) {
-                if (nextBtn != null && nextBtn.getVisibility() == View.VISIBLE) {
-                    nextBtn.requestFocus();
-                } else if (exitBtn != null) {
-                    exitBtn.requestFocus();
-                }
+        }
+    }
+
+    private boolean isChromeFocused() {
+        View focused = getCurrentFocus();
+        return focused == exitBtn || focused == prevBtn || focused == nextBtn;
+    }
+
+    private boolean isDpadNav(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_DPAD_LEFT
+            || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+            || keyCode == KeyEvent.KEYCODE_DPAD_UP
+            || keyCode == KeyEvent.KEYCODE_DPAD_DOWN
+            || keyCode == KeyEvent.KEYCODE_DPAD_CENTER
+            || keyCode == KeyEvent.KEYCODE_ENTER
+            || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER;
+    }
+
+    private void focusExitButton() {
+        showExitButton();
+        if (exitBtn != null) exitBtn.requestFocus();
+    }
+
+    private void styleExitButton(boolean focused) {
+        if (exitBtn == null) return;
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(Color.WHITE);
+        bg.setCornerRadius(dpToPx(6));
+        if (focused) bg.setStroke(dpToPx(3), Color.parseColor("#E50914"));
+        exitBtn.setBackground(bg);
+        exitBtn.setColorFilter(Color.BLACK);
+        exitBtn.setScaleX(focused ? 1.12f : 1f);
+        exitBtn.setScaleY(focused ? 1.12f : 1f);
+    }
+
+    private void wireChromeFocus() {
+        if (exitBtn == null) return;
+        boolean prevOn = prevBtn != null && prevBtn.getVisibility() == View.VISIBLE;
+        boolean nextOn = nextBtn != null && nextBtn.getVisibility() == View.VISIBLE;
+        if (prevOn) {
+            exitBtn.setNextFocusRightId(prevBtn.getId());
+            exitBtn.setNextFocusDownId(prevBtn.getId());
+            prevBtn.setNextFocusLeftId(exitBtn.getId());
+            prevBtn.setNextFocusUpId(exitBtn.getId());
+            if (nextOn) {
+                prevBtn.setNextFocusRightId(nextBtn.getId());
+                nextBtn.setNextFocusLeftId(prevBtn.getId());
+                nextBtn.setNextFocusUpId(exitBtn.getId());
+            } else {
+                prevBtn.setNextFocusRightId(View.NO_ID);
             }
+        } else if (nextOn) {
+            exitBtn.setNextFocusRightId(nextBtn.getId());
+            exitBtn.setNextFocusDownId(nextBtn.getId());
+            nextBtn.setNextFocusLeftId(exitBtn.getId());
+            nextBtn.setNextFocusUpId(exitBtn.getId());
+        } else {
+            exitBtn.setNextFocusRightId(View.NO_ID);
+            exitBtn.setNextFocusDownId(View.NO_ID);
         }
     }
 
@@ -300,19 +356,19 @@ public class PlayerActivity extends Activity {
         exitBtn = new ImageButton(this);
         exitBtn.setId(android.R.id.button1);
         exitBtn.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
-        exitBtn.setBackgroundColor(Color.argb(180, 0, 0, 0));
-        exitBtn.setColorFilter(Color.WHITE);
         exitBtn.setContentDescription("Exit");
         exitBtn.setFocusable(true);
-        exitBtn.setFocusableInTouchMode(isTV());
+        exitBtn.setFocusableInTouchMode(true);
         exitBtn.setClickable(true);
-        int btnSize = dpToPx(56);
-        int margin = dpToPx(8);
+        int btnSize = dpToPx(40);
+        int margin = dpToPx(16);
         FrameLayout.LayoutParams btnParams = new FrameLayout.LayoutParams(btnSize, btnSize);
         btnParams.leftMargin = margin;
         btnParams.topMargin = margin;
         exitBtn.setLayoutParams(btnParams);
-        exitBtn.setPadding(dpToPx(12), dpToPx(12), dpToPx(12), dpToPx(12));
+        exitBtn.setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8));
+        styleExitButton(false);
+        exitBtn.setOnFocusChangeListener((v, hasFocus) -> styleExitButton(hasFocus));
         exitBtn.setOnClickListener(v -> leavePlayer());
         exitBtn.setOnTouchListener((v, event) -> {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
@@ -332,29 +388,36 @@ public class PlayerActivity extends Activity {
         });
         exitContainer.addView(exitBtn);
 
-        // Next Episode button — top-right, same show/hide as exit button
-        nextBtn = new android.widget.Button(this);
-        nextBtn.setText("Next Episode ▶");
-        nextBtn.setTextColor(Color.WHITE);
-        nextBtn.setTextSize(14f);
-        nextBtn.setTypeface(null, android.graphics.Typeface.BOLD);
-        nextBtn.setBackgroundColor(Color.argb(200, 192, 0, 26)); // TTFlix red
-        nextBtn.setPadding(dpToPx(16), dpToPx(10), dpToPx(16), dpToPx(10));
-        int nextBtnHeight = dpToPx(48);
-        FrameLayout.LayoutParams nextParams = new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, nextBtnHeight,
+        android.widget.LinearLayout epRow = new android.widget.LinearLayout(this);
+        epRow.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        FrameLayout.LayoutParams epRowParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             android.view.Gravity.TOP | android.view.Gravity.END
         );
-        nextParams.topMargin   = dpToPx(12);
-        nextParams.rightMargin = dpToPx(16);
-        nextBtn.setLayoutParams(nextParams);
-        // Make focusable for TV remote D-pad navigation
-        nextBtn.setFocusable(true);
-        nextBtn.setFocusableInTouchMode(isTV());
-        nextBtn.setNextFocusLeftId(android.R.id.content); // D-pad left goes to exit btn
-        nextBtn.setVisibility(View.GONE);
+        epRowParams.topMargin = dpToPx(12);
+        epRowParams.rightMargin = dpToPx(16);
+        epRow.setLayoutParams(epRowParams);
+
+        prevBtn = makeEpisodeChromeButton("prev ep.1");
+        prevBtn.setId(View.generateViewId());
+        prevBtn.setOnClickListener(v -> goToPrevEpisode());
+        prevBtn.setVisibility(View.GONE);
+        android.widget.LinearLayout.LayoutParams prevParams = new android.widget.LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(48)
+        );
+        prevParams.rightMargin = dpToPx(8);
+        prevBtn.setLayoutParams(prevParams);
+        epRow.addView(prevBtn);
+
+        nextBtn = makeEpisodeChromeButton("next ep.2");
+        nextBtn.setId(View.generateViewId());
         nextBtn.setOnClickListener(v -> goToNextEpisode());
-        exitContainer.addView(nextBtn);
+        nextBtn.setVisibility(View.GONE);
+        nextBtn.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dpToPx(48)
+        ));
+        epRow.addView(nextBtn);
+        exitContainer.addView(epRow);
 
         // Use the WebView's own touch listener to catch every tap — including taps
         // on Videasy's player control buttons (skip 10s, play/pause, etc.).
@@ -395,8 +458,24 @@ public class PlayerActivity extends Activity {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog,
                                           boolean isUserGesture, android.os.Message resultMsg) {
-                // Block all pop-up windows — ads use this to spawn new tabs
-                return false;
+                // Movie player: refuse popups. Sports embeds call window.open
+                // once as a sandbox probe and treat a null result as "sandboxed".
+                if (!isDirectPlayerUrl(currentPlayerUrl)) return false;
+                WebView probe = new WebView(PlayerActivity.this);
+                probe.getSettings().setJavaScriptEnabled(false);
+                probe.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
+                        return true;
+                    }
+                });
+                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
+                transport.setWebView(probe);
+                resultMsg.sendToTarget();
+                probe.postDelayed(() -> {
+                    try { probe.destroy(); } catch (Exception ignored) {}
+                }, 800);
+                return true;
             }
 
             @Override
@@ -471,6 +550,10 @@ public class PlayerActivity extends Activity {
         playerWebView.setWebViewClient(buildRealWebViewClient());
         startFallbackTimer();
         if (url != null) loadPlayerUrl(forceStartOverProgress(url));
+        wireChromeFocus();
+        if (isTV() && exitBtn != null) {
+            exitBtn.post(this::focusExitButton);
+        }
     }
 
     @Override
@@ -525,8 +608,9 @@ public class PlayerActivity extends Activity {
 
         int keyCode = event.getKeyCode();
         int action  = event.getAction();
+        boolean chromeFocused = isChromeFocused();
 
-        // Show exit button on any remote interaction
+        // Show exit button on any remote interaction (do not steal focus)
         if (action == KeyEvent.ACTION_UP) showExitButton();
 
         // Back button — exit player
@@ -534,6 +618,18 @@ public class PlayerActivity extends Activity {
             keyCode == KeyEvent.KEYCODE_ESCAPE) {
             if (action == KeyEvent.ACTION_UP) onBackPressed();
             return true;
+        }
+
+        // D-pad Up from the player lands on the X. While chrome has focus,
+        // let Android move between X / prev / next instead of eating the keys.
+        if (isDpadNav(keyCode)) {
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP && !chromeFocused && action == KeyEvent.ACTION_DOWN) {
+                focusExitButton();
+                return true;
+            }
+            if (chromeFocused) {
+                return super.dispatchKeyEvent(event);
+            }
         }
 
         // Map D-pad and media keys to JavaScript KeyboardEvents so Videasy
@@ -645,6 +741,18 @@ public class PlayerActivity extends Activity {
         return null;
     }
 
+    private EpisodePos prevEpisodePos(int season, int episode) {
+        if (urlPrefix == null) return null;
+        if (episode > 1) return new EpisodePos(season, episode - 1);
+        for (int prevSeason = season - 1; prevSeason >= 1; prevSeason--) {
+            int n = countForSeason(prevSeason);
+            if (n == 0) continue;
+            if (n > 0) return new EpisodePos(prevSeason, n);
+            return new EpisodePos(prevSeason, 1);
+        }
+        return null;
+    }
+
     private void parsePlayerUrl(String url) {
         if (url == null) return;
         currentPlayerUrl = url;
@@ -732,6 +840,25 @@ public class PlayerActivity extends Activity {
         loadPlayerUrl(url);
     }
 
+    private void goToPrevEpisode() {
+        EpisodePos prev = prevEpisodePos(currentSeason, currentEpisode);
+        if (prev == null) {
+            if (prevBtn != null) prevBtn.setVisibility(View.GONE);
+            return;
+        }
+        String url = episodeUrl(prev.season, prev.episode);
+        if (url == null) return;
+        applyEpisode(prev.season, prev.episode, true);
+        shouldAutoplay = true;
+        playerSignalReceived = false;
+        usingFallback = false;
+        if (MainActivity.instance != null) {
+            MainActivity.instance.notifyNextEpisode(prev.season, prev.episode);
+        }
+        startFallbackTimer();
+        loadPlayerUrl(url);
+    }
+
     private void autoAdvanceIfNeeded() {
         if (endedHandled) return;
         if (nextEpisodePos(currentSeason, currentEpisode) == null) return;
@@ -752,11 +879,24 @@ public class PlayerActivity extends Activity {
         EpisodePos following = nextEpisodePos(season, episode);
         if (following != null) {
             nextUrl = episodeUrl(following.season, following.episode);
-            if (nextBtn != null) nextBtn.setVisibility(View.VISIBLE);
+            if (nextBtn != null) {
+                nextBtn.setText("next ep." + following.episode);
+                nextBtn.setVisibility(View.VISIBLE);
+            }
         } else {
             nextUrl = null;
             if (nextBtn != null) nextBtn.setVisibility(View.GONE);
         }
+        EpisodePos previous = prevEpisodePos(season, episode);
+        if (previous != null) {
+            if (prevBtn != null) {
+                prevBtn.setText("prev ep." + previous.episode);
+                prevBtn.setVisibility(View.VISIBLE);
+            }
+        } else if (prevBtn != null) {
+            prevBtn.setVisibility(View.GONE);
+        }
+        wireChromeFocus();
     }
 
     void updateSeasonCounts(String countsStr, int seasons) {
@@ -776,10 +916,38 @@ public class PlayerActivity extends Activity {
         applyEpisode(currentSeason, currentEpisode, false);
     }
 
+    /** Sports embeds refuse any iframe, sandboxed or not. Load them as the page itself. */
+    private boolean isDirectPlayerUrl(String url) {
+        try {
+            String host = android.net.Uri.parse(url).getHost();
+            if (host == null) return false;
+            host = host.toLowerCase();
+            return host.equals("embed.st") || host.endsWith(".embed.st")
+                || host.equals("embed.streamapi.cc") || host.endsWith(".streamapi.cc");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private void loadPlayerUrl(String url) {
         if (playerWebView == null || url == null) return;
         currentPlayerUrl = url;
         parsePlayerUrl(url);
+        if (isDirectPlayerUrl(url)) {
+            WebSettings direct = playerWebView.getSettings();
+            direct.setSupportMultipleWindows(true);
+            direct.setJavaScriptCanOpenWindowsAutomatically(true);
+            final String page = url;
+            new Thread(() -> {
+                final String html = EmbedUnlock.fetchClean(page);
+                runOnUiThread(() -> {
+                    if (playerWebView == null) return;
+                    if (html == null) playerWebView.loadUrl(page);
+                    else playerWebView.loadDataWithBaseURL(page, html, "text/html", "UTF-8", null);
+                });
+            }).start();
+            return;
+        }
         String html = wrapPlayerHtml(forceStartOverProgress(url));
         String base = playerBaseUrl(url);
         playerWebView.loadDataWithBaseURL(base, html, "text/html", "UTF-8", null);
@@ -909,7 +1077,8 @@ public class PlayerActivity extends Activity {
         "mgid.com", "revcontent.com", "spotxchange.com", "spotx.tv",
         "teads.tv", "tremorhub.com", "innovid.com", "serving-sys.com",
         "adsafeprotected.com", "appnexus.com", "adform.net", "bidr.io",
-        "vidazoo.com", "exosrv.com", "realsrv.com", "tsyndicate.com"
+        "vidazoo.com", "exosrv.com", "realsrv.com", "tsyndicate.com",
+        "enteringlacquergiant.com", "histats.com", "onepyrincehyarey.org"
     ));
 
     private boolean isAdHost(String host) {
@@ -925,13 +1094,17 @@ public class PlayerActivity extends Activity {
         if (host == null) return false;
         String h = host.toLowerCase();
         return h.equals("videasy.net") || h.endsWith(".videasy.net")
-            || h.equals("videasy.to") || h.endsWith(".videasy.to");
+            || h.equals("videasy.to") || h.endsWith(".videasy.to")
+            || h.equals("embed.st") || h.endsWith(".embed.st")
+            || h.equals("embed.streamapi.cc") || h.endsWith(".streamapi.cc");
     }
 
     private boolean isAdRequest(WebResourceRequest request) {
         android.net.Uri u = request.getUrl();
         if (isAdHost(u.getHost())) return true;
-        String hay = ((u.getHost() != null ? u.getHost() : "") + u.getPath()
+        String path = u.getPath() != null ? u.getPath().toLowerCase() : "";
+        if (path.equals("/ad.html") || path.endsWith("/ad.html")) return true;
+        String hay = ((u.getHost() != null ? u.getHost() : "") + path
             + (u.getQuery() != null ? u.getQuery() : "")).toLowerCase();
         return hay.contains("googlesyndication")
             || hay.contains("doubleclick")
@@ -965,6 +1138,8 @@ public class PlayerActivity extends Activity {
 
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                WebResourceResponse unlocked = EmbedUnlock.rewrite(request);
+                if (unlocked != null) return unlocked;
                 if (isAdRequest(request)) return EMPTY_RESPONSE;
                 return null;
             }
@@ -997,8 +1172,8 @@ public class PlayerActivity extends Activity {
                     null
                 );
 
-                // Block window.open pop-ups from ad scripts
-                view.evaluateJavascript(
+                // Movie pages only. Sports embeds treat a dead window.open as a sandbox.
+                if (!isDirectPlayerUrl(url)) view.evaluateJavascript(
                     "(function(){" +
                     "  if(window.__ttflixAdsBlocked) return;" +
                     "  window.__ttflixAdsBlocked = true;" +
@@ -1088,6 +1263,20 @@ public class PlayerActivity extends Activity {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
+    }
+
+    private android.widget.Button makeEpisodeChromeButton(String label) {
+        android.widget.Button btn = new android.widget.Button(this);
+        btn.setText(label);
+        btn.setTextColor(Color.WHITE);
+        btn.setTextSize(13f);
+        btn.setTypeface(null, android.graphics.Typeface.BOLD);
+        btn.setBackgroundColor(Color.argb(200, 192, 0, 26));
+        btn.setPadding(dpToPx(14), dpToPx(10), dpToPx(14), dpToPx(10));
+        btn.setFocusable(true);
+        btn.setFocusableInTouchMode(isTV());
+        btn.setAllCaps(false);
+        return btn;
     }
 
     private int dpToPx(int dp) {

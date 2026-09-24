@@ -12,8 +12,8 @@ export function MovieRow({ title, items }: { title: string; items: TmdbItem[] })
   };
 
   return (
-    <section className="group/row relative mb-8">
-      <h2 className="mb-3 px-4 text-lg font-bold sm:px-8 md:text-xl">{title}</h2>
+    <section className="group/row relative mb-2 overflow-visible">
+      <h2 className="mb-0 px-4 text-lg font-bold sm:px-8 md:text-xl">{title}</h2>
       <button
         data-tv-ignore
         tabIndex={-1}
@@ -23,7 +23,7 @@ export function MovieRow({ title, items }: { title: string; items: TmdbItem[] })
       >
         <ChevronLeft className="h-8 w-8" />
       </button>
-      <div ref={ref} className="row-scroll flex gap-3 overflow-x-auto px-4 pb-2 sm:px-8">
+      <div ref={ref} className="row-scroll flex gap-3 overflow-x-auto px-4 pt-7 pb-8 sm:px-8">
         {items.map((item) => (
           <MovieCard key={`${item.media_type}-${item.id}`} item={item} />
         ))}

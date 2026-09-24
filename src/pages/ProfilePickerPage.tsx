@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, X, User, Baby } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
 import { createProfile, deleteProfile, updateProfile, maxProfiles, randomColor, type UserProfile } from "@/lib/profiles";
+import { isTvBackKey } from "@/lib/tv-navigation";
 
 const focusRing = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2";
 
@@ -23,7 +24,7 @@ function ModalShell({ onClose, children }: { onClose: () => void; children: Reac
     }, 30);
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "GoBack") { e.preventDefault(); onCloseRef.current(); return; }
+      if (isTvBackKey(e)) { e.preventDefault(); onCloseRef.current(); return; }
       if (e.key !== "Tab" || !ref.current) return;
       const focusable = Array.from(
         ref.current.querySelectorAll<HTMLElement>(
@@ -42,7 +43,7 @@ function ModalShell({ onClose, children }: { onClose: () => void; children: Reac
   }, []); // intentionally empty — only run on mount
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
+    <div data-tv-zone="modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
       <div ref={ref} className="w-full max-w-sm rounded-xl border border-border bg-card p-6" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
@@ -135,7 +136,7 @@ export function ProfilePickerPage() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
+    <div data-tv-zone="main" className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
       <h1 className="mb-2 text-3xl font-extrabold text-primary">TT<span className="text-foreground">FLIX</span></h1>
       <h2 className="mb-10 text-xl font-semibold text-foreground">Who's watching?</h2>
 
@@ -143,6 +144,7 @@ export function ProfilePickerPage() {
         {profiles.map((p, i) => (
           <div key={p.id} className="relative flex flex-col items-center gap-2">
             <button
+              data-tv-card
               ref={i === 0 ? firstProfileRef : undefined}
               onClick={() => {
                 if (!editing) { setActiveProfile(p); navigate("/"); }

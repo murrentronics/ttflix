@@ -21,12 +21,14 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import androidx.core.content.FileProvider;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.util.List;
 import org.json.JSONObject;
@@ -174,12 +176,16 @@ public class MainActivity extends BridgeActivity {
             if (url == null || !url.startsWith(PAGES_APK_PREFIX)) return;
             final String name = safeName(filename);
             lastFilename = name;
+            // Mark pending before the UI-thread enqueue so status() doesn't
+            // report an older APK as already finished.
+            final long previousId = lastDownloadId;
+            lastDownloadId = -2;
             runOnUiThread(() -> {
                 try {
                     DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
                     if (dm == null) return;
-                    if (lastDownloadId > 0) {
-                        try { dm.remove(lastDownloadId); } catch (Exception ignored) {}
+                    if (previousId > 0) {
+                        try { dm.remove(previousId); } catch (Exception ignored) {}
                     }
                     File dest = new File(
                         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -208,6 +214,11 @@ public class MainActivity extends BridgeActivity {
             JSONObject o = new JSONObject();
             try {
                 o.put("file", lastFilename);
+                if (lastDownloadId == -2) {
+                    o.put("state", "running");
+                    o.put("progress", 0);
+                    return o.toString();
+                }
                 if (lastDownloadId < 0) {
                     File dest = new File(
                         Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -520,13 +531,53 @@ public class MainActivity extends BridgeActivity {
                         startActivity(dialIntent);
                         return true;
                     }
+                    if (isBlockedAd(request.getUrl())) return true;
                     // Let Capacitor serve the app origin (https://app.ttflix.tt)
                     // and allowNavigation hosts. Returning true here blanks the WebView.
                     return super.shouldOverrideUrlLoading(view, request);
                 }
+
+                @Override
+                public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                    WebResourceResponse unlocked = EmbedUnlock.rewrite(request);
+                    if (unlocked != null) return unlocked;
+                    if (request != null && isBlockedAd(request.getUrl())) return emptyAdResponse();
+                    return super.shouldInterceptRequest(view, request);
+                }
             });
         }
         setupImmersiveMode();
+    }
+
+    /** Popunder hosts and the hidden /ad.html frame the sports player injects. */
+    private boolean isBlockedAd(Uri uri) {
+        if (uri == null) return false;
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase();
+        String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase();
+        if (path.equals("/ad.html") || path.endsWith("/ad.html")) return true;
+        String[] blocked = {
+            "enteringlacquergiant.com",
+            "histats.com",
+            "onepyrincehyarey.org",
+            "popads.net",
+            "popcash.net",
+            "exoclick.com",
+            "propellerads.com",
+            "adsterra.com",
+            "hilltopads.net"
+        };
+        for (String b : blocked) {
+            if (host.equals(b) || host.endsWith("." + b)) return true;
+        }
+        return false;
+    }
+
+    private WebResourceResponse emptyAdResponse() {
+        return new WebResourceResponse(
+            "text/html",
+            "utf-8",
+            new ByteArrayInputStream(new byte[0])
+        );
     }
 
     private void setupImmersiveMode() {

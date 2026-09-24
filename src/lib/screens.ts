@@ -49,66 +49,84 @@ export async function claimScreenSlot(args: {
   tmdbId?: number | null;
   mediaType?: string | null;
   title?: string | null;
-}): Promise<{ ok: true; id: string } | { ok: false; used: number; max: number }> {
+}): Promise<
+  | { ok: true; id: string }
+  | { ok: false; used: number; max: number; reason: "limit" | "error" }
+> {
   const sessionId = deviceSessionId();
   const max = maxScreensForPlan(args.plan);
   const now = new Date().toISOString();
 
-  await supabase
-    .from("active_watches")
-    .delete()
-    .eq("user_id", args.userId)
-    .lt("last_ping", staleIso());
-
-  const { data: existing } = await supabase
-    .from("active_watches")
-    .select("id")
-    .eq("user_id", args.userId)
-    .eq("session_id", sessionId)
-    .maybeSingle();
-
-  if (existing?.id) {
-    const patch: Record<string, unknown> = { last_ping: now };
-    if (args.tmdbId != null) patch.tmdb_id = args.tmdbId;
-    if (args.mediaType != null) patch.media_type = args.mediaType;
-    if (args.title != null) patch.title = args.title;
-    await supabase.from("active_watches").update(patch).eq("id", existing.id);
-    return { ok: true, id: existing.id };
-  }
-
-  const used = await liveSlotCount(args.userId);
-  if (used >= max) return { ok: false, used, max };
-
-  const { data: inserted, error } = await supabase
-    .from("active_watches")
-    .insert({
-      user_id: args.userId,
-      session_id: sessionId,
-      tmdb_id: args.tmdbId ?? null,
-      media_type: args.mediaType ?? null,
-      title: args.title ?? null,
-      last_ping: now,
-    })
-    .select("id")
-    .single();
-
-  if (error || !inserted) {
-    const { data: raced } = await supabase
+  try {
+    // Revive this phone first, even if pings stopped while it was asleep.
+    const { data: existing, error: existingErr } = await supabase
       .from("active_watches")
       .select("id")
       .eq("user_id", args.userId)
       .eq("session_id", sessionId)
       .maybeSingle();
-    if (raced?.id) return { ok: true, id: raced.id };
-    return { ok: false, used, max };
-  }
 
-  const usedAfter = await liveSlotCount(args.userId);
-  if (usedAfter > max) {
-    await supabase.from("active_watches").delete().eq("id", inserted.id);
-    return { ok: false, used: usedAfter - 1, max };
+    if (existingErr) return { ok: false, used: 0, max, reason: "error" };
+
+    if (existing?.id) {
+      const patch: Record<string, unknown> = { last_ping: now };
+      if (args.tmdbId != null) patch.tmdb_id = args.tmdbId;
+      if (args.mediaType != null) patch.media_type = args.mediaType;
+      if (args.title != null) patch.title = args.title;
+      const { error: updErr } = await supabase.from("active_watches").update(patch).eq("id", existing.id);
+      if (updErr) return { ok: false, used: 0, max, reason: "error" };
+
+      await supabase
+        .from("active_watches")
+        .delete()
+        .eq("user_id", args.userId)
+        .neq("session_id", sessionId)
+        .lt("last_ping", staleIso());
+      return { ok: true, id: existing.id };
+    }
+
+    await supabase
+      .from("active_watches")
+      .delete()
+      .eq("user_id", args.userId)
+      .lt("last_ping", staleIso());
+
+    const used = await liveSlotCount(args.userId);
+    if (used >= max) return { ok: false, used, max, reason: "limit" };
+
+    const { data: inserted, error } = await supabase
+      .from("active_watches")
+      .insert({
+        user_id: args.userId,
+        session_id: sessionId,
+        tmdb_id: args.tmdbId ?? null,
+        media_type: args.mediaType ?? null,
+        title: args.title ?? null,
+        last_ping: now,
+      })
+      .select("id")
+      .single();
+
+    if (error || !inserted) {
+      const { data: raced } = await supabase
+        .from("active_watches")
+        .select("id")
+        .eq("user_id", args.userId)
+        .eq("session_id", sessionId)
+        .maybeSingle();
+      if (raced?.id) return { ok: true, id: raced.id };
+      return { ok: false, used, max, reason: "error" };
+    }
+
+    const usedAfter = await liveSlotCount(args.userId);
+    if (usedAfter > max) {
+      await supabase.from("active_watches").delete().eq("id", inserted.id);
+      return { ok: false, used: usedAfter - 1, max, reason: "limit" };
+    }
+    return { ok: true, id: inserted.id };
+  } catch {
+    return { ok: false, used: 0, max, reason: "error" };
   }
-  return { ok: true, id: inserted.id };
 }
 
 export async function pingScreenSlot(

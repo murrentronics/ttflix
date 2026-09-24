@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate } from "react-router-dom";
 import { Search, Menu, X, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useProfile } from "@/lib/ProfileContext";
+import { isTvBackKey } from "@/lib/tv-navigation";
 
 const ADULT_LINKS = [
   { to: "/", label: "Home" },
@@ -48,7 +49,7 @@ export function Navbar() {
   // TV remote Back button / keyboard Escape closes any open menu
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "GoBack") {
+      if (isTvBackKey(e)) {
         if (mobileOpen || profileOpen) {
           e.preventDefault();
           setMobileOpen(false);
@@ -141,7 +142,7 @@ export function Navbar() {
               </button>
 
               {profileOpen && (
-                <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-border bg-popover shadow-2xl z-50 overflow-hidden">
+                <div data-tv-zone="modal" className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-border bg-popover shadow-2xl z-50 overflow-hidden">
                   {/* Current profile */}
                   {activeProfile && (
                     <div className="border-b border-border px-5 py-3.5">

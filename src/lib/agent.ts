@@ -1,6 +1,7 @@
 import { supabase, PLANS, type PlanId } from "./supabase";
 import { lockAuthUpdates, unlockAuthUpdates } from "./auth-lock";
 import { ensureDefaultProfiles, fetchProfiles, updateProfile } from "./profiles";
+import { isInPayWindow, tabStatusForSubscriber } from "./admin";
 
 // ── Commission structure ──────────────────────────────────────────────────────
 // basic monthly  TT$60:   agent $25, admin $35
@@ -239,20 +240,6 @@ export async function agentApproveBillingRequest(requestId: string): Promise<voi
     })
     .eq("id", requestId);
   if (error) throw error;
-
-  // Also set the customer profile to pending so admin sees it
-  const { data: req } = await supabase
-    .from("agent_billing_requests")
-    .select("customer_id")
-    .eq("id", requestId)
-    .maybeSingle();
-
-  if (req?.customer_id) {
-    await supabase
-      .from("profiles")
-      .update({ status: "pending" })
-      .eq("id", req.customer_id);
-  }
 }
 
 // Fetch agent's billing requests
@@ -312,11 +299,8 @@ export async function fetchPendingAgentApprovals(agentId: string): Promise<Agent
   }));
 }
 
-// Get upcoming renewals for the agent's customers (within 5 days)
+// Upcoming dues: every still-active customer during the 23rd–month-end billing week
 export async function fetchAgentUpcomingRenewals(agentId: string): Promise<AgentCustomer[]> {
-  const in5Days = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
-  const now = new Date().toISOString();
-
   const { data, error } = await supabase
     .from("agent_customers")
     .select("id, created_at, profiles!agent_customers_customer_id_fkey(*)")
@@ -336,11 +320,11 @@ export async function fetchAgentUpcomingRenewals(agentId: string): Promise<Agent
       agent_customer_id: row.id,
       linked_at: row.created_at,
     }))
-    .filter((c: AgentCustomer) => {
-      if (!c.subscription_expires_at) return false;
-      const exp = c.subscription_expires_at;
-      return exp >= now && exp <= in5Days;
-    });
+    .filter(
+      (c: AgentCustomer) =>
+        tabStatusForSubscriber(c.status, c.subscription_expires_at) === "approved" &&
+        isInPayWindow(c.subscription_expires_at),
+    );
 }
 
 // Create a renewal billing request for an agent customer — directly pending admin
@@ -363,9 +347,6 @@ export async function agentRequestRenewal(
     agent_approved_at: now,
   });
   if (error) throw error;
-  
-  // Mark customer as pending so admin sees them in pending tab
-  await supabase.from("profiles").update({ status: "pending" }).eq("id", customerId);
 }
 
 // One-step pay: agent has collected cash and immediately submits to admin queue.
@@ -378,8 +359,15 @@ export async function agentPayAndSubmitRenewal(
   const commission = AGENT_COMMISSION[plan];
   const now = new Date().toISOString();
 
-  // Insert request directly as pending_admin — cash already collected
-  const { data: req, error } = await supabase
+  const { data: existing } = await supabase
+    .from("agent_billing_requests")
+    .select("id")
+    .eq("customer_id", customerId)
+    .in("status", ["pending_agent", "pending_admin"])
+    .maybeSingle();
+  if (existing) throw new Error("A payment for this customer is already waiting for admin approval.");
+
+  const { error } = await supabase
     .from("agent_billing_requests")
     .insert({
       agent_id: agentId,
@@ -391,16 +379,8 @@ export async function agentPayAndSubmitRenewal(
       request_type: "renewal",
       status: "pending_admin",
       agent_approved_at: now,
-    })
-    .select("id")
-    .maybeSingle();
+    });
   if (error) throw error;
-
-  // Mark customer as pending so admin sees them in the pending tab
-  await supabase
-    .from("profiles")
-    .update({ status: "pending" })
-    .eq("id", customerId);
 }
 
 // Calculate agent summary stats

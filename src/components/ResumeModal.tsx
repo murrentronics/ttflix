@@ -5,6 +5,7 @@ import { img } from "@/lib/tmdb";
 import { getSeasonEpisodes, getDetails } from "@/lib/tmdb.functions.app";
 import type { WatchProgress } from "@/lib/continue-watching";
 import { progressPercent } from "@/lib/next-episode";
+import { isTvBackKey } from "@/lib/tv-navigation";
 
 type Props = {
   item: WatchProgress | null;
@@ -31,7 +32,7 @@ export function ResumeModal({ item, onContinue, onStartOver, onPlayEpisode, onCl
     const t = setTimeout(() => closeButtonRef.current?.focus(), 50);
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "GoBack") { e.preventDefault(); onClose(); }
+      if (isTvBackKey(e)) { e.preventDefault(); onClose(); }
       if (e.key !== "Tab" || !modalRef.current) return;
       const focusable = Array.from(
         modalRef.current.querySelectorAll<HTMLElement>(

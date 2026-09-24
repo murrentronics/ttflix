@@ -46,6 +46,23 @@ export function getNextEpisode(
   return null;
 }
 
+/** Previous episode: same season E-1, or last episode of the previous non-empty season. */
+export function getPrevEpisode(
+  season: number,
+  episode: number,
+  counts: number[],
+): EpisodePos | null {
+  if (season < 1 || episode < 1) return null;
+  if (episode > 1) return { season, episode: episode - 1 };
+  for (let prevSeason = season - 1; prevSeason >= 1; prevSeason--) {
+    const n = prevSeason <= counts.length ? counts[prevSeason - 1] : -1;
+    if (n === 0) continue;
+    if (n > 0) return { season: prevSeason, episode: n };
+    return { season: prevSeason, episode: 1 };
+  }
+  return null;
+}
+
 export function progressPercent(watched: number, duration: number): number | null {
   if (duration <= 0) return watched > 0 ? 4 : null;
   return Math.min(99, Math.max(0, Math.round((watched / duration) * 100)));

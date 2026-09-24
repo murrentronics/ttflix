@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase, PLANS, ADMIN_EMAIL, type PlanId, type UserStatus } from "./supabase";
-import { checkRenewal } from "./admin";
+import { checkRenewal, isSubscriptionLapsed } from "./admin";
 import { isAuthLocked } from "./auth-lock";
 import { startAdminAlerts, stopAdminAlerts } from "./admin-alerts";
 import { claimScreenSlot, pingScreenSlot, releaseScreenSlot, screenLimitMessage } from "./screens";
@@ -70,6 +70,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   userRef.current = user;
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const signingOutRef = useRef(false);
+  const screenIdRef = useRef<string | null>(null);
+  const [screensBlocked, setScreensBlocked] = useState(false);
 
   const refreshProfile = useCallback(async () => {
     if (!userRef.current) return;
@@ -77,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(p);
   }, []);
 
-  // 1. Restore session on mount
+  // 1. Restore session on mount and keep the JWT alive after Android sleeps.
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
@@ -85,16 +88,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, sess) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
       if (isAuthLocked()) return;
+      if (!sess && event === "SIGNED_OUT" && !signingOutRef.current) {
+        // Token refresh can emit SIGNED_OUT on a dead network. Recover if storage still has a session.
+        void supabase.auth.getSession().then(({ data }) => {
+          if (data.session) {
+            setSession(data.session);
+            setUser(data.session.user);
+            return;
+          }
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setProfileLoading(false);
+          setScreensBlocked(false);
+        });
+        return;
+      }
       setSession(sess);
       setUser(sess?.user ?? null);
       if (!sess) {
         setProfile(null);
         setProfileLoading(false);
+        setScreensBlocked(false);
       }
     });
-    return () => sub.subscription.unsubscribe();
+
+    const onForeground = () => {
+      supabase.auth.startAutoRefresh();
+      if (!sessionRef.current && !userRef.current) return;
+      void supabase.auth.refreshSession().then(({ data }) => {
+        if (data.session) {
+          setSession(data.session);
+          setUser(data.session.user);
+        }
+      });
+    };
+    const onBackground = () => {
+      supabase.auth.stopAutoRefresh();
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") onForeground();
+      else onBackground();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onForeground);
+    window.addEventListener("online", onForeground);
+    window.addEventListener("pageshow", onForeground);
+
+    return () => {
+      sub.subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onForeground);
+      window.removeEventListener("online", onForeground);
+      window.removeEventListener("pageshow", onForeground);
+    };
   }, []);
 
   // 2. Load profile whenever user changes
@@ -197,7 +246,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const geoRes = await supabase.functions.invoke("geo-check", { method: "POST" });
         const geoData = geoRes.data as { allowed: boolean; reason?: string } | null;
         if (geoData && !geoData.allowed) {
+          signingOutRef.current = true;
           await supabase.auth.signOut();
+          signingOutRef.current = false;
           throw new Error(geoData.reason ?? "TTFlix is only available in Trinidad & Tobago.");
         }
       } catch (geoErr: any) {
@@ -223,7 +274,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (prof && prof.country !== ALLOWED_COUNTRY) {
+      signingOutRef.current = true;
       await supabase.auth.signOut();
+      signingOutRef.current = false;
       throw new Error("TTFlix is only available in Trinidad & Tobago.");
     }
 
@@ -231,8 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (
       prof &&
       prof.status === "approved" &&
-      prof.subscription_expires_at &&
-      new Date(prof.subscription_expires_at).getTime() < Date.now() &&
+      isSubscriptionLapsed(prof.subscription_expires_at) &&
       prof.role !== "agent"
     ) {
       await supabase.from("profiles").update({ status: "suspended" }).eq("id", prof.id);
@@ -243,21 +295,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isAdminEmailCheck) {
       const slot = await claimScreenSlot({ userId: signedIn.id, plan: prof?.plan });
       if (!slot.ok) {
-        await supabase.auth.signOut();
-        throw new Error(screenLimitMessage(prof?.plan, slot.max));
+        if (slot.reason === "limit") {
+          signingOutRef.current = true;
+          await supabase.auth.signOut();
+          signingOutRef.current = false;
+          throw new Error(screenLimitMessage(prof?.plan, slot.max));
+        }
+        throw new Error("Could not start your session. Check your connection and try again.");
       }
     }
     setProfile(prof);
   };
 
   const signOut: AuthContextValue["signOut"] = async () => {
-    stopAdminAlerts();
-    if (userRef.current) {
-      try { await releaseScreenSlot(userRef.current.id); } catch { /* ignore */ }
+    signingOutRef.current = true;
+    try {
+      stopAdminAlerts();
+      if (userRef.current) {
+        try { await releaseScreenSlot(userRef.current.id); } catch { /* ignore */ }
+      }
+      await supabase.auth.signOut();
+      setProfile(null);
+      setScreensBlocked(false);
+      screenIdRef.current = null;
+      localStorage.removeItem("ttflix_active_profile");
+    } finally {
+      signingOutRef.current = false;
     }
-    await supabase.auth.signOut();
-    setProfile(null);
-    localStorage.removeItem("ttflix_active_profile");
   };
 
   const changePlan: AuthContextValue["changePlan"] = async (plan) => {
@@ -275,31 +339,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAgent = !isAdmin && (profile?.role === "agent");
 
-  const screenIdRef = useRef<string | null>(null);
-
   useEffect(() => {
     if (!user || !session || !profile || isAdmin) return;
     let stopped = false;
-    (async () => {
+
+    const claim = async () => {
       if (isAuthLocked()) return;
       const slot = await claimScreenSlot({ userId: user.id, plan: profile.plan });
       if (stopped) return;
       if (!slot.ok) {
-        await supabase.auth.signOut();
-        setUser(null);
-        setSession(null);
-        setProfile(null);
+        // Stay logged in. Only block playback if other devices took every screen.
+        if (slot.reason === "limit") setScreensBlocked(true);
         return;
       }
       screenIdRef.current = slot.id;
-    })();
+      setScreensBlocked(false);
+    };
+
+    void claim();
     const t = window.setInterval(() => {
-      if (isAuthLocked() || !screenIdRef.current) return;
-      pingScreenSlot(screenIdRef.current).catch(() => {});
+      if (isAuthLocked()) return;
+      if (screenIdRef.current) {
+        pingScreenSlot(screenIdRef.current).catch(() => {});
+      } else {
+        void claim();
+      }
     }, 15_000);
     const onVis = () => {
-      if (document.visibilityState === "visible" && screenIdRef.current) {
+      if (document.visibilityState !== "visible") return;
+      if (screenIdRef.current) {
         pingScreenSlot(screenIdRef.current).catch(() => {});
+      } else {
+        void claim();
       }
     };
     document.addEventListener("visibilitychange", onVis);
@@ -308,7 +379,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.clearInterval(t);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [user?.id, session?.access_token, profile?.plan, isAdmin]);
+  }, [user?.id, profile?.plan, isAdmin, !!session]);
 
   useEffect(() => {
     if (isAdmin && session?.access_token) startAdminAlerts();
@@ -320,7 +391,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         session,
-        profile,
+        profile: profile ? { ...profile, _maxScreens: screensBlocked } : null,
         loading,
         profileLoading,
         isAdmin,

@@ -29,7 +29,7 @@ export function AuthPage() {
   };
 
   return (
-    <div className="relative min-h-screen">
+    <div data-tv-zone="main" className="relative min-h-screen">
       <img src={heroBg} alt="" className="absolute inset-0 h-full w-full object-cover opacity-30 pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/70 to-background pointer-events-none" />
       <div className="relative mx-auto max-w-md px-4 py-10">

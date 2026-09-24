@@ -104,6 +104,10 @@
   .row-scroll {
     scrollbar-width: none;
   }
+  .row-scroll > *:hover,
+  .row-scroll > *:focus-within {
+    z-index: 30;
+  }
   .row-scroll::-webkit-scrollbar {
     display: none;
   }
@@ -138,7 +142,9 @@
     .focus-visible\:outline-none:focus-visible {
       outline: none !important;
     }
-    .focus-visible\:scale-105:focus-visible {
+    .focus-visible\:scale-105:focus-visible,
+    .hover\:scale-105:hover,
+    .md\:hover\:scale-105:hover {
       transform: none !important;
     }
   }
@@ -161,7 +167,8 @@
   html.is-tv [data-tv-card]:focus,
   html.is-tv [data-tv-card]:focus-visible {
     transform: scale(1.08) !important;
-    z-index: 20;
+    z-index: 30;
+    overflow: visible !important;
   }
 }
 
@@ -178,4 +185,12 @@ html.is-tv *:focus-visible {
   outline: 3px solid #E50914 !important;
   outline-offset: 4px !important;
   box-shadow: 0 0 0 2px #000, 0 0 0 6px #E50914 !important;
+}
+
+/* TVs always get the full header links — never the hamburger. */
+html.is-tv [data-tv-desktop-nav] {
+  display: flex !important;
+}
+html.is-tv [data-tv-mobile-only] {
+  display: none !important;
 }
