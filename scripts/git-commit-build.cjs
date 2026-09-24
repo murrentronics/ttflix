@@ -1,6 +1,6 @@
 /**
- * Commit the release after cap:sync finishes.
- * Skips when there is nothing new. Does not push.
+ * Commit the release after cap:sync finishes, then push to origin main.
+ * Skips the commit when there is nothing new. Never force-pushes.
  */
 const fs = require("fs");
 const path = require("path");
@@ -26,12 +26,17 @@ if (status.status !== 0) {
 }
 if (!status.stdout.trim()) {
   console.log("Nothing new to commit");
-  process.exit(0);
+} else {
+  const message = `Release v${version.versionName}`;
+  const commit = git(["commit", "-m", message]);
+  if (commit.stdout) process.stdout.write(commit.stdout);
+  if (commit.stderr) process.stderr.write(commit.stderr);
+  if (commit.status !== 0) process.exit(commit.status ?? 1);
+  console.log(`✓  Committed ${message}`);
 }
 
-const message = `Release v${version.versionName}`;
-const commit = git(["commit", "-m", message]);
-if (commit.stdout) process.stdout.write(commit.stdout);
-if (commit.stderr) process.stderr.write(commit.stderr);
-if (commit.status !== 0) process.exit(commit.status ?? 1);
-console.log(`✓  Committed ${message}`);
+const push = git(["push", "origin", "HEAD:main"]);
+if (push.stdout) process.stdout.write(push.stdout);
+if (push.stderr) process.stderr.write(push.stderr);
+if (push.status !== 0) process.exit(push.status ?? 1);
+console.log("✓  Pushed to origin main");
