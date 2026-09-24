@@ -12,8 +12,8 @@ import {
 } from "@/lib/apk-update";
 
 // Current version — patched automatically by the CI version bump script
-const CURRENT_VERSION_NAME = "1.1.290";
-const CURRENT_VERSION_CODE = 292;
+const CURRENT_VERSION_NAME = "1.1.291";
+const CURRENT_VERSION_CODE = 293;
 
 function isAndroidTV(): boolean {
   try {

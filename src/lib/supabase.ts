@@ -5,12 +5,31 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
+// Android WebView's navigator.locks times out while the screen is off, and that
+// timeout makes Supabase drop the session. Queue auth work in memory instead.
+let authLockTail: Promise<void> = Promise.resolve();
+
+async function authLock<R>(_name: string, _acquireTimeout: number, fn: () => Promise<R>): Promise<R> {
+  const prev = authLockTail;
+  let release: () => void = () => {};
+  authLockTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: false,
     storage: typeof window !== "undefined" ? window.localStorage : undefined,
+    lock: authLock,
   },
 });
 

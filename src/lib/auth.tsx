@@ -53,6 +53,33 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const ALLOWED_COUNTRY = "Trinidad & Tobago";
+const SESSION_BACKUP_KEY = "ttflix_session_backup";
+
+function saveSessionBackup(sess: Session | null) {
+  try {
+    if (!sess?.access_token || !sess.refresh_token) return;
+    localStorage.setItem(
+      SESSION_BACKUP_KEY,
+      JSON.stringify({ access_token: sess.access_token, refresh_token: sess.refresh_token }),
+    );
+  } catch { /* ignore */ }
+}
+
+function readSessionBackup(): { access_token: string; refresh_token: string } | null {
+  try {
+    const raw = localStorage.getItem(SESSION_BACKUP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { access_token?: string; refresh_token?: string };
+    if (!parsed.access_token || !parsed.refresh_token) return null;
+    return { access_token: parsed.access_token, refresh_token: parsed.refresh_token };
+  } catch {
+    return null;
+  }
+}
+
+function clearSessionBackup() {
+  try { localStorage.removeItem(SESSION_BACKUP_KEY); } catch { /* ignore */ }
+}
 
 async function loadProfile(userId: string): Promise<Profile | null> {
   const { data } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
@@ -68,9 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const userRef = useRef(user);
   userRef.current = user;
-  const sessionRef = useRef(session);
-  sessionRef.current = session;
   const signingOutRef = useRef(false);
+  const recoveringRef = useRef(false);
   const screenIdRef = useRef<string | null>(null);
   const [screensBlocked, setScreensBlocked] = useState(false);
 
@@ -82,50 +108,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 1. Restore session on mount and keep the JWT alive after Android sleeps.
   useEffect(() => {
+    const dropSession = () => {
+      setSession(null);
+      setUser(null);
+      setProfile(null);
+      setProfileLoading(false);
+      setScreensBlocked(false);
+    };
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setUser(data.session?.user ?? null);
+      if (data.session) saveSessionBackup(data.session);
       setLoading(false);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, sess) => {
       if (isAuthLocked()) return;
+      if (sess) {
+        recoveringRef.current = false;
+        saveSessionBackup(sess);
+      }
       if (!sess && event === "SIGNED_OUT" && !signingOutRef.current) {
-        // Token refresh can emit SIGNED_OUT on a dead network. Recover if storage still has a session.
-        void supabase.auth.getSession().then(({ data }) => {
-          if (data.session) {
+        if (recoveringRef.current) {
+          recoveringRef.current = false;
+          clearSessionBackup();
+          dropSession();
+          return;
+        }
+        const backup = readSessionBackup();
+        if (!backup) {
+          dropSession();
+          return;
+        }
+        // A failed refresh while the screen was off clears storage but the
+        // refresh token is often still valid. Put that session back.
+        recoveringRef.current = true;
+        void supabase.auth.setSession(backup).then(({ data, error }) => {
+          if (!error && data.session) {
+            recoveringRef.current = false;
+            saveSessionBackup(data.session);
             setSession(data.session);
             setUser(data.session.user);
             return;
           }
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-          setProfileLoading(false);
-          setScreensBlocked(false);
+          recoveringRef.current = false;
+          clearSessionBackup();
+          dropSession();
         });
         return;
       }
       setSession(sess);
       setUser(sess?.user ?? null);
-      if (!sess) {
-        setProfile(null);
-        setProfileLoading(false);
-        setScreensBlocked(false);
-      }
+      if (!sess) dropSession();
     });
 
+    let resumeTimer = 0;
     const onForeground = () => {
-      supabase.auth.startAutoRefresh();
-      if (!sessionRef.current && !userRef.current) return;
-      void supabase.auth.refreshSession().then(({ data }) => {
-        if (data.session) {
-          setSession(data.session);
-          setUser(data.session.user);
-        }
-      });
+      window.clearTimeout(resumeTimer);
+      // visibility, focus, and pageshow all fire together on wake.
+      // One refresh only — a second call burns the refresh token and signs out.
+      resumeTimer = window.setTimeout(() => {
+        void supabase.auth.startAutoRefresh();
+      }, 300);
     };
     const onBackground = () => {
+      window.clearTimeout(resumeTimer);
       supabase.auth.stopAutoRefresh();
     };
     const onVis = () => {
@@ -136,13 +184,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener("focus", onForeground);
     window.addEventListener("online", onForeground);
     window.addEventListener("pageshow", onForeground);
+    window.addEventListener("androidresume", onForeground);
 
     return () => {
+      window.clearTimeout(resumeTimer);
       sub.subscription.unsubscribe();
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", onForeground);
       window.removeEventListener("online", onForeground);
       window.removeEventListener("pageshow", onForeground);
+      window.removeEventListener("androidresume", onForeground);
     };
   }, []);
 
@@ -247,6 +298,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const geoData = geoRes.data as { allowed: boolean; reason?: string } | null;
         if (geoData && !geoData.allowed) {
           signingOutRef.current = true;
+          clearSessionBackup();
           await supabase.auth.signOut();
           signingOutRef.current = false;
           throw new Error(geoData.reason ?? "TTFlix is only available in Trinidad & Tobago.");
@@ -275,6 +327,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (prof && prof.country !== ALLOWED_COUNTRY) {
       signingOutRef.current = true;
+      clearSessionBackup();
       await supabase.auth.signOut();
       signingOutRef.current = false;
       throw new Error("TTFlix is only available in Trinidad & Tobago.");
@@ -297,6 +350,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!slot.ok) {
         if (slot.reason === "limit") {
           signingOutRef.current = true;
+          clearSessionBackup();
           await supabase.auth.signOut();
           signingOutRef.current = false;
           throw new Error(screenLimitMessage(prof?.plan, slot.max));
@@ -309,6 +363,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut: AuthContextValue["signOut"] = async () => {
     signingOutRef.current = true;
+    clearSessionBackup();
     try {
       stopAdminAlerts();
       if (userRef.current) {
